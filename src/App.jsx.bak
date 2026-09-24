@@ -1,0 +1,317 @@
+import React, { useState, useRef, useMemo } from 'react';
+import { usePosStore } from './posStore';
+import ScannerModal from './ScannerModal';
+import { Barcode, Camera, Trash2, Plus, Minus, DollarSign } from 'lucide-react';
+
+export default function App() {
+  const [codigoInput, setCodigoInput] = useState('');
+  const [camaraAbierta, setCamaraAbierta] = useState(false);
+  const inputRef = useRef(null);
+
+  const {
+    tasaCambio,
+    setTasaCambio,
+    carrito,
+    agregarPorCodigo,
+    actualizarCantidad,
+    limpiarCarrito,
+  } = usePosStore();
+
+  // Cálculo de totales reactivo (se ejecuta cada vez que el carrito o la tasa cambian)
+  const { totalUSD, totalBS } = useMemo(() => {
+    const usd = carrito.reduce(
+      (acumulador, item) => acumulador + item.precioUSD * item.cantidad,
+      0
+    );
+    const bs = usd * (Number(tasaCambio) || 0);
+    return {
+      totalUSD: usd.toFixed(2),
+      totalBS: bs.toFixed(2),
+    };
+  }, [carrito, tasaCambio]);
+
+  // Manejar el lector de barras (Pistola USB/OTG o Enter manual)
+  const manejarSubmitPistola = (e) => {
+    e.preventDefault();
+    if (!codigoInput.trim()) return;
+    
+    agregarPorCodigo(codigoInput);
+    setCodigoInput('');
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div style={styles.contenedor}>
+      {/* Encabezado con configuración de Tasa de Cambio */}
+      <header style={styles.header}>
+        <div>
+          <h1 style={styles.titulo}>Punto de Venta Móvil</h1>
+          <span style={styles.subtitulo}>Mostrador Activo</span>
+        </div>
+        <div style={styles.boxTasa}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#555' }}>Tasa BCV (Bs):</span>
+          <input
+            type="number"
+            value={tasaCambio}
+            onChange={(e) => setTasaCambio(e.target.value)}
+            style={styles.inputTasa}
+          />
+        </div>
+      </header>
+
+      {/* Buscador y disparadores de pistola y cámara */}
+      <section style={styles.seccionBuscador}>
+        <form onSubmit={manejarSubmitPistola} style={styles.formBuscador}>
+          <div style={styles.inputIconWrapper}>
+            <Barcode size={20} color="#666" style={styles.iconoInput} />
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Código EAN o pistola..."
+              value={codigoInput}
+              onChange={(e) => setCodigoInput(e.target.value)}
+              style={styles.inputBuscador}
+            />
+          </div>
+          <button type="submit" style={styles.btnAgregar}>
+            Ingresar
+          </button>
+        </form>
+
+        <button
+          onClick={() => setCamaraAbierta(true)}
+          style={styles.btnCamara}
+          title="Usar cámara trasera"
+        >
+          <Camera size={19} />
+          <span style={{ fontSize: '0.8rem', marginLeft: '5px', fontWeight: '600' }}>Cámara</span>
+        </button>
+      </section>
+
+      {/* Listado de items en el carrito */}
+      <main style={styles.seccionCarrito}>
+        {carrito.length === 0 ? (
+          <div style={styles.carritoVacio}>
+            <Barcode size={54} color="#ccd0d5" />
+            <p style={{ marginTop: '12px', fontSize: '0.95rem' }}>La caja está vacía. Escanea un producto.</p>
+          </div>
+        ) : (
+          <div style={styles.listaItems}>
+            {carrito.map((item) => (
+              <div key={item.id} style={styles.itemFila}>
+                <div style={styles.infoProd}>
+                  <strong style={{ fontSize: '0.9rem', color: '#222' }}>{item.nombre}</strong>
+                  <span style={styles.precioUnitario}>
+                    ${item.precioUSD.toFixed(2)} | Bs. {(item.precioUSD * tasaCambio).toFixed(2)}
+                  </span>
+                </div>
+
+                <div style={styles.controlesCantidad}>
+                  <button
+                    onClick={() => actualizarCantidad(item.id, item.cantidad - 1)}
+                    style={styles.btnCant}
+                  >
+                    <Minus size={14} color="#333" />
+                  </button>
+                  <span style={styles.cantTexto}>{item.cantidad}</span>
+                  <button
+                    onClick={() => actualizarCantidad(item.id, item.cantidad + 1)}
+                    style={styles.btnCant}
+                  >
+                    <Plus size={14} color="#333" />
+                  </button>
+                </div>
+
+                <div style={styles.subtotalItem}>
+                  <strong style={{ fontSize: '0.95rem', color: '#111' }}>
+                    ${(item.precioUSD * item.cantidad).toFixed(2)}
+                  </strong>
+                  <small style={{ color: '#666', fontSize: '0.75rem' }}>
+                    Bs. {(item.precioUSD * item.cantidad * tasaCambio).toFixed(2)}
+                  </small>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+
+      {/* Totales y orden de cobro */}
+      <footer style={styles.footer}>
+        <div style={styles.filaTotales}>
+          <div>
+            <span style={{ fontSize: '0.8rem', color: '#666' }}>Total en Bolívares:</span>
+            <div style={styles.totalBs}>Bs. {totalBS}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <span style={{ fontSize: '0.8rem', color: '#666' }}>Total Divisa:</span>
+            <div style={styles.totalUsd}>${totalUSD}</div>
+          </div>
+        </div>
+
+        <div style={styles.botonesAccion}>
+          <button onClick={limpiarCarrito} style={styles.btnLimpiar} title="Vaciar Carrito">
+            <Trash2 size={18} />
+          </button>
+          <button
+            onClick={() => {
+              if (carrito.length === 0) return alert('El carrito está vacío');
+              alert(`Total a procesar: $${totalUSD} (Bs. ${totalBS})`);
+            }}
+            style={styles.btnCobrar}
+          >
+            <DollarSign size={20} />
+            Orden de Cobrar
+          </button>
+        </div>
+      </footer>
+
+      {/* Modal con cámara trasera directa */}
+      <ScannerModal
+        abierto={camaraAbierta}
+        alDetectar={(codigo) => agregarPorCodigo(codigo)}
+        alCerrar={() => setCamaraAbierta(false)}
+      />
+    </div>
+  );
+}
+
+const styles = {
+  contenedor: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100vh',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    backgroundColor: '#f4f6f8',
+  },
+  header: {
+    padding: '12px 16px',
+    backgroundColor: '#fff',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottom: '1px solid #e1e4e8',
+  },
+  titulo: { margin: 0, fontSize: '1.05rem', color: '#111' },
+  subtitulo: { fontSize: '0.75rem', color: '#28a745', fontWeight: 'bold' },
+  boxTasa: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end' },
+  inputTasa: {
+    width: '75px',
+    padding: '4px 6px',
+    border: '1px solid #ccc',
+    borderRadius: '6px',
+    textAlign: 'right',
+    fontWeight: 'bold',
+    fontSize: '0.85rem',
+  },
+  seccionBuscador: {
+    padding: '10px 16px',
+    backgroundColor: '#fff',
+    display: 'flex',
+    gap: '8px',
+    borderBottom: '1px solid #e1e4e8',
+  },
+  formBuscador: { display: 'flex', flex: 1, gap: '6px' },
+  inputIconWrapper: { position: 'relative', flex: 1 },
+  iconoInput: { position: 'absolute', left: '10px', top: '9px' },
+  inputBuscador: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '9px 10px 9px 36px',
+    border: '1px solid #ccc',
+    borderRadius: '8px',
+    fontSize: '0.9rem',
+    outline: 'none',
+  },
+  btnAgregar: {
+    padding: '0 14px',
+    backgroundColor: '#0052cc',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    fontWeight: 'bold',
+    fontSize: '0.85rem',
+    cursor: 'pointer',
+  },
+  btnCamara: {
+    display: 'flex',
+    alignItems: 'center',
+    backgroundColor: '#20c997',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    padding: '0 12px',
+    cursor: 'pointer',
+  },
+  seccionCarrito: { flex: 1, overflowY: 'auto', padding: '12px 16px' },
+  carritoVacio: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+    color: '#888',
+  },
+  listaItems: { display: 'flex', flexDirection: 'column', gap: '8px' },
+  itemFila: {
+    backgroundColor: '#fff',
+    padding: '12px',
+    borderRadius: '10px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+  },
+  infoProd: { display: 'flex', flexDirection: 'column', flex: 2 },
+  precioUnitario: { fontSize: '0.75rem', color: '#666', marginTop: '2px' },
+  controlesCantidad: { display: 'flex', alignItems: 'center', gap: '8px', flex: 1, justifyContent: 'center' },
+  btnCant: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
+    border: '1px solid #ddd',
+    background: '#f8f9fa',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  },
+  cantTexto: { fontWeight: 'bold', fontSize: '0.95rem' },
+  subtotalItem: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flex: 1 },
+  footer: {
+    backgroundColor: '#fff',
+    padding: '14px 16px',
+    borderTop: '1px solid #e1e4e8',
+    boxShadow: '0 -2px 10px rgba(0,0,0,0.05)',
+  },
+  filaTotales: { display: 'flex', justifyContent: 'space-between', marginBottom: '12px' },
+  totalBs: { fontSize: '1.25rem', fontWeight: 'bold', color: '#0052cc' },
+  totalUsd: { fontSize: '1.25rem', fontWeight: 'bold', color: '#28a745' },
+  botonesAccion: { display: 'flex', gap: '10px' },
+  btnLimpiar: {
+    backgroundColor: '#ffebe6',
+    border: 'none',
+    color: '#de350b',
+    borderRadius: '8px',
+    padding: '12px 14px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnCobrar: {
+    flex: 1,
+    backgroundColor: '#28a745',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    padding: '12px',
+    fontSize: '1rem',
+    fontWeight: 'bold',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    cursor: 'pointer',
+  },
+};
