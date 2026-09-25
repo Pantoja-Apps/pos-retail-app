@@ -18,6 +18,7 @@ export default function TicketModal({ ticket, configEmpresa, alCerrar }) {
   };
 
   const totalArticulos = (ticket.items || []).reduce((acc, it) => acc + (parseFloat(it.cantidad) || 0), 0);
+  const tieneDescuento = parseFloat(ticket.descuentoUSD) > 0.009;
 
   const imprimir = () => {
     window.print();
@@ -53,6 +54,10 @@ export default function TicketModal({ ticket, configEmpresa, alCerrar }) {
     });
     t += "--------------------------------\n";
     t += `TOTAL PIEZAS: ${totalArticulos}\n`;
+    if (tieneDescuento) {
+      t += `SUBTOTAL:     $${ticket.subtotalUSD || ticket.totalUSD}\n`;
+      t += `DESCUENTO:   -$${ticket.descuentoUSD} (${ticket.descuentoTexto || 'Promo'})\n`;
+    }
     t += `TOTAL USD:    $${ticket.totalUSD}\n`;
     t += `TOTAL BS:     Bs. ${ticket.totalBS}\n`;
     t += "--------------------------------\n";
@@ -92,9 +97,13 @@ export default function TicketModal({ ticket, configEmpresa, alCerrar }) {
       t += `• ${it.cantidad}x ${it.nombre} = $${totUSD}\n`;
     });
     t += "--------------------------------\n";
+    if (tieneDescuento) {
+      t += `Subtotal: $${ticket.subtotalUSD || ticket.totalUSD}\n`;
+      t += `Descuento Aplicado: -$${ticket.descuentoUSD} (${ticket.descuentoTexto || 'Rebaja'})\n`;
+    }
     t += `*TOTAL COMPRA: $${ticket.totalUSD} (Bs. ${ticket.totalBS})*\n`;
     if (ticket.esCredito) {
-      t += `*Condición:* CRÉDITO\n`;
+      t += `*Condición:* CRÉDITO PENDIENTE\n`;
       t += `*Saldo pendiente:* $${ticket.saldoDeudaUSD} (Bs. ${ticket.saldoDeudaBS})\n`;
     }
     t += esAnulada ? "\n⚠️ Operación anulada sin validez fiscal." : `\n${cfg.mensajePie}`;
@@ -192,6 +201,20 @@ export default function TicketModal({ ticket, configEmpresa, alCerrar }) {
                 <span style={{ fontSize: '0.72rem', color: '#64748b' }}>CANTIDAD ARTÍCULOS:</span>
                 <strong style={{ fontSize: '0.78rem' }}>{totalArticulos} und.</strong>
               </div>
+
+              {tieneDescuento && (
+                <>
+                  <div style={styles.metaRow}>
+                    <span style={{ fontSize: '0.74rem', color: '#64748b' }}>SUBTOTAL VENTA:</span>
+                    <strong style={{ fontSize: '0.84rem', color: '#475569' }}>${ticket.subtotalUSD || ticket.totalUSD}</strong>
+                  </div>
+                  <div style={{ ...styles.metaRow, color: '#e11d48', fontWeight: 'bold' }}>
+                    <span style={{ fontSize: '0.74rem' }}>DESCUENTO ({ticket.descuentoTexto || 'Rebaja'}):</span>
+                    <span style={{ fontSize: '0.84rem' }}>-${ticket.descuentoUSD}</span>
+                  </div>
+                </>
+              )}
+
               <div style={styles.filaTotalUSD}>
                 <span>TOTAL A PAGAR:</span>
                 <span style={{ textDecoration: esAnulada ? 'line-through' : 'none' }}>${ticket.totalUSD}</span>

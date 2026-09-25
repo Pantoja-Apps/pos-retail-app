@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Plus, Search, Edit3, Trash2, Camera, Package, Box, Layers, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Edit3, Trash2, Camera, Package, RefreshCw, X, Tag } from 'lucide-react';
 
 const CATEGORIAS_CONFIG = [
   { nombre: 'Víveres', margen: 20, exento: true },
@@ -22,7 +22,7 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
   const [codigo, setCodigo] = useState('');
   const [nombre, setNombre] = useState('');
   const [categoria, setCategoria] = useState('Víveres');
-  const [modoCompra, setModoCompra] = useState('unidad'); // 'unidad' o 'bulto'
+  const [modoCompra, setModoCompra] = useState('unidad');
   
   const [costoBulto, setCostoBulto] = useState('');
   const [unidadesPorBulto, setUnidadesPorBulto] = useState('20');
@@ -33,6 +33,12 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
 
   const [margenGanancia, setMargenGanancia] = useState('20');
   const [precioVentaUSD, setPrecioVentaUSD] = useState('');
+  
+  // PRECIO AL MAYOR
+  const [aplicaPrecioMayor, setAplicaPrecioMayor] = useState(false);
+  const [precioMayorUSD, setPrecioMayorUSD] = useState('');
+  const [cantMinimaMayor, setCantMinimaMayor] = useState('3');
+
   const [aplicaIVA, setAplicaIVA] = useState(false);
 
   const productoExistente = productos.find(p => p.codigo && p.codigo === codigo.trim() && (!prodEditando || prodEditando.id !== p.id));
@@ -49,6 +55,12 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
       setMargenGanancia(producto.margenGanancia !== undefined ? producto.margenGanancia.toString() : '20');
       setPrecioVentaUSD(producto.precioUSD.toString());
       setAplicaIVA(Boolean(producto.aplicaIVA));
+      
+      // Cargar datos de precio al mayor
+      setAplicaPrecioMayor(Boolean(producto.aplicaPrecioMayor));
+      setPrecioMayorUSD(producto.precioMayorUSD ? producto.precioMayorUSD.toString() : '');
+      setCantMinimaMayor(producto.cantMinimaMayor ? producto.cantMinimaMayor.toString() : '3');
+
       setCostoBulto('');
       setUnidadesPorBulto('20');
       setCantidadBultosIngresados('1');
@@ -65,6 +77,9 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
       setStockUnidades('10');
       setMargenGanancia('20');
       setPrecioVentaUSD('');
+      setAplicaPrecioMayor(false);
+      setPrecioMayorUSD('');
+      setCantMinimaMayor('3');
       setAplicaIVA(false);
     }
     setModalFormAbierto(true);
@@ -77,6 +92,9 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
     setMargenGanancia((prod.margenGanancia || 20).toString());
     setPrecioVentaUSD(prod.precioUSD.toString());
     setAplicaIVA(Boolean(prod.aplicaIVA));
+    setAplicaPrecioMayor(Boolean(prod.aplicaPrecioMayor));
+    if (prod.precioMayorUSD) setPrecioMayorUSD(prod.precioMayorUSD.toString());
+    if (prod.cantMinimaMayor) setCantMinimaMayor(prod.cantMinimaMayor.toString());
   };
 
   const manejarCambioCodigo = (nuevoCod) => {
@@ -143,6 +161,9 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
       precioUSD: pVenta,
       stock: stockFinalResultante,
       aplicaIVA: aplicaIVA,
+      aplicaPrecioMayor: aplicaPrecioMayor,
+      precioMayorUSD: aplicaPrecioMayor ? (parseFloat(precioMayorUSD) || pVenta) : 0,
+      cantMinimaMayor: aplicaPrecioMayor ? (parseInt(cantMinimaMayor, 10) || 3) : 0,
       imagen: prodEditando ? prodEditando.imagen : (productoExistente ? productoExistente.imagen : '')
     };
 
@@ -229,6 +250,11 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                     ) : (
                       <span style={styles.badgeExento}>Exento</span>
                     )}
+                    {p.aplicaPrecioMayor && (
+                      <span style={styles.badgeMayorTag}>
+                        Mayor: ${p.precioMayorUSD} (≥{p.cantMinimaMayor}u)
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
                     Cód: {p.codigo} · Stock: <strong style={{ color: p.stock <= 5 ? '#dc2626' : '#0f172a' }}>{p.stock}</strong> und.
@@ -253,7 +279,7 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
         )}
       </div>
 
-      {/* FORMULARIO FLOTANTE (zIndex 9999 para que ScannerModal en 20000 flote encima) */}
+      {/* FORMULARIO */}
       {modalFormAbierto && (
         <div style={styles.overlay} translate="no">
           <div style={styles.modalBox}>
@@ -266,7 +292,7 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
 
             <form onSubmit={guardar} style={styles.formScroll}>
               
-              {/* CÓDIGO CON BOTÓN DE CÁMARA */}
+              {/* CÓDIGO */}
               <div style={styles.campo}>
                 <label style={styles.label}>Código de Barras:</label>
                 <div style={{ display: 'flex', gap: '6px' }}>
@@ -347,7 +373,7 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                 </div>
               </div>
 
-              {/* SELECTOR DE ENTRADA (POR BULTO O POR UNIDAD) */}
+              {/* ENTRADA POR BULTO O POR UNIDAD */}
               <div style={styles.boxCalculadora}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '0.74rem', fontWeight: 'bold', color: '#1e293b' }}>
@@ -467,7 +493,7 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                 </div>
               </div>
 
-              {/* PRECIO DE VENTA Y STOCK TOTAL RESULTANTE */}
+              {/* PRECIO DE VENTA AL DETAL */}
               <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                 <div style={{ ...styles.campo, flex: 1.2 }}>
                   <label style={{ ...styles.label, color: '#0052cc' }}>Precio Venta al Detal ($):</label>
@@ -489,6 +515,53 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                     <span style={{ fontSize: '0.68rem', color: '#64748b' }}>und.</span>
                   </div>
                 </div>
+              </div>
+
+              {/* SECCIÓN CONFIGURACIÓN PRECIO AL MAYOR */}
+              <div style={styles.boxMayorista}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Tag size={15} color="#ea580c" />
+                    <span style={{ fontSize: '0.76rem', fontWeight: 'bold', color: '#9a3412' }}>
+                      ¿Ofrecer Precio al Mayor?
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={aplicaPrecioMayor}
+                    onChange={(e) => setAplicaPrecioMayor(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {aplicaPrecioMayor && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                    <div style={{ flex: 1.2 }}>
+                      <label style={styles.labelMini}>Precio al Mayor ($):</label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="Ej: 0.95"
+                        value={precioMayorUSD}
+                        onChange={(e) => setPrecioMayorUSD(e.target.value)}
+                        style={{ ...styles.inputMini, fontWeight: 'bold', color: '#ea580c' }}
+                        required={aplicaPrecioMayor}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={styles.labelMini}>A partir de (und):</label>
+                      <input
+                        type="number"
+                        min="2"
+                        placeholder="3"
+                        value={cantMinimaMayor}
+                        onChange={(e) => setCantMinimaMayor(e.target.value)}
+                        style={{ ...styles.inputMini, textAlign: 'center', fontWeight: 'bold' }}
+                        required={aplicaPrecioMayor}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* GANANCIA ESTIMADA */}
@@ -530,6 +603,7 @@ const styles = {
   badgeCat: { backgroundColor: '#f1f5f9', color: '#475569', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold' },
   badgeIVA: { backgroundColor: '#fef3c7', color: '#854d0e', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold' },
   badgeExento: { backgroundColor: '#f0fdf4', color: '#166534', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold' },
+  badgeMayorTag: { backgroundColor: '#ffedd5', color: '#c2410c', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold', border: '1px solid #fed7aa' },
   btnAccionEdit: { background: '#f1f5f9', border: 'none', borderRadius: '6px', padding: '5px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#0052cc' },
   btnAccionDel: { background: '#fee2e2', border: 'none', borderRadius: '6px', padding: '5px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#dc2626' },
   overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '12px' },
@@ -551,6 +625,7 @@ const styles = {
   tabBtn: { border: 'none', padding: '3px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 'bold', cursor: 'pointer' },
   resumenBultoBox: { display: 'flex', justifyContent: 'space-between', backgroundColor: '#fff', padding: '6px 8px', borderRadius: '6px', border: '1px dashed #cbd5e1', fontSize: '0.72rem', color: '#334155', marginTop: '6px' },
   cajaStockFinal: { backgroundColor: '#f1f5f9', borderRadius: '8px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #e2e8f0' },
-  bannerGanancia: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#dcfce7', padding: '8px 10px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 'bold', color: '#166534', marginTop: '6px' },
+  boxMayorista: { backgroundColor: '#fff7ed', padding: '10px', borderRadius: '10px', border: '1px solid #fed7aa', marginTop: '8px', marginBottom: '8px' },
+  bannerGanancia: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#dcfce7', padding: '8px 10px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 'bold', color: '#16a34a', marginTop: '6px' },
   btnGuardarForm: { width: '100%', padding: '12px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 'bold', cursor: 'pointer' }
 };

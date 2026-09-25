@@ -1,54 +1,73 @@
 import React, { useState, useRef } from 'react';
-import { ArrowLeft, Store, Save, Image as ImageIcon, Trash2, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Save, Upload, Building, Phone, MapPin, FileText, Download, RotateCcw, ShieldCheck } from 'lucide-react';
 
-export default function ConfiguracionModal({ config, alGuardarConfig, alVolver }) {
-  const [nombre, setNombre] = useState(config.nombre || 'Mi Bodega');
-  const [rif, setRif] = useState(config.rif || 'J-00000000-0');
-  const [direccion, setDireccion] = useState(config.direccion || 'Caracas, Venezuela');
-  const [telefono, setTelefono] = useState(config.telefono || '0412-0000000');
-  const [mensajePie, setMensajePie] = useState(config.mensajePie || '¡Gracias por su compra!');
+export default function ConfiguracionModal({ 
+  config, 
+  alGuardarConfig, 
+  alExportarBackup, 
+  alImportarBackup, 
+  alVolver 
+}) {
+  const [nombre, setNombre] = useState(config.nombre || '');
+  const [rif, setRif] = useState(config.rif || '');
+  const [direccion, setDireccion] = useState(config.direccion || '');
+  const [telefono, setTelefono] = useState(config.telefono || '');
+  const [mensajePie, setMensajePie] = useState(config.mensajePie || '');
   const [logo, setLogo] = useState(config.logo || '');
-  const [margenDefault, setMargenDefault] = useState(config.margenDefault || 30);
-  const [guardadoExito, setGuardadoExito] = useState(false);
 
   const fileInputRef = useRef(null);
+  const backupInputRef = useRef(null);
 
   const manejarLogo = (e) => {
-    const file = e.target.files ? e.target.files[0] : null;
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 1024 * 1024 * 2) {
+        return alert('La imagen es muy pesada. Debe pesar menos de 2MB.');
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogo(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const manejarSubidaBackup = (e) => {
+    const file = e.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target.result;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 220;
-        const scale = MAX_WIDTH / img.width;
-        canvas.width = MAX_WIDTH;
-        canvas.height = img.height * scale;
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        setLogo(canvas.toDataURL('image/jpeg', 0.8));
-      };
+      try {
+        const datos = JSON.parse(event.target.result);
+        if (confirm('¿Restaurar esta base de datos? Se actualizarán el inventario, clientes y ventas con los datos del respaldo.')) {
+          alImportarBackup(datos);
+          alert('¡Base de datos restaurada con éxito!');
+        }
+      } catch (err) {
+        alert('Archivo de respaldo inválido o corrupto.');
+      }
     };
-    reader.readAsDataURL(file);
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const guardar = (e) => {
     e.preventDefault();
+    if (!nombre.trim()) return alert('El nombre del negocio es obligatorio.');
+
     alGuardarConfig({
-      nombre: nombre.trim() || 'Mi Bodega',
+      ...config,
+      nombre: nombre.trim(),
       rif: rif.trim() || 'J-00000000-0',
       direccion: direccion.trim() || 'Caracas, Venezuela',
-      telefono: telefono.trim() || '0412-0000000',
-      mensajePie: mensajePie.trim() || '¡Gracias por su compra!',
-      logo: logo,
-      margenDefault: parseFloat(margenDefault) || 30,
+      telefono: telefono.trim(),
+      mensajePie: mensajePie.trim(),
+      logo: logo
     });
-    setGuardadoExito(true);
-    setTimeout(() => setGuardadoExito(false), 2500);
+
+    alert('Configuración guardada exitosamente.');
+    alVolver();
   };
 
   return (
@@ -60,58 +79,46 @@ export default function ConfiguracionModal({ config, alGuardarConfig, alVolver }
           </button>
           <div>
             <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#111' }}>Ajustes del Negocio</h2>
-            <small style={{ color: '#666', fontSize: '0.72rem' }}>Identidad, Tickets y Preferencias</small>
+            <small style={{ color: '#666', fontSize: '0.72rem' }}>Personalización y Respaldos</small>
           </div>
         </div>
       </header>
 
       <form onSubmit={guardar} style={styles.scrollArea}>
         
-        {guardadoExito && (
-          <div style={styles.bannerExito}>
-            <CheckCircle2 size={16} /> ¡Configuración guardada exitosamente!
-          </div>
-        )}
-
         {/* LOGO DEL NEGOCIO */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <ImageIcon size={16} color="#0052cc" />
-            <span style={styles.cardTitle}>Logo del Comercio</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '10px' }}>
-            <div 
-              style={styles.logoBox} 
-              onClick={() => fileInputRef.current && fileInputRef.current.click()}
-              title="Toca para subir logo"
-            >
+        <div style={styles.seccionCard}>
+          <span style={styles.tituloSeccion}>Logotipo del Comercio</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
+            <div style={styles.previewLogoBox}>
               {logo ? (
-                <img src={logo} alt="Logo" style={styles.logoImg} />
+                <img src={logo} alt="Logo" style={styles.previewImg} />
               ) : (
-                <div style={{ textAlign: 'center', color: '#64748b' }}>
-                  <Store size={26} />
-                  <div style={{ fontSize: '0.65rem', marginTop: '4px' }}>Subir Logo</div>
-                </div>
+                <Building size={28} color="#94a3b8" />
               )}
             </div>
-            <input 
-              ref={fileInputRef} 
-              type="file" 
-              accept="image/*" 
-              onChange={manejarLogo} 
-              style={{ display: 'none' }} 
-            />
-            <div>
-              <p style={{ margin: '0 0 6px 0', fontSize: '0.72rem', color: '#64748b' }}>
-                Aparecerá en el encabezado de los tickets físicos y digitales.
-              </p>
+            <div style={{ flex: 1 }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={manejarLogo}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                style={styles.btnSubirLogo}
+              >
+                <Upload size={14} /> Subir Imagen / Logo
+              </button>
               {logo && (
-                <button 
-                  type="button" 
-                  onClick={() => setLogo('')} 
+                <button
+                  type="button"
+                  onClick={() => setLogo('')}
                   style={styles.btnQuitarLogo}
                 >
-                  <Trash2 size={12} /> Quitar logo
+                  Quitar logotipo
                 </button>
               )}
             </div>
@@ -119,98 +126,106 @@ export default function ConfiguracionModal({ config, alGuardarConfig, alVolver }
         </div>
 
         {/* DATOS FISCALES Y DE CONTACTO */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <Store size={16} color="#0052cc" />
-            <span style={styles.cardTitle}>Información de la Empresa</span>
+        <div style={styles.seccionCard}>
+          <span style={styles.tituloSeccion}>Datos de la Empresa / Bodega</span>
+          
+          <div style={styles.campo}>
+            <label style={styles.label}>Nombre Comercial:</label>
+            <input
+              type="text"
+              placeholder="Ej: Inversiones Los Socios C.A."
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              style={styles.input}
+              required
+            />
           </div>
 
           <div style={styles.campo}>
-            <label style={styles.label}>Nombre Comercial / Bodega:</label>
-            <input 
-              type="text" 
-              value={nombre} 
-              onChange={(e) => setNombre(e.target.value)} 
-              placeholder="Ej: Inversiones La Estrella C.A." 
-              style={styles.input} 
-              required 
+            <label style={styles.label}>RIF / C.I.:</label>
+            <input
+              type="text"
+              placeholder="Ej: J-12345678-9"
+              value={rif}
+              onChange={(e) => setRif(e.target.value)}
+              style={styles.input}
             />
           </div>
+
+          <div style={styles.campo}>
+            <label style={styles.label}>Teléfono de Contacto:</label>
+            <input
+              type="text"
+              placeholder="Ej: 0412-1234567"
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+              style={styles.input}
+            />
+          </div>
+
+          <div style={styles.campo}>
+            <label style={styles.label}>Dirección Física:</label>
+            <input
+              type="text"
+              placeholder="Ej: Av. Principal, Local 02"
+              value={direccion}
+              onChange={(e) => setDireccion(e.target.value)}
+              style={styles.input}
+            />
+          </div>
+
+          <div style={styles.campo}>
+            <label style={styles.label}>Mensaje al Pie del Ticket:</label>
+            <textarea
+              rows="2"
+              placeholder="Ej: ¡Gracias por su compra! Revise su mercancía antes de salir."
+              value={mensajePie}
+              onChange={(e) => setMensajePie(e.target.value)}
+              style={styles.textarea}
+            />
+          </div>
+        </div>
+
+        {/* COPIA DE SEGURIDAD Y RESPALDOS */}
+        <div style={styles.seccionCard}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <ShieldCheck size={16} color="#0052cc" />
+            <span style={styles.tituloSeccion}>Copia de Seguridad y Restauración</span>
+          </div>
+          <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '4px 0 10px 0' }}>
+            Descarga un respaldo con tu inventario, deudas de clientes y ventas, o restáuralo si cambias de teléfono.
+          </p>
 
           <div style={{ display: 'flex', gap: '8px' }}>
-            <div style={{ ...styles.campo, flex: 1 }}>
-              <label style={styles.label}>RIF / C.I.:</label>
-              <input 
-                type="text" 
-                value={rif} 
-                onChange={(e) => setRif(e.target.value)} 
-                placeholder="J-12345678-0" 
-                style={styles.input} 
-                required 
-              />
-            </div>
-            <div style={{ ...styles.campo, flex: 1 }}>
-              <label style={styles.label}>Teléfono / WhatsApp:</label>
-              <input 
-                type="text" 
-                value={telefono} 
-                onChange={(e) => setTelefono(e.target.value)} 
-                placeholder="0412-1234567" 
-                style={styles.input} 
-              />
-            </div>
-          </div>
+            <button
+              type="button"
+              onClick={alExportarBackup}
+              style={styles.btnBackupExport}
+            >
+              <Download size={14} /> Descargar Copia (JSON)
+            </button>
 
-          <div style={styles.campo}>
-            <label style={styles.label}>Dirección Comercial:</label>
-            <input 
-              type="text" 
-              value={direccion} 
-              onChange={(e) => setDireccion(e.target.value)} 
-              placeholder="Calle Principal, Local 01" 
-              style={styles.input} 
+            <input
+              ref={backupInputRef}
+              type="file"
+              accept=".json"
+              onChange={manejarSubidaBackup}
+              style={{ display: 'none' }}
             />
-          </div>
 
-          <div style={styles.campo}>
-            <label style={styles.label}>Mensaje al pie del ticket:</label>
-            <input 
-              type="text" 
-              value={mensajePie} 
-              onChange={(e) => setMensajePie(e.target.value)} 
-              placeholder="Ej: ¡Gracias por su compra! Revise su mercancía" 
-              style={styles.input} 
-            />
+            <button
+              type="button"
+              onClick={() => backupInputRef.current && backupInputRef.current.click()}
+              style={styles.btnBackupImport}
+            >
+              <RotateCcw size={14} /> Restaurar Copia
+            </button>
           </div>
         </div>
 
-        {/* PARÁMETROS OPERATIVOS */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <ShieldCheck size={16} color="#0052cc" />
-            <span style={styles.cardTitle}>Parámetros de Venta</span>
-          </div>
-
-          <div style={styles.campo}>
-            <label style={styles.label}>Margen de Ganancia Sugerido Base (%):</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input 
-                type="number" 
-                value={margenDefault} 
-                onChange={(e) => setMargenDefault(e.target.value)} 
-                style={{ ...styles.input, width: '90px', textAlign: 'center', fontWeight: 'bold' }} 
-              />
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                Porcentaje predeterminado al crear nuevos productos.
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* ESPACIADO INFERIOR AMPLIO PARA BOTÓN */}
-        <div style={{ marginTop: '14px', paddingBottom: '90px' }}>
+        <div style={{ marginTop: '16px', paddingBottom: '30px' }}>
           <button type="submit" style={styles.btnGuardar}>
-            <Save size={16} /> Guardar Cambios
+            <Save size={16} /> Guardar Ajustes
           </button>
         </div>
 
@@ -224,15 +239,17 @@ const styles = {
   header: { padding: '12px 16px', backgroundColor: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   btnBack: { background: '#f1f5f9', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   scrollArea: { flex: 1, overflowY: 'auto', padding: '14px 16px', WebkitOverflowScrolling: 'touch' },
-  bannerExito: { display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#dcfce7', color: '#16a34a', padding: '10px 14px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '12px', border: '1px solid #bbf7d0' },
-  card: { backgroundColor: '#fff', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', marginBottom: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' },
-  cardHeader: { display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '8px', borderBottom: '1px solid #f1f5f9' },
-  cardTitle: { fontSize: '0.82rem', fontWeight: 'bold', color: '#1e293b' },
-  logoBox: { width: '68px', height: '68px', borderRadius: '10px', border: '2px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden', backgroundColor: '#f8fafc' },
-  logoImg: { width: '100%', height: '100%', objectFit: 'contain' },
-  btnQuitarLogo: { background: 'none', border: 'none', color: '#ef4444', fontSize: '0.72rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer', padding: 0 },
+  seccionCard: { backgroundColor: '#fff', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', marginBottom: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' },
+  tituloSeccion: { fontSize: '0.76rem', fontWeight: 'bold', color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.3px' },
+  previewLogoBox: { width: '56px', height: '56px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  previewImg: { width: '100%', height: '100%', objectFit: 'contain' },
+  btnSubirLogo: { backgroundColor: '#eff6ff', color: '#0052cc', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '7px 12px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' },
+  btnQuitarLogo: { background: 'none', border: 'none', color: '#dc2626', fontSize: '0.7rem', cursor: 'pointer', marginTop: '4px', display: 'block', padding: 0 },
   campo: { display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '10px' },
-  label: { fontSize: '0.73rem', fontWeight: 'bold', color: '#475569' },
+  label: { fontSize: '0.72rem', fontWeight: 'bold', color: '#475569' },
   input: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' },
-  btnGuardar: { width: '100%', padding: '13px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(0,82,204,0.25)' }
+  textarea: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', resize: 'none', fontFamily: 'inherit' },
+  btnBackupExport: { flex: 1, backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '9px 6px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' },
+  btnBackupImport: { flex: 1, backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '9px 6px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' },
+  btnGuardar: { width: '100%', padding: '12px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.9rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }
 };
