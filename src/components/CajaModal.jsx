@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Printer, Share2, DollarSign, Smartphone, CreditCard, ShoppingBag, RotateCcw, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Printer, Share2, DollarSign, Banknote, Smartphone, CreditCard, ShoppingBag, RotateCcw, AlertTriangle, ArrowDownRight } from 'lucide-react';
 
 export default function CajaModal({ transacciones, tasaCambio, alCerrarTurno, alVolver }) {
   const tasa = parseFloat(tasaCambio) || 1;
@@ -8,58 +8,84 @@ export default function CajaModal({ transacciones, tasaCambio, alCerrarTurno, al
   const ventasAnuladas = transacciones.filter(t => t.tipo === 'venta' && t.anulada);
   const abonos = transacciones.filter(t => t.tipo === 'abono');
 
-  let efectivoUSD = 0;
-  let pmBS = 0;
-  let puntoBS = 0;
+  let efectivoUSD_Recibido = 0;
+  let efectivoBS_Recibido = 0;
+  let pmBS_Recibido = 0;
+  let puntoBS_Recibido = 0;
   let creditosNuevosUSD = 0;
-  let totalVentasUSD = 0;
+  let totalVentasBrutasUSD = 0;
+  let totalVueltosBS = 0;
+  let totalVueltosUSD = 0;
 
   ventasActivas.forEach(v => {
-    efectivoUSD += parseFloat(v.pagoUSD) || 0;
-    pmBS += parseFloat(v.pagoPM) || 0;
-    puntoBS += parseFloat(v.pagoPunto) || 0;
-    totalVentasUSD += parseFloat(v.totalUSD) || 0;
+    efectivoUSD_Recibido += parseFloat(v.pagoUSD) || 0;
+    efectivoBS_Recibido += parseFloat(v.pagoBsEfectivo) || 0;
+    pmBS_Recibido += parseFloat(v.pagoPM) || 0;
+    puntoBS_Recibido += parseFloat(v.pagoPunto) || 0;
+    totalVentasBrutasUSD += parseFloat(v.totalUSD) || 0;
+
+    totalVueltosBS += parseFloat(v.vueltoBS) || 0;
+    totalVueltosUSD += parseFloat(v.vueltoUSD) || 0;
+
     if (v.esCredito) creditosNuevosUSD += parseFloat(v.saldoDeudaUSD) || 0;
   });
 
   let abonosUSD = 0;
+  let abonosBsEfectivo = 0;
   let abonosPM = 0;
   let abonosPunto = 0;
 
   abonos.forEach(a => {
     abonosUSD += parseFloat(a.pagoUSD) || 0;
+    abonosBsEfectivo += parseFloat(a.pagoBsEfectivo) || 0;
     abonosPM += parseFloat(a.pagoPM) || 0;
     abonosPunto += parseFloat(a.pagoPunto) || 0;
   });
 
-  // Fondos Consolidados
-  const totalGavetaUSD = efectivoUSD + abonosUSD;
-  const totalBancoPM_BS = pmBS + abonosPM;
-  const totalBancoPunto_BS = puntoBS + abonosPunto;
-  const totalBancoBS = totalBancoPM_BS + totalBancoPunto_BS;
+  // FONDOS FÍSICOS EN GAVETA
+  // Si se dio vuelto en Bs y había efectivo en Bs, se descuenta de ahí:
+  let efectivoBS_Neto = (efectivoBS_Recibido + abonosBsEfectivo) - totalVueltosBS;
+  let deduccionEnUSD = 0;
+  if (efectivoBS_Neto < 0) {
+    deduccionEnUSD = Math.abs(efectivoBS_Neto) / tasa;
+    efectivoBS_Neto = 0;
+  }
 
-  // Gran Total Cuadre en USD (Efectivo + Bancos convertidos a tasa)
-  const totalCajaUSD = totalGavetaUSD + (totalBancoBS / tasa);
+  const efectivoUSD_Neto = Math.max(0, (efectivoUSD_Recibido + abonosUSD) - deduccionEnUSD);
+
+  // FONDOS ELECTRÓNICOS EN BANCO
+  const bancoPM_BS = pmBS_Recibido + abonosPM;
+  const bancoPunto_BS = puntoBS_Recibido + abonosPunto;
+  const totalBancoBS = bancoPM_BS + bancoPunto_BS;
+
+  // Gran Total Cuadre Neto Disponible (Efectivo $ + Efectivo Bs + Bancos Bs convertidos a tasa)
+  const totalCajaUSD = efectivoUSD_Neto + ((efectivoBS_Neto + totalBancoBS) / tasa);
 
   const compartirCierreWhatsApp = () => {
     let t = "*CIERRE DE CAJA (CORTE Z)*\n";
     t += "COMERCIALIZADORA POS\n";
     t += `Fecha: ${new Date().toLocaleDateString('es-VE')} ${new Date().toLocaleTimeString('es-VE')}\n`;
-    t += `Tasa: Bs. ${tasa.toFixed(2)}\n`;
+    t += `Tasa Oficial: Bs. ${tasa.toFixed(2)}\n`;
     t += "--------------------------------\n";
-    t += `• Facturas Activas:  ${ventasActivas.length}\n`;
-    t += `• Facturas Anuladas: ${ventasAnuladas.length}\n`;
-    t += `• Abonos Cobrados:   ${abonos.length}\n`;
-    t += `• Venta Total:       $${totalVentasUSD.toFixed(2)}\n`;
-    t += `• Crédito Otorgado:  $${creditosNuevosUSD.toFixed(2)}\n`;
+    t += `• Facturas Emitidas:  ${ventasActivas.length}\n`;
+    t += `• Facturas Anuladas:  ${ventasAnuladas.length}\n`;
+    t += `• Abonos Cobrados:    ${abonos.length}\n`;
+    t += `• Venta Bruta Total:  $${totalVentasBrutasUSD.toFixed(2)}\n`;
+    if (totalVueltosUSD > 0) {
+      t += `• Vueltos Entregados: -$${totalVueltosUSD.toFixed(2)} (Bs. ${totalVueltosBS.toFixed(2)})\n`;
+    }
+    t += `• Crédito Otorgado:   $${creditosNuevosUSD.toFixed(2)}\n`;
     t += "--------------------------------\n";
-    t += "*FONDOS EN CAJA*\n";
-    t += `💵 Efectivo Divisas: $${totalGavetaUSD.toFixed(2)}\n`;
-    t += `📲 Pago Móvil:       Bs. ${totalBancoPM_BS.toFixed(2)}\n`;
-    t += `💳 Punto de Venta:   Bs. ${totalBancoPunto_BS.toFixed(2)}\n`;
-    t += `🏛️ Total Banco Bs:   Bs. ${totalBancoBS.toFixed(2)}\n`;
+    t += "*FONDOS EN GAVETA (FÍSICO)*\n";
+    t += `💵 Efectivo Divisas:  $${efectivoUSD_Neto.toFixed(2)}\n`;
+    t += `🇻🇪 Efectivo Bolívares: Bs. ${efectivoBS_Neto.toFixed(2)}\n`;
     t += "--------------------------------\n";
-    t += `*BALANCE GENERAL: $${totalCajaUSD.toFixed(2)}*\n`;
+    t += "*FONDOS EN BANCO (ELECTRÓNICO)*\n";
+    t += `📲 Pago Móvil:        Bs. ${bancoPM_BS.toFixed(2)}\n`;
+    t += `💳 Punto de Venta:    Bs. ${bancoPunto_BS.toFixed(2)}\n`;
+    t += `🏛️ Total Banco Bs:    Bs. ${totalBancoBS.toFixed(2)}\n`;
+    t += "--------------------------------\n";
+    t += `*BALANCE GENERAL NETO: $${totalCajaUSD.toFixed(2)}*\n`;
     t += "--------------------------------\n";
     t += "Reporte generado por Sistema POS.";
 
@@ -69,7 +95,7 @@ export default function CajaModal({ transacciones, tasaCambio, alCerrarTurno, al
   };
 
   const ejecutarCierre = () => {
-    if (confirm('¿Cerrar el turno de caja ahora? Se reseteará el registro para el nuevo turno.')) {
+    if (confirm('¿Cerrar el turno de caja ahora? Se reseteará el balance para el nuevo turno.')) {
       alCerrarTurno();
       alert('Caja cerrada con éxito.');
       alVolver();
@@ -92,34 +118,45 @@ export default function CajaModal({ transacciones, tasaCambio, alCerrarTurno, al
         </div>
       </header>
 
-      {/* ÁREA CON SCROLL SUFICIENTE */}
       <div style={styles.scrollArea}>
-        
-        {/* BANNER PRINCIPAL DE BALANCE */}
+        {/* BANNER BALANCE GENERAL */}
         <div style={styles.cardBalance}>
-          <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: '600' }}>TOTAL GENERAL EN CAJA</span>
+          <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: '600' }}>TOTAL NETO EN CAJA (DISPONIBLE)</span>
           <div style={styles.montoPrincipal}>${totalCajaUSD.toFixed(2)}</div>
           <span style={{ fontSize: '0.72rem', color: '#0052cc', fontWeight: 'bold' }}>
             Equivalente: Bs. {(totalCajaUSD * tasa).toFixed(2)} (Tasa: {tasa.toFixed(2)})
           </span>
         </div>
 
-        {/* SECCIÓN FONDOS REALES DISPONIBLES */}
-        <div style={styles.seccionTitulo}>DESGLOSE DE FONDOS</div>
-
+        {/* FONDOS EN GAVETA (FÍSICOS) */}
+        <div style={styles.seccionTitulo}>FONDOS EN GAVETA (FÍSICO EN MANO)</div>
         <div style={styles.gridFondos}>
-          
           <div style={styles.cardFondo}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{ ...styles.iconoFondo, backgroundColor: '#dcfce7', color: '#16a34a' }}><DollarSign size={18} /></div>
               <div>
                 <div style={styles.tituloFondo}>Efectivo Divisas</div>
-                <small style={{ fontSize: '0.68rem', color: '#64748b' }}>Gaveta física</small>
+                <small style={{ fontSize: '0.68rem', color: '#64748b' }}>Billetes $</small>
               </div>
             </div>
-            <div style={{ ...styles.montoFondo, color: '#16a34a' }}>${totalGavetaUSD.toFixed(2)}</div>
+            <div style={{ ...styles.montoFondo, color: '#16a34a' }}>${efectivoUSD_Neto.toFixed(2)}</div>
           </div>
 
+          <div style={styles.cardFondo}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ ...styles.iconoFondo, backgroundColor: '#ecfdf5', color: '#059669' }}><Banknote size={18} /></div>
+              <div>
+                <div style={styles.tituloFondo}>Efectivo Bolívares</div>
+                <small style={{ fontSize: '0.68rem', color: '#64748b' }}>Billetes Bs en gaveta</small>
+              </div>
+            </div>
+            <div style={{ ...styles.montoFondo, color: '#059669' }}>Bs. {efectivoBS_Neto.toFixed(2)}</div>
+          </div>
+        </div>
+
+        {/* FONDOS BANCARIOS (ELECTRÓNICOS) */}
+        <div style={styles.seccionTitulo}>FONDOS BANCARIOS (DIGITAL)</div>
+        <div style={styles.gridFondos}>
           <div style={styles.cardFondo}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{ ...styles.iconoFondo, backgroundColor: '#e0f2fe', color: '#0284c7' }}><Smartphone size={18} /></div>
@@ -128,7 +165,7 @@ export default function CajaModal({ transacciones, tasaCambio, alCerrarTurno, al
                 <small style={{ fontSize: '0.68rem', color: '#64748b' }}>Banco Bs</small>
               </div>
             </div>
-            <div style={{ ...styles.montoFondo, color: '#0284c7' }}>Bs. {totalBancoPM_BS.toFixed(2)}</div>
+            <div style={{ ...styles.montoFondo, color: '#0284c7' }}>Bs. {bancoPM_BS.toFixed(2)}</div>
           </div>
 
           <div style={styles.cardFondo}>
@@ -139,17 +176,15 @@ export default function CajaModal({ transacciones, tasaCambio, alCerrarTurno, al
                 <small style={{ fontSize: '0.68rem', color: '#64748b' }}>Banco Bs</small>
               </div>
             </div>
-            <div style={{ ...styles.montoFondo, color: '#9333ea' }}>Bs. {totalBancoPunto_BS.toFixed(2)}</div>
+            <div style={{ ...styles.montoFondo, color: '#9333ea' }}>Bs. {bancoPunto_BS.toFixed(2)}</div>
           </div>
-
         </div>
 
-        {/* AUDITORÍA Y ACTIVIDAD */}
-        <div style={styles.seccionTitulo}>RESUMEN DE OPERACIONES</div>
-        
+        {/* AUDITORÍA Y VUELTOS */}
+        <div style={styles.seccionTitulo}>AUDITORÍA DEL TURNO</div>
         <div style={styles.cardResumen}>
           <div style={styles.filaDato}>
-            <span style={styles.labelDato}><ShoppingBag size={14} color="#64748b" /> Facturas Cobradas:</span>
+            <span style={styles.labelDato}><ShoppingBag size={14} color="#64748b" /> Facturas Emitidas:</span>
             <strong>{ventasActivas.length}</strong>
           </div>
           <div style={styles.filaDato}>
@@ -157,27 +192,39 @@ export default function CajaModal({ transacciones, tasaCambio, alCerrarTurno, al
             <strong style={{ color: ventasAnuladas.length > 0 ? '#ef4444' : '#64748b' }}>{ventasAnuladas.length}</strong>
           </div>
           <div style={styles.filaDato}>
-            <span style={styles.labelDato}>Abonos Recibidos:</span>
+            <span style={styles.labelDato}>Abonos Cobrados:</span>
             <strong>{abonos.length}</strong>
           </div>
+          
           <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '4px 0' }} />
+          
           <div style={styles.filaDato}>
             <span style={styles.labelDato}>Venta Bruta Total:</span>
-            <strong style={{ color: '#0f172a' }}>${totalVentasUSD.toFixed(2)}</strong>
+            <strong style={{ color: '#0f172a' }}>${totalVentasBrutasUSD.toFixed(2)}</strong>
           </div>
+
+          {totalVueltosUSD > 0 && (
+            <div style={{ ...styles.filaDato, backgroundColor: '#fff1f2', padding: '4px 6px', borderRadius: '6px' }}>
+              <span style={{ ...styles.labelDato, color: '#e11d48', fontWeight: 'bold' }}>
+                <ArrowDownRight size={14} /> Vueltos Deducidos:
+              </span>
+              <strong style={{ color: '#e11d48' }}>
+                -${totalVueltosUSD.toFixed(2)} (Bs. {totalVueltosBS.toFixed(2)})
+              </strong>
+            </div>
+          )}
+
           <div style={styles.filaDato}>
-            <span style={styles.labelDato}>Crédito Nuevo Otorgado:</span>
+            <span style={styles.labelDato}>Crédito Otorgado (Fiado):</span>
             <strong style={{ color: '#ea580c' }}>${creditosNuevosUSD.toFixed(2)}</strong>
           </div>
         </div>
 
-        {/* BOTÓN CIERRE CON MARGEN INFERIOR AMPLIO */}
         <div style={styles.seccionBotonFinal}>
           <button type="button" onClick={ejecutarCierre} style={styles.btnCerrarTurno}>
             <RotateCcw size={16} /> Cerrar Turno (Corte Z)
           </button>
         </div>
-
       </div>
     </div>
   );
