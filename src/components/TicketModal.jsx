@@ -1,15 +1,22 @@
 import React, { useRef } from 'react';
 import { X, Printer, Share2, Copy } from 'lucide-react';
 
-export default function TicketModal({ ticket, alCerrar }) {
+export default function TicketModal({ ticket, configEmpresa, alCerrar }) {
   const ticketRef = useRef(null);
 
   if (!ticket) return null;
 
   const esAnulada = Boolean(ticket.anulada);
   const tasa = parseFloat(ticket.tasa) || 1;
+  const cfg = configEmpresa || {
+    nombre: 'Mi Bodega POS',
+    rif: 'J-50000000-0',
+    direccion: 'Caracas, Venezuela',
+    telefono: '0412-0000000',
+    mensajePie: '¡Gracias por su compra! Revise su mercancía',
+    logo: ''
+  };
 
-  // Conteo total de piezas/artículos
   const totalArticulos = (ticket.items || []).reduce((acc, it) => acc + (parseFloat(it.cantidad) || 0), 0);
 
   const imprimir = () => {
@@ -23,10 +30,10 @@ export default function TicketModal({ ticket, alCerrar }) {
       t += "   *** DOCUMENTO ANULADO *** \n";
       t += "================================\n";
     }
-    t += "     COMERCIALIZADORA POS       \n";
-    t += "       RIF: J-50000000-0        \n";
-    t += "      Tlf: (0412) 000-0000      \n";
-    t += "    Caracas, Dto. Capital       \n";
+    t += `     ${cfg.nombre.toUpperCase()}     \n`;
+    t += `       RIF: ${cfg.rif}        \n`;
+    t += `      Tlf: ${cfg.telefono}      \n`;
+    t += `    ${cfg.direccion}       \n`;
     t += "--------------------------------\n";
     t += `COMPROBANTE: #${ticket.id}\n`;
     t += `FECHA/HORA:  ${ticket.fecha}\n`;
@@ -54,7 +61,8 @@ export default function TicketModal({ ticket, alCerrar }) {
       t += `SALDO ADEUDADO: $${ticket.saldoDeudaUSD} (Bs. ${ticket.saldoDeudaBS})\n`;
     } else {
       t += "DESGLOSE DE PAGO:\n";
-      if (parseFloat(ticket.pagoUSD) > 0) t += `• Efectivo Divisas: $${ticket.pagoUSD}\n`;
+      if (parseFloat(ticket.pagoUSD) > 0) t += `• Divisas $:       $${ticket.pagoUSD}\n`;
+      if (parseFloat(ticket.pagoBsEfectivo) > 0) t += `• Efectivo Bs:     Bs. ${ticket.pagoBsEfectivo}\n`;
       if (parseFloat(ticket.pagoPM) > 0) t += `• Pago Móvil:      Bs. ${ticket.pagoPM}\n`;
       if (parseFloat(ticket.pagoPunto) > 0) t += `• Punto de Venta:  Bs. ${ticket.pagoPunto}\n`;
       if (parseFloat(ticket.vueltoBS) > 0) {
@@ -62,7 +70,7 @@ export default function TicketModal({ ticket, alCerrar }) {
       }
     }
     t += "--------------------------------\n";
-    t += esAnulada ? "ESTA FACTURA FUE ANULADA EN SISTEMA\n" : "¡GRACIAS POR SU PREFERENCIA!\n";
+    t += esAnulada ? "ESTA FACTURA FUE ANULADA EN SISTEMA\n" : `${cfg.mensajePie}\n`;
 
     navigator.clipboard.writeText(t).then(() => {
       alert('Ticket copiado al portapapeles.');
@@ -72,7 +80,8 @@ export default function TicketModal({ ticket, alCerrar }) {
   const compartirWhatsApp = () => {
     let t = "";
     if (esAnulada) t += "🚫 *FACTURA ANULADA - SIN VALIDEZ* 🚫\n\n";
-    t += "*COMERCIALIZADORA POS*\n";
+    t += `*${cfg.nombre.toUpperCase()}*\n`;
+    t += `*RIF:* ${cfg.rif} | *Tlf:* ${cfg.telefono}\n`;
     t += `*Ticket:* #${ticket.id}\n`;
     t += `*Fecha:* ${ticket.fecha}\n`;
     t += `*Cliente:* ${ticket.cliente?.nombre || 'Consumidor Final'} (${ticket.cliente?.doc || 'V-00000000'})\n`;
@@ -88,7 +97,7 @@ export default function TicketModal({ ticket, alCerrar }) {
       t += `*Condición:* CRÉDITO\n`;
       t += `*Saldo pendiente:* $${ticket.saldoDeudaUSD} (Bs. ${ticket.saldoDeudaBS})\n`;
     }
-    t += esAnulada ? "\n⚠️ Operación anulada sin validez fiscal." : "\n¡Muchas gracias por su compra!";
+    t += esAnulada ? "\n⚠️ Operación anulada sin validez fiscal." : `\n${cfg.mensajePie}`;
 
     const b = String.fromCharCode(96, 96, 96);
     const msg = b + "\n" + t + b;
@@ -105,11 +114,9 @@ export default function TicketModal({ ticket, alCerrar }) {
           <button type="button" onClick={alCerrar} style={styles.btnCerrar}><X size={18} /></button>
         </div>
 
-        {/* CONTENEDOR TICKET */}
         <div style={styles.scrollTicket}>
           <div ref={ticketRef} style={{ ...styles.papel, borderColor: esAnulada ? '#ef9a9a' : '#e2e8f0' }}>
             
-            {/* MARCA DE AGUA */}
             {esAnulada && (
               <div style={styles.watermarkContainer}>
                 <div style={styles.watermark}>ANULADO</div>
@@ -122,17 +129,20 @@ export default function TicketModal({ ticket, alCerrar }) {
               </div>
             )}
 
-            {/* ENCABEZADO FISCAL */}
             <div style={styles.encabezado}>
-              <h2 style={styles.nombreComercio}>COMERCIALIZADORA POS</h2>
-              <div style={styles.datosComercio}>RIF: J-50000000-0</div>
-              <div style={styles.datosComercio}>Av. Principal · Caracas, Venezuela</div>
-              <div style={styles.datosComercio}>Teléfono: (0412) 000-0000</div>
+              {cfg.logo && (
+                <div style={{ marginBottom: '6px' }}>
+                  <img src={cfg.logo} alt="Logo" style={{ maxHeight: '48px', maxWidth: '140px', objectFit: 'contain' }} />
+                </div>
+              )}
+              <h2 style={styles.nombreComercio}>{cfg.nombre}</h2>
+              <div style={styles.datosComercio}>RIF: {cfg.rif}</div>
+              <div style={styles.datosComercio}>{cfg.direccion}</div>
+              <div style={styles.datosComercio}>Teléfono: {cfg.telefono}</div>
             </div>
 
             <div style={styles.lineaGris} />
 
-            {/* METADATOS DE LA OPERACIÓN */}
             <div style={styles.bloqueMeta}>
               <div style={styles.metaRow}><span>COMPROBANTE:</span> <strong>#{ticket.id}</strong></div>
               <div style={styles.metaRow}><span>FECHA / HORA:</span> <span>{ticket.fecha}</span></div>
@@ -147,14 +157,12 @@ export default function TicketModal({ ticket, alCerrar }) {
 
             <div style={styles.lineaGris} />
 
-            {/* CABECERA DE ÍTEMS */}
             <div style={styles.tablaHeader}>
               <span style={{ flex: 3.2 }}>DESCRIPCIÓN</span>
               <span style={{ flex: 0.8, textAlign: 'center' }}>CANT</span>
               <span style={{ flex: 1.6, textAlign: 'right' }}>TOTAL</span>
             </div>
 
-            {/* LISTA DE ÍTEMS CON DETALLE USD Y BS */}
             <div style={styles.itemsLista}>
               {(ticket.items || []).map((it, idx) => {
                 const subUSD = it.precioUSD * it.cantidad;
@@ -179,7 +187,6 @@ export default function TicketModal({ ticket, alCerrar }) {
 
             <div style={styles.lineaPunteada} />
 
-            {/* TOTALES */}
             <div style={styles.seccionTotales}>
               <div style={styles.metaRow}>
                 <span style={{ fontSize: '0.72rem', color: '#64748b' }}>CANTIDAD ARTÍCULOS:</span>
@@ -197,7 +204,6 @@ export default function TicketModal({ ticket, alCerrar }) {
 
             <div style={styles.lineaGris} />
 
-            {/* DETALLES DE PAGO */}
             <div style={styles.seccionPagos}>
               <div style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>MÉTODO DE PAGO:</div>
               {ticket.esCredito ? (
@@ -208,7 +214,10 @@ export default function TicketModal({ ticket, alCerrar }) {
               ) : (
                 <div style={{ fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                   {parseFloat(ticket.pagoUSD) > 0 && (
-                    <div style={styles.metaRow}><span>• Efectivo Divisas:</span> <strong>${ticket.pagoUSD}</strong></div>
+                    <div style={styles.metaRow}><span>• Divisas ($):</span> <strong>${ticket.pagoUSD}</strong></div>
+                  )}
+                  {parseFloat(ticket.pagoBsEfectivo) > 0 && (
+                    <div style={styles.metaRow}><span>• Efectivo (Bs):</span> <strong>Bs. {ticket.pagoBsEfectivo}</strong></div>
                   )}
                   {parseFloat(ticket.pagoPM) > 0 && (
                     <div style={styles.metaRow}><span>• Pago Móvil:</span> <strong>Bs. {ticket.pagoPM}</strong></div>
@@ -230,8 +239,8 @@ export default function TicketModal({ ticket, alCerrar }) {
                 <span style={{ color: '#d32f2f', fontWeight: 'bold' }}>*** TRANSACCIÓN ANULADA EN AUDITORÍA ***</span>
               ) : (
                 <>
-                  <div>¡GRACIAS POR SU COMPRA!</div>
-                  <div style={{ fontSize: '0.62rem', color: '#94a3b8', marginTop: '2px' }}>Conserve este ticket para reclamos o devoluciones</div>
+                  <div>{cfg.mensajePie}</div>
+                  <div style={{ fontSize: '0.62rem', color: '#94a3b8', marginTop: '2px' }}>Conserve este ticket para reclamos</div>
                 </>
               )}
             </div>
@@ -239,7 +248,6 @@ export default function TicketModal({ ticket, alCerrar }) {
           </div>
         </div>
 
-        {/* ACCIONES */}
         <div style={styles.footerAcciones}>
           <button type="button" onClick={compartirWhatsApp} style={{ ...styles.btnFoot, backgroundColor: '#25d366', color: '#fff' }}>
             <Share2 size={15} /> WhatsApp

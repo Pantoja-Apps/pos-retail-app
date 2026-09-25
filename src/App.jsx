@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   RefreshCw, Package, User, BookOpen, Wallet, Search, History, 
-  PauseCircle, PlayCircle 
+  PauseCircle, PlayCircle, Settings, Store
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -12,6 +12,7 @@ import InventarioModal from './components/InventarioModal';
 import CreditosModal from './components/CreditosModal';
 import CajaModal from './components/CajaModal';
 import HistorialModal from './components/HistorialModal';
+import ConfiguracionModal from './components/ConfiguracionModal';
 
 const PRODUCTOS_INICIALES = [
   { id: 1, codigo: '7591001000123', nombre: 'Harina PAN Blanca 1kg', precioUSD: 1.10, stock: 50, imagen: '' },
@@ -23,9 +24,19 @@ const PRODUCTOS_INICIALES = [
 ];
 
 const CLIENTES_INICIALES = [
-  { id: 1, doc: 'V-00000000', nombre: 'Consumidor Final', telefono: '', saldoPendienteUSD: 0 },
-  { id: 2, doc: 'V-22033378', nombre: 'Jetzabel Gonzalez', telefono: '584120000000', saldoPendienteUSD: 0 }
+  { id: 1, doc: 'V-00000000', nombre: 'Consumidor Final', telefono: '', saldoPendienteUSD: 0, historialCreditos: [], historialAbonos: [] },
+  { id: 2, doc: 'V-22033378', nombre: 'Jetzabel Gonzalez', telefono: '584120000000', saldoPendienteUSD: 0, historialCreditos: [], historialAbonos: [] }
 ];
+
+const CONFIG_INICIAL = {
+  nombre: 'Mi Bodega POS',
+  rif: 'J-50000000-0',
+  direccion: 'Caracas, Venezuela',
+  telefono: '0412-0000000',
+  mensajePie: '¡Gracias por su compra! Revise su mercancía',
+  logo: '',
+  margenDefault: 30
+};
 
 function normalizarDoc(str) {
   if (!str) return '';
@@ -35,6 +46,14 @@ function normalizarDoc(str) {
 export default function App() {
   const [vistaActual, setVistaActual] = useState('pos');
   
+  const [configEmpresa, setConfigEmpresa] = useState(() => {
+    try {
+      const g = localStorage.getItem('pos_config_empresa');
+      if (g) return JSON.parse(g);
+    } catch (e) {}
+    return CONFIG_INICIAL;
+  });
+
   const [productos, setProductos] = useState(() => {
     try {
       const g = localStorage.getItem('pos_prods_final');
@@ -48,7 +67,6 @@ export default function App() {
       const g = localStorage.getItem('pos_clis_final');
       if (g) {
         const parseados = JSON.parse(g);
-        // Garantizar unicidad por documento al arrancar
         const unicos = [];
         const docsVistos = new Set();
         for (const c of parseados) {
@@ -95,6 +113,7 @@ export default function App() {
   const inputRef = useRef(null);
   const wrapperRef = useRef(null);
 
+  useEffect(() => { try { localStorage.setItem('pos_config_empresa', JSON.stringify(configEmpresa)); } catch (e) {} }, [configEmpresa]);
   useEffect(() => { try { localStorage.setItem('pos_prods_final', JSON.stringify(productos)); } catch (e) {} }, [productos]);
   useEffect(() => { try { localStorage.setItem('pos_clis_final', JSON.stringify(clientes)); } catch (e) {} }, [clientes]);
   useEffect(() => { try { localStorage.setItem('pos_txs_final', JSON.stringify(transacciones)); } catch (e) {} }, [transacciones]);
@@ -188,29 +207,40 @@ export default function App() {
     }
   };
 
-  // REGISTRO DE ABONO ROBUSTO: Identifica por documento normalizado o ID exacto sin duplicar
   const registrarAbonoCliente = (clienteObj, montoAbonadoUSD, desglose) => {
     const docTarget = normalizarDoc(clienteObj.doc);
-    
+    const abonoObj = {
+      id: Date.now().toString().slice(-6),
+      fecha: new Date().toLocaleString('es-VE'),
+      totalAbonoUSD: montoAbonadoUSD,
+      ...desglose
+    };
+
     setClientes(prev => {
       return prev.map(c => {
         const coincide = normalizarDoc(c.doc) === docTarget || c.id === clienteObj.id;
         if (coincide) {
           const saldoPrevio = parseFloat(c.saldoPendienteUSD) || 0;
           const nuevoSaldo = Math.max(0, saldoPrevio - montoAbonadoUSD);
-          return { ...c, saldoPendienteUSD: nuevoSaldo };
+          const abonosPrev = Array.isArray(c.historialAbonos) ? c.historialAbonos : [];
+          return { 
+            ...c, 
+            saldoPendienteUSD: nuevoSaldo,
+            historialAbonos: [abonoObj, ...abonosPrev]
+          };
         }
         return c;
       });
     });
 
     setTransacciones(prev => [{
-      id: Date.now().toString().slice(-6),
+      id: abonoObj.id,
       tipo: 'abono',
       cliente: clienteObj.nombre,
       doc: clienteObj.doc,
-      fecha: new Date().toLocaleString('es-VE'),
+      fecha: abonoObj.fecha,
       pagoUSD: desglose.pagoUSD,
+      pagoBsEfectivo: desglose.pagoBsEfectivo,
       pagoPM: desglose.pagoPM,
       pagoPunto: desglose.pagoPunto,
       totalAbonoUSD: montoAbonadoUSD
@@ -228,17 +258,34 @@ export default function App() {
         const nTarget = normalizarDoc(datos.cliente.doc);
         const index = actuales.findIndex(c => normalizarDoc(c.doc) === nTarget);
         const incremento = parseFloat(datos.saldoDeudaUSD);
+        
+        const compraParaHistorial = {
+          id: idTicket,
+          fecha: datos.fecha,
+          items: [...carrito],
+          saldoDeudaUSD: datos.saldoDeudaUSD,
+          totalUSD: datos.totalUSD
+        };
+
         if (index >= 0) {
           const act = [...actuales];
+          const histPrevio = Array.isArray(act[index].historialCreditos) ? act[index].historialCreditos : [];
           act[index] = { 
             ...act[index], 
             nombre: datos.cliente.nombre || act[index].nombre,
             telefono: datos.cliente.telefono || act[index].telefono,
-            saldoPendienteUSD: (act[index].saldoPendienteUSD || 0) + incremento 
+            saldoPendienteUSD: (act[index].saldoPendienteUSD || 0) + incremento,
+            historialCreditos: [compraParaHistorial, ...histPrevio]
           };
           return act;
         }
-        return [...actuales, { id: Date.now(), ...datos.cliente, saldoPendienteUSD: incremento }];
+        return [...actuales, { 
+          id: Date.now(), 
+          ...datos.cliente, 
+          saldoPendienteUSD: incremento,
+          historialCreditos: [compraParaHistorial],
+          historialAbonos: []
+        }];
       });
     }
 
@@ -264,7 +311,12 @@ export default function App() {
     if (venta.esCredito && parseFloat(venta.saldoDeudaUSD) > 0) {
       setClientes(clis => clis.map(c => {
         if (normalizarDoc(c.doc) === normalizarDoc(venta.cliente?.doc)) {
-          return { ...c, saldoPendienteUSD: Math.max(0, (c.saldoPendienteUSD || 0) - parseFloat(venta.saldoDeudaUSD)) };
+          const histLimpio = (c.historialCreditos || []).filter(h => h.id !== venta.id);
+          return { 
+            ...c, 
+            saldoPendienteUSD: Math.max(0, (c.saldoPendienteUSD || 0) - parseFloat(venta.saldoDeudaUSD)),
+            historialCreditos: histLimpio
+          };
         }
         return c;
       }));
@@ -278,8 +330,9 @@ export default function App() {
   const totalUSD = carrito.reduce((acc, p) => acc + (p.precioUSD * p.cantidad), 0);
   const totalBS = totalUSD * tasaNum;
   
-  // Clientes únicos con saldo moroso
   const clientesMorosos = clientes.filter(c => (parseFloat(c.saldoPendienteUSD) || 0) > 0.01).length;
+  const ventasHoy = transacciones.filter(t => t.tipo === 'venta' && !t.anulada).length;
+  
   const productosSugeridos = busquedaInput.trim().length > 0 
     ? productos.filter(p => p.nombre.toLowerCase().includes(busquedaInput.trim().toLowerCase()) || p.codigo.includes(busquedaInput.trim())).slice(0, 5) 
     : [];
@@ -293,6 +346,14 @@ export default function App() {
 
   return (
     <div style={styles.contenedor} translate="no">
+      {vistaActual === 'configuracion' && (
+        <ConfiguracionModal 
+          config={configEmpresa}
+          alGuardarConfig={(nuevaConfig) => setConfigEmpresa(nuevaConfig)}
+          alVolver={() => setVistaActual('pos')}
+        />
+      )}
+
       {vistaActual === 'inventario' && (
         <InventarioModal 
           productos={productos}
@@ -313,6 +374,7 @@ export default function App() {
         <CreditosModal 
           clientes={clientes}
           tasaCambio={tasaCambio}
+          transacciones={transacciones}
           alRegistrarAbono={registrarAbonoCliente}
           alVolver={() => setVistaActual('pos')}
         />
@@ -322,6 +384,7 @@ export default function App() {
         <CajaModal 
           transacciones={transacciones}
           tasaCambio={tasaCambio}
+          configEmpresa={configEmpresa}
           alCerrarTurno={() => { setTransacciones([]); try { localStorage.removeItem('pos_txs_final'); } catch (e) {} }}
           alVolver={() => setVistaActual('pos')}
         />
@@ -337,35 +400,108 @@ export default function App() {
         />
       )}
 
+      {/* VISTA PRINCIPAL POS */}
       {vistaActual === 'pos' && (
         <>
-          <header style={styles.header}>
-            <div>
-              <h1 style={styles.titulo}>Punto de Venta POS</h1>
-              <div style={{ display: 'flex', gap: '5px', marginTop: '4px', flexWrap: 'wrap' }}>
-                <button type="button" onClick={() => setVistaActual('inventario')} style={styles.btnNav}><Package size={13} /> Inventario</button>
-                <button type="button" onClick={() => setVistaActual('creditos')} style={{ ...styles.btnNav, backgroundColor: clientesMorosos > 0 ? '#fff3e0' : '#e6f0ff', color: clientesMorosos > 0 ? '#e65100' : '#0052cc' }}>
-                  <BookOpen size={13} /> Créditos {clientesMorosos > 0 ? `(${clientesMorosos})` : ''}
-                </button>
-                <button type="button" onClick={() => setVistaActual('caja')} style={{ ...styles.btnNav, backgroundColor: '#e8f5e9', color: '#2e7d32' }}><Wallet size={13} /> Caja</button>
-                <button type="button" onClick={() => setVistaActual('historial')} style={{ ...styles.btnNav, backgroundColor: '#f3e5f5', color: '#6f42c1' }}><History size={13} /> Ventas</button>
+          <header style={styles.topHeader}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+              {configEmpresa.logo ? (
+                <img src={configEmpresa.logo} alt="Logo" style={styles.logoMini} />
+              ) : (
+                <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
+              )}
+              <div style={{ minWidth: 0 }}>
+                <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
+                <div style={styles.statusBadge}>
+                  <span style={styles.puntoVerde}></span>
+                  <span>Caja 01 · Activa</span>
+                </div>
               </div>
             </div>
-            <div style={styles.boxTasa}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#555' }}>Tasa BCV (Bs):</span>
-                <button type="button" onClick={obtenerTasaBCV} style={styles.btnSyncTasa}><RefreshCw size={12} /></button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+              <div style={styles.tasaChip}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                  <span style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
+                  <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar tasa BCV">
+                    <RefreshCw size={10} color="#0052cc" />
+                  </button>
+                </div>
+                <input 
+                  type="number" 
+                  step="any" 
+                  value={tasaCambio} 
+                  onChange={(e) => setTasaCambio(e.target.value)} 
+                  style={styles.inputTasaMini} 
+                />
               </div>
-              <input type="number" step="any" value={tasaCambio} onChange={(e) => setTasaCambio(e.target.value)} style={styles.inputTasa} />
+
+              <button 
+                type="button" 
+                onClick={() => setVistaActual('configuracion')} 
+                style={styles.btnAjustes} 
+                title="Configuración"
+              >
+                <Settings size={17} color="#475569" />
+              </button>
             </div>
           </header>
 
+          <nav style={styles.barraModulos}>
+            <button 
+              type="button" 
+              onClick={() => setVistaActual('inventario')} 
+              style={styles.btnTabItem}
+            >
+              <div style={{ ...styles.iconoTab, backgroundColor: '#eff6ff', color: '#0052cc' }}>
+                <Package size={17} />
+              </div>
+              <span style={styles.textoTab}>Inventario</span>
+            </button>
+
+            <button 
+              type="button" 
+              onClick={() => setVistaActual('creditos')} 
+              style={styles.btnTabItem}
+            >
+              <div style={{ ...styles.iconoTab, backgroundColor: clientesMorosos > 0 ? '#fff7ed' : '#f8fafc', color: clientesMorosos > 0 ? '#ea580c' : '#475569', border: clientesMorosos > 0 ? '1px solid #fed7aa' : '1px solid #e2e8f0' }}>
+                <BookOpen size={17} />
+                {clientesMorosos > 0 && (
+                  <span style={styles.badgeAlertaFlotante}>{clientesMorosos}</span>
+                )}
+              </div>
+              <span style={{ ...styles.textoTab, color: clientesMorosos > 0 ? '#c2410c' : '#475569', fontWeight: clientesMorosos > 0 ? 'bold' : '600' }}>Créditos</span>
+            </button>
+
+            <button 
+              type="button" 
+              onClick={() => setVistaActual('caja')} 
+              style={styles.btnTabItem}
+            >
+              <div style={{ ...styles.iconoTab, backgroundColor: '#f0fdf4', color: '#16a34a' }}>
+                <Wallet size={17} />
+              </div>
+              <span style={styles.textoTab}>Caja (Z)</span>
+            </button>
+
+            <button 
+              type="button" 
+              onClick={() => setVistaActual('historial')} 
+              style={styles.btnTabItem}
+            >
+              <div style={{ ...styles.iconoTab, backgroundColor: '#faf5ff', color: '#9333ea' }}>
+                <History size={17} />
+              </div>
+              <span style={styles.textoTab}>Ventas</span>
+            </button>
+          </nav>
+
           <section style={styles.barraClienteMostrador}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
-              <User color="#0052cc" size={16} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+              <User color="#0052cc" size={16} style={{ flexShrink: 0 }} />
               <input
                 type="text"
-                placeholder="Cédula cliente (ej: 24808845)..."
+                placeholder="Cédula cliente..."
                 value={clienteActual.doc === 'V-00000000' ? '' : clienteActual.doc}
                 onChange={(e) => {
                   const valor = e.target.value;
@@ -384,7 +520,7 @@ export default function App() {
                 style={styles.inputDocMostrador}
               />
             </div>
-            <div style={{ textAlign: 'right' }}>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
               <span style={styles.nombreClienteTag}>{clienteActual.nombre}</span>
               {saldoActualMostrador > 0 && (
                 <div style={{ fontSize: '0.68rem', color: '#c62828', fontWeight: 'bold' }}>Debe: ${saldoActualMostrador.toFixed(2)}</div>
@@ -396,7 +532,7 @@ export default function App() {
             <div ref={wrapperRef} style={{ position: 'relative', flex: 1, display: 'flex', gap: '6px' }}>
               <form onSubmit={procesarBusquedaOEnter} style={{ display: 'flex', flex: 1, gap: '6px' }}>
                 <div style={styles.inputIconWrapper}>
-                  <Search color="#666" size={18} style={styles.iconoInput} />
+                  <Search color="#64748b" size={17} style={styles.iconoInput} />
                   <input
                     ref={inputRef}
                     type="text"
@@ -415,12 +551,12 @@ export default function App() {
                   {productosSugeridos.map(p => (
                     <div key={p.id} onClick={() => agregarProductoAlCarrito(p)} style={styles.itemPredictivo}>
                       <div>
-                        <strong style={{ fontSize: '0.85rem', color: '#111' }}>{p.nombre}</strong>
-                        <div style={{ fontSize: '0.7rem', color: '#666' }}>Cód: {p.codigo} | Stock: {p.stock || 0}</div>
+                        <strong style={{ fontSize: '0.85rem', color: '#1e293b' }}>{p.nombre}</strong>
+                        <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Cód: {p.codigo} | Stock: {p.stock || 0}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#28a745' }}>${p.precioUSD.toFixed(2)}</span>
-                        <small style={{ display: 'block', fontSize: '0.68rem', color: '#555' }}>Bs. {(p.precioUSD * tasaNum).toFixed(2)}</small>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#16a34a' }}>${p.precioUSD.toFixed(2)}</span>
+                        <small style={{ display: 'block', fontSize: '0.68rem', color: '#64748b' }}>Bs. {(p.precioUSD * tasaNum).toFixed(2)}</small>
                       </div>
                     </div>
                   ))}
@@ -429,16 +565,16 @@ export default function App() {
             </div>
 
             <button type="button" onClick={() => { setOnScanCallback(null); setCamaraAbierta(true); }} style={styles.btnCamara}>
-              <Camera size={19} />
-              <span style={{ fontSize: '0.8rem', marginLeft: '5px', fontWeight: '600' }}>Cámara</span>
+              <Camera size={17} />
+              <span style={{ fontSize: '0.78rem', marginLeft: '4px', fontWeight: 'bold' }}>Cámara</span>
             </button>
           </section>
 
           <main style={styles.seccionCarrito}>
             {carrito.length === 0 ? (
               <div style={styles.carritoVacio}>
-                <Barcode color="#ccd0d5" size={54} />
-                <p style={{ marginTop: '12px', fontSize: '0.95rem' }}>La caja está vacía. Escanea o busca un producto.</p>
+                <Barcode color="#cbd5e1" size={50} />
+                <p style={{ marginTop: '8px', fontSize: '0.88rem', color: '#64748b' }}>La caja está vacía. Escanea o busca un producto.</p>
               </div>
             ) : (
               <div style={styles.listaItems}>
@@ -448,17 +584,17 @@ export default function App() {
                   return (
                     <div key={item.id} style={styles.itemFila}>
                       <div style={{ flex: 2, display: 'flex', flexDirection: 'column' }}>
-                        <strong style={{ fontSize: '0.9rem', color: '#222' }}>{item.nombre}</strong>
-                        <span style={{ fontSize: '0.75rem', color: '#666' }}>${item.precioUSD.toFixed(2)} | Bs. {(item.precioUSD * tasaNum).toFixed(2)}</span>
+                        <strong style={{ fontSize: '0.88rem', color: '#1e293b' }}>{item.nombre}</strong>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>${item.precioUSD.toFixed(2)} | Bs. {(item.precioUSD * tasaNum).toFixed(2)}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, justifyContent: 'center' }}>
-                        <button type="button" onClick={() => setCarrito(prev => prev.map(i => i.id === item.id ? { ...i, cantidad: i.cantidad - 1 } : i).filter(i => i.cantidad > 0))} style={styles.btnCant}><Minus size={14}/></button>
-                        <span style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>{item.cantidad}</span>
-                        <button type="button" onClick={() => setCarrito(prev => prev.map(i => i.id === item.id ? { ...i, cantidad: i.cantidad + 1 } : i))} style={styles.btnCant}><Plus size={14}/></button>
+                        <button type="button" onClick={() => setCarrito(prev => prev.map(i => i.id === item.id ? { ...i, cantidad: i.cantidad - 1 } : i).filter(i => i.cantidad > 0))} style={styles.btnCant}><Minus size={13}/></button>
+                        <span style={{ fontWeight: 'bold', fontSize: '0.92rem' }}>{item.cantidad}</span>
+                        <button type="button" onClick={() => setCarrito(prev => prev.map(i => i.id === item.id ? { ...i, cantidad: i.cantidad + 1 } : i))} style={styles.btnCant}><Plus size={13}/></button>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flex: 1 }}>
-                        <strong style={{ fontSize: '0.95rem', color: '#111' }}>${subtotalUSD.toFixed(2)}</strong>
-                        <small style={{ color: '#666', fontSize: '0.75rem' }}>Bs. {subtotalBS.toFixed(2)}</small>
+                        <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>${subtotalUSD.toFixed(2)}</strong>
+                        <small style={{ color: '#64748b', fontSize: '0.72rem' }}>Bs. {subtotalBS.toFixed(2)}</small>
                       </div>
                     </div>
                   );
@@ -469,17 +605,17 @@ export default function App() {
 
           <footer style={styles.footer}>
             <div style={styles.filaTotales}>
-              <div><span style={{ fontSize: '0.8rem', color: '#666' }}>Total Bolívares:</span><div style={styles.totalBs}>Bs. {totalBS.toFixed(2)}</div></div>
-              <div style={{ textAlign: 'right' }}><span style={{ fontSize: '0.8rem', color: '#666' }}>Total Divisa:</span><div style={styles.totalUsd}>${totalUSD.toFixed(2)}</div></div>
+              <div><span style={{ fontSize: '0.74rem', color: '#64748b' }}>Total Bolívares:</span><div style={styles.totalBs}>Bs. {totalBS.toFixed(2)}</div></div>
+              <div style={{ textAlign: 'right' }}><span style={{ fontSize: '0.74rem', color: '#64748b' }}>Total Divisa:</span><div style={styles.totalUsd}>${totalUSD.toFixed(2)}</div></div>
             </div>
 
             <div style={styles.botonesAccion}>
-              <button type="button" onClick={() => { setCarrito([]); setClienteActual(CLIENTES_INICIALES[0]); }} style={styles.btnLimpiar}><Trash2 size={18} /></button>
-              <button type="button" onClick={suspenderCuentaActual} style={styles.btnPausar}><PauseCircle size={18} /><span style={{ fontSize: '0.78rem', marginLeft: '4px', fontWeight: 'bold' }}>En Espera</span></button>
+              <button type="button" onClick={() => { setCarrito([]); setClienteActual(CLIENTES_INICIALES[0]); }} style={styles.btnLimpiar} title="Vaciar Carrito"><Trash2 size={17} /></button>
+              <button type="button" onClick={suspenderCuentaActual} style={styles.btnPausar}><PauseCircle size={17} /><span style={{ fontSize: '0.76rem', marginLeft: '3px', fontWeight: 'bold' }}>Pausar</span></button>
               {cuentasEnEspera.length > 0 && (
-                <button type="button" onClick={() => setModalEsperaAbierto(true)} style={styles.btnVerEspera}><PlayCircle size={18} /><span style={{ fontSize: '0.78rem', marginLeft: '4px', fontWeight: 'bold' }}>({cuentasEnEspera.length})</span></button>
+                <button type="button" onClick={() => setModalEsperaAbierto(true)} style={styles.btnVerEspera}><PlayCircle size={17} /><span style={{ fontSize: '0.76rem', marginLeft: '3px', fontWeight: 'bold' }}>({cuentasEnEspera.length})</span></button>
               )}
-              <button type="button" onClick={() => { if (carrito.length === 0) return alert('El carrito está vacío'); setModalCobroAbierto(true); }} style={styles.btnCobrar}><DollarSign size={20} /> Cobrar Orden</button>
+              <button type="button" onClick={() => { if (carrito.length === 0) return alert('El carrito está vacío'); setModalCobroAbierto(true); }} style={styles.btnCobrar}><DollarSign size={18} /> Cobrar Orden</button>
             </div>
           </footer>
         </>
@@ -489,7 +625,7 @@ export default function App() {
         <div style={styles.overlay} translate="no">
           <div style={styles.modalBox}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <div><h3 style={{ margin: 0, fontSize: '1rem' }}>Cuentas en Espera</h3><small style={{ color: '#666' }}>Selecciona para reanudar el cobro</small></div>
+              <div><h3 style={{ margin: 0, fontSize: '1rem' }}>Cuentas en Espera</h3><small style={{ color: '#64748b' }}>Selecciona para reanudar el cobro</small></div>
               <button type="button" onClick={() => setModalEsperaAbierto(false)} style={styles.btnCerrar}><X size={18}/></button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '55vh', overflowY: 'auto' }}>
@@ -499,12 +635,12 @@ export default function App() {
                   <div key={c.id} style={styles.itemEsperaCard}>
                     <div>
                       <strong style={{ fontSize: '0.88rem' }}>{c.cliente?.nombre || 'Consumidor Final'}</strong>
-                      <div style={{ fontSize: '0.72rem', color: '#666' }}>Pausada: {c.fecha} • {c.items.length} productos</div>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#28a745', marginTop: '2px' }}>${totalCUSD.toFixed(2)} (Bs. {(totalCUSD * tasaNum).toFixed(2)})</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Pausada: {c.fecha} • {c.items.length} productos</div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#16a34a', marginTop: '2px' }}>${totalCUSD.toFixed(2)} (Bs. {(totalCUSD * tasaNum).toFixed(2)})</div>
                     </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button type="button" onClick={() => recuperarCuentaEnEspera(c)} style={{ ...styles.btnMini, backgroundColor: '#0052cc', color: '#fff' }}>Reanudar</button>
-                      <button type="button" onClick={() => descartarCuentaEnEspera(c.id)} style={{ ...styles.btnMini, backgroundColor: '#ffebee', color: '#c62828' }}><Trash2 size={14}/></button>
+                      <button type="button" onClick={() => descartarCuentaEnEspera(c.id)} style={{ ...styles.btnMini, backgroundColor: '#fee2e2', color: '#dc2626' }}><Trash2 size={14}/></button>
                     </div>
                   </div>
                 );
@@ -540,6 +676,7 @@ export default function App() {
 
       <TicketModal 
         ticket={ticketModalData}
+        configEmpresa={configEmpresa}
         alCerrar={() => setTicketModalData(null)}
       />
 
@@ -561,41 +698,50 @@ export default function App() {
 }
 
 const styles = {
-  contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, sans-serif', backgroundColor: '#f4f6f8' },
-  header: { padding: '12px 16px', backgroundColor: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e1e4e8' },
-  titulo: { margin: 0, fontSize: '1.05rem', color: '#111' },
-  btnNav: { background: '#e6f0ff', color: '#0052cc', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' },
-  boxTasa: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' },
-  btnSyncTasa: { background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', color: '#0052cc' },
-  inputTasa: { width: '85px', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '6px', textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', outline: 'none' },
-  barraClienteMostrador: { backgroundColor: '#fff', padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #edf2f7', gap: '10px' },
-  inputDocMostrador: { border: 'none', background: '#f1f5f9', padding: '6px 10px', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 'bold', width: '170px', outline: 'none' },
-  nombreClienteTag: { fontSize: '0.78rem', color: '#334155', fontWeight: '600', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' },
-  seccionBuscador: { padding: '10px 16px', backgroundColor: '#fff', display: 'flex', gap: '8px', borderBottom: '1px solid #e1e4e8' },
+  contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#f8fafc' },
+  topHeader: { padding: '8px 12px', backgroundColor: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
+  logoMini: { width: '32px', height: '32px', borderRadius: '8px', objectFit: 'contain', border: '1px solid #e2e8f0', flexShrink: 0 },
+  avatarIcon: { width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  nombreNegocio: { margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  statusBadge: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.62rem', color: '#64748b' },
+  puntoVerde: { width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e', flexShrink: 0 },
+  tasaChip: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', backgroundColor: '#f8fafc', padding: '2px 6px', borderRadius: '6px', border: '1px solid #cbd5e1' },
+  btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
+  inputTasaMini: { width: '65px', padding: 0, border: 'none', background: 'transparent', textAlign: 'right', fontWeight: 'bold', fontSize: '0.78rem', color: '#0f172a', outline: 'none' },
+  btnAjustes: { background: '#f1f5f9', border: 'none', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
+  barraModulos: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', padding: '6px 12px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
+  btnTabItem: { background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', cursor: 'pointer', padding: '2px 0' },
+  iconoTab: { position: 'relative', width: '38px', height: '36px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' },
+  badgeAlertaFlotante: { position: 'absolute', top: '-4px', right: '-4px', backgroundColor: '#ea580c', color: '#fff', fontSize: '0.62rem', fontWeight: 'bold', borderRadius: '50%', minWidth: '15px', height: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px' },
+  textoTab: { fontSize: '0.68rem', fontWeight: '600', color: '#475569' },
+  barraClienteMostrador: { backgroundColor: '#fff', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', gap: '8px', flexShrink: 0 },
+  inputDocMostrador: { border: 'none', background: '#f1f5f9', padding: '5px 8px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 'bold', width: '130px', outline: 'none' },
+  nombreClienteTag: { fontSize: '0.76rem', color: '#334155', fontWeight: '600', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' },
+  seccionBuscador: { padding: '6px 12px', backgroundColor: '#fff', display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   inputIconWrapper: { position: 'relative', flex: 1 },
-  iconoInput: { position: 'absolute', left: '10px', top: '10px' },
-  inputBuscador: { width: '100%', boxSizing: 'border-box', padding: '9px 10px 9px 34px', border: '1px solid #ccc', borderRadius: '8px', fontSize: '0.9rem', outline: 'none' },
-  dropdownPredictivo: { position: 'absolute', top: '44px', left: 0, right: 0, backgroundColor: '#fff', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', zIndex: 100, border: '1px solid #e1e4e8', overflow: 'hidden' },
+  iconoInput: { position: 'absolute', left: '8px', top: '9px' },
+  inputBuscador: { width: '100%', boxSizing: 'border-box', padding: '8px 8px 8px 30px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.85rem', outline: 'none' },
+  dropdownPredictivo: { position: 'absolute', top: '40px', left: 0, right: 0, backgroundColor: '#fff', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', zIndex: 100, border: '1px solid #e2e8f0', overflow: 'hidden' },
   itemPredictivo: { padding: '8px 12px', borderBottom: '1px solid #f1f3f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' },
-  btnAgregar: { padding: '0 14px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer' },
-  btnCamara: { display: 'flex', alignItems: 'center', backgroundColor: '#20c997', color: '#fff', border: 'none', borderRadius: '8px', padding: '0 12px', cursor: 'pointer' },
-  seccionCarrito: { flex: 1, overflowY: 'auto', padding: '12px 16px' },
-  carritoVacio: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#888' },
-  listaItems: { display: 'flex', flexDirection: 'column', gap: '8px' },
-  itemFila: { backgroundColor: '#fff', padding: '10px 12px', borderRadius: '10px', display: 'flex', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', gap: '10px' },
-  btnCant: { width: '28px', height: '28px', borderRadius: '50%', border: '1px solid #ddd', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
-  footer: { backgroundColor: '#fff', padding: '14px 16px 32px 16px', borderTop: '1px solid #e1e4e8', boxShadow: '0 -2px 10px rgba(0,0,0,0.05)' },
-  filaTotales: { display: 'flex', justifyContent: 'space-between', marginBottom: '12px' },
-  totalBs: { fontSize: '1.25rem', fontWeight: 'bold', color: '#0052cc' },
-  totalUsd: { fontSize: '1.25rem', fontWeight: 'bold', color: '#28a745' },
-  botonesAccion: { display: 'flex', gap: '8px' },
-  btnLimpiar: { backgroundColor: '#ffebe6', border: 'none', color: '#de350b', borderRadius: '8px', padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  btnPausar: { backgroundColor: '#fff3e0', border: 'none', color: '#e65100', borderRadius: '8px', padding: '12px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  btnVerEspera: { backgroundColor: '#e6f0ff', border: 'none', color: '#0052cc', borderRadius: '8px', padding: '12px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  btnCobrar: { flex: 1, backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: '8px', padding: '12px', fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer' },
-  overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, padding: '16px' },
+  btnAgregar: { padding: '0 10px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.78rem', cursor: 'pointer' },
+  btnCamara: { display: 'flex', alignItems: 'center', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '8px', padding: '0 9px', cursor: 'pointer' },
+  seccionCarrito: { flex: 1, overflowY: 'auto', padding: '8px 12px' },
+  carritoVacio: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8' },
+  listaItems: { display: 'flex', flexDirection: 'column', gap: '6px' },
+  itemFila: { backgroundColor: '#fff', padding: '8px 10px', borderRadius: '10px', display: 'flex', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', gap: '8px', border: '1px solid #f1f5f9' },
+  btnCant: { width: '26px', height: '26px', borderRadius: '50%', border: '1px solid #cbd5e1', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  footer: { backgroundColor: '#fff', padding: '10px 12px 24px 12px', borderTop: '1px solid #e2e8f0', boxShadow: '0 -2px 10px rgba(0,0,0,0.03)', flexShrink: 0 },
+  filaTotales: { display: 'flex', justifyContent: 'space-between', marginBottom: '8px' },
+  totalBs: { fontSize: '1.15rem', fontWeight: 'bold', color: '#0052cc' },
+  totalUsd: { fontSize: '1.15rem', fontWeight: '900', color: '#16a34a' },
+  botonesAccion: { display: 'flex', gap: '6px' },
+  btnLimpiar: { backgroundColor: '#fee2e2', border: 'none', color: '#dc2626', borderRadius: '8px', padding: '10px 11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  btnPausar: { backgroundColor: '#fff7ed', border: 'none', color: '#ea580c', borderRadius: '8px', padding: '10px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  btnVerEspera: { backgroundColor: '#eff6ff', border: 'none', color: '#0052cc', borderRadius: '8px', padding: '10px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  btnCobrar: { flex: 1, backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px', fontSize: '0.92rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' },
+  overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, padding: '14px' },
   modalBox: { background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '350px', padding: '16px' },
-  btnCerrar: { background: '#f1f3f5', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  itemEsperaCard: { backgroundColor: '#f8f9fa', padding: '10px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #eee' },
+  btnCerrar: { background: '#f1f5f9', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' },
+  itemEsperaCard: { backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0' },
   btnMini: { border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }
 };

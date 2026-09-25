@@ -1,187 +1,355 @@
-import React, { useState, useEffect } from 'react';
-import { X, Banknote, Smartphone, CreditCard, CheckCircle2, User } from 'lucide-react';
-
-function normalizarDoc(str) {
-  if (!str) return '';
-  return str.toUpperCase().replace(/[^A-Z0-9]/g, '');
-}
+import React, { useState } from 'react';
+import { X, DollarSign, Smartphone, CreditCard, Banknote, Check, BookOpen, User } from 'lucide-react';
 
 export default function ModalCobro({
-  abierto, alCerrar, totalUSD, totalBS, tasaCambio, clienteActual, setClienteActual, clientes, guardarClienteEnDB, alFinalizarVenta
+  abierto,
+  alCerrar,
+  totalUSD,
+  totalBS,
+  tasaCambio,
+  clienteActual,
+  setClienteActual,
+  clientes,
+  guardarClienteEnDB,
+  alFinalizarVenta
 }) {
-  const [valUSD, setValUSD] = useState('');
-  const [valPM, setValPM] = useState('');
-  const [valPunto, setValPunto] = useState('');
-  const [esCredito, setEsCredito] = useState(false);
-
-  useEffect(() => {
-    if (abierto) {
-      setValUSD('');
-      setValPM('');
-      setValPunto('');
-      setEsCredito(false);
-    }
-  }, [abierto]);
-
   if (!abierto) return null;
 
-  const tBS = parseFloat(totalBS) || 0;
-  const tUSD = parseFloat(totalUSD) || 0;
-  const tasa = parseFloat(tasaCambio) || 1;
+  const totalNumUSD = parseFloat(totalUSD) || 0;
+  const tasaNum = parseFloat(tasaCambio) || 1;
 
-  const nUSD = parseFloat(valUSD) || 0;
-  const nPM = parseFloat(valPM) || 0;
-  const nPunto = parseFloat(valPunto) || 0;
+  const [pagoUSD, setPagoUSD] = useState('');
+  const [pagoBsEfectivo, setPagoBsEfectivo] = useState('');
+  const [pagoPM, setPagoPM] = useState('');
+  const [pagoPunto, setPagoPunto] = useState('');
+  const [esCredito, setEsCredito] = useState(false);
 
-  const totalAbonadoBS = (nUSD * tasa) + nPM + nPunto;
-  const balance = totalAbonadoBS - tBS;
+  const [docCliente, setDocCliente] = useState(clienteActual.doc === 'V-00000000' ? '' : clienteActual.doc);
+  const [nombreCliente, setNombreCliente] = useState(clienteActual.nombre || 'Consumidor Final');
+  const [tlfCliente, setTlfCliente] = useState(clienteActual.telefono || '');
 
-  const faltaBS = balance < -0.01 ? Math.abs(balance) : 0;
-  const faltaUSD = faltaBS > 0 ? (faltaBS / tasa) : 0;
-  const vueltoBS = balance > 0.01 ? balance : 0;
-  const vueltoUSD = vueltoBS > 0 ? (vueltoBS / tasa) : 0;
+  const usdIngresado = parseFloat(pagoUSD) || 0;
+  const bsEfectivoIngresado = parseFloat(pagoBsEfectivo) || 0;
+  const pmIngresado = parseFloat(pagoPM) || 0;
+  const puntoIngresado = parseFloat(pagoPunto) || 0;
 
-  const pagadoCompleto = totalAbonadoBS >= (tBS - 0.05);
-  const puedeProcesar = esCredito ? (clienteActual.nombre && clienteActual.doc !== 'V-00000000') : pagadoCompleto;
+  const totalBsIngresado = bsEfectivoIngresado + pmIngresado + puntoIngresado;
+  const totalCubiertoUSD = usdIngresado + (totalBsIngresado / tasaNum);
 
-  const clienteEnBase = clientes.find(c => {
-    const cDoc = normalizarDoc(c.doc);
-    const inDoc = normalizarDoc(clienteActual.doc);
-    return cDoc === inDoc || (inDoc.length >= 6 && (cDoc.endsWith(inDoc) || inDoc.endsWith(cDoc)));
-  });
-  const saldoPrevio = clienteEnBase ? (clienteEnBase.saldoPendienteUSD || 0) : (clienteActual.saldoPendienteUSD || 0);
+  const diferenciaUSD = totalCubiertoUSD - totalNumUSD;
+  const vueltoUSD = diferenciaUSD > 0.009 ? diferenciaUSD : 0;
+  const vueltoBS = vueltoUSD * tasaNum;
 
-  const manejarCambioDoc = (docIngresado) => {
-    const inLimpio = normalizarDoc(docIngresado);
+  const restaPorPagarUSD = diferenciaUSD < -0.009 ? Math.abs(diferenciaUSD) : 0;
+  const restaPorPagarBS = restaPorPagarUSD * tasaNum;
+
+  const manejarCambioDoc = (val) => {
+    setDocCliente(val);
+    const limpio = val.toUpperCase().replace(/[^A-Z0-9]/g, '');
     const encontrado = clientes.find(c => {
-      const cLimpio = normalizarDoc(c.doc);
-      return cLimpio === inLimpio || (inLimpio.length >= 6 && (cLimpio.endsWith(inLimpio) || inLimpio.endsWith(cLimpio)));
+      const cLimpio = (c.doc || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return cLimpio === limpio || (limpio.length >= 6 && cLimpio.endsWith(limpio));
     });
 
     if (encontrado) {
+      setNombreCliente(encontrado.nombre);
+      setTlfCliente(encontrado.telefono || '');
       setClienteActual({ ...encontrado });
-    } else {
-      setClienteActual(prev => ({ ...prev, doc: docIngresado, saldoPendienteUSD: 0 }));
     }
   };
 
-  const procesar = () => {
-    if (!puedeProcesar) {
-      if (esCredito && (!clienteActual.nombre || clienteActual.doc === 'V-00000000')) {
-        alert('Para vender a crédito debes asignar una Cédula y Nombre al cliente.');
-      }
-      return;
+  const activarModoCredito = () => {
+    setEsCredito(true);
+    setPagoUSD('');
+    setPagoBsEfectivo('');
+    setPagoPM('');
+    setPagoPunto('');
+  };
+
+  const confirmarCobro = (e) => {
+    e.preventDefault();
+
+    if (!esCredito && restaPorPagarUSD > 0.05) {
+      return alert(`Falta por cubrir $${restaPorPagarUSD.toFixed(2)} (Bs. ${restaPorPagarBS.toFixed(2)}). Presiona "Venta a Crédito" si es fiado.`);
     }
-    if (clienteActual.doc && clienteActual.nombre && clienteActual.doc !== 'V-00000000') {
-      guardarClienteEnDB(clienteActual);
+
+    if (esCredito && (!docCliente.trim() || nombreCliente === 'Consumidor Final')) {
+      return alert('Para otorgar crédito es obligatorio ingresar la cédula y nombre del cliente.');
     }
+
+    const clienteFinal = {
+      doc: docCliente.trim() || 'V-00000000',
+      nombre: nombreCliente.trim() || 'Consumidor Final',
+      telefono: tlfCliente.trim()
+    };
+
+    if (clienteFinal.doc !== 'V-00000000') {
+      guardarClienteEnDB(clienteFinal);
+    }
+
+    const saldoDeuda = esCredito 
+      ? (restaPorPagarUSD > 0.01 ? restaPorPagarUSD.toFixed(2) : totalNumUSD.toFixed(2)) 
+      : '0.00';
+
+    const saldoDeudaBS = (parseFloat(saldoDeuda) * tasaNum).toFixed(2);
+
     alFinalizarVenta({
-      totalUSD: tUSD.toFixed(2),
-      totalBS: tBS.toFixed(2),
-      tasa: tasa.toFixed(4),
-      pagoUSD: nUSD.toFixed(2),
-      pagoPM: nPM.toFixed(2),
-      pagoPunto: nPunto.toFixed(2),
-      vueltoBS: vueltoBS.toFixed(2),
+      fecha: new Date().toLocaleString('es-VE'),
+      cliente: clienteFinal,
+      totalUSD: totalNumUSD.toFixed(2),
+      totalBS: (totalNumUSD * tasaNum).toFixed(2),
+      tasa: tasaNum.toFixed(2),
+      pagoUSD: usdIngresado.toFixed(2),
+      pagoBsEfectivo: bsEfectivoIngresado.toFixed(2),
+      pagoPM: pmIngresado.toFixed(2),
+      pagoPunto: puntoIngresado.toFixed(2),
       vueltoUSD: vueltoUSD.toFixed(2),
+      vueltoBS: vueltoBS.toFixed(2),
       esCredito: esCredito,
-      saldoDeudaUSD: esCredito ? faltaUSD.toFixed(2) : '0.00',
-      saldoDeudaBS: esCredito ? faltaBS.toFixed(2) : '0.00',
-      cliente: clienteActual,
-      fecha: new Date().toLocaleString('es-VE')
+      saldoDeudaUSD: saldoDeuda,
+      saldoDeudaBS: saldoDeudaBS
     });
   };
 
   return (
     <div style={styles.overlay} translate="no">
-      <div style={styles.modal}>
-        <div style={styles.header}>
+      <div style={styles.modalBox}>
+        <div style={styles.modalHeader}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#111' }}>Procesar Venta</h2>
-            <small style={{ color: '#666' }}>Tasa BCV: Bs. {tasa.toFixed(2)}</small>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a', fontWeight: 'bold' }}>Cobrar Orden</h3>
+            <div style={{ color: '#0052cc', fontSize: '0.85rem', fontWeight: 'bold', marginTop: '2px' }}>
+              Total: ${totalNumUSD.toFixed(2)} <span style={{ color: '#64748b', fontWeight: 'normal' }}>· Bs. {(totalNumUSD * tasaNum).toFixed(2)}</span>
+            </div>
           </div>
-          <button type="button" onClick={alCerrar} style={styles.btnCerrar}><X size={18} /></button>
+          <button type="button" onClick={alCerrar} style={styles.btnCerrarModal}><X size={18} /></button>
         </div>
 
-        <div style={styles.switchTabs}>
-          <button type="button" onClick={() => setEsCredito(false)} style={{ ...styles.btnTab, backgroundColor: !esCredito ? '#0052cc' : '#f1f3f5', color: !esCredito ? '#fff' : '#444' }}>Contado</button>
-          <button type="button" onClick={() => setEsCredito(true)} style={{ ...styles.btnTab, backgroundColor: esCredito ? '#e65100' : '#f1f3f5', color: esCredito ? '#fff' : '#444' }}>Crédito / Fiado</button>
-        </div>
+        <form onSubmit={confirmarCobro} style={styles.formScroll}>
+          {/* DATOS DE CLIENTE COMPLETOS: CÉDULA, NOMBRE Y TELÉFONO */}
+          <div style={styles.boxCliente}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+              <User size={14} color="#0052cc" />
+              <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#1e293b' }}>Datos del Cliente:</span>
+            </div>
 
-        <div style={styles.seccionCliente}>
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
-            <input type="text" placeholder="C.I. (ej: 24808845)" value={clienteActual.doc} onChange={(e) => manejarCambioDoc(e.target.value)} style={{ ...styles.inputCliente, width: '130px', fontWeight: 'bold' }} />
-            <input type="text" placeholder="Nombre completo" value={clienteActual.nombre} onChange={(e) => setClienteActual(prev => ({ ...prev, nombre: e.target.value }))} style={{ ...styles.inputCliente, flex: 1 }} />
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={styles.labelMini}>Cédula / RIF:</label>
+                <input
+                  type="text"
+                  placeholder="V-00000000"
+                  value={docCliente}
+                  onChange={(e) => manejarCambioDoc(e.target.value)}
+                  style={styles.inputCliente}
+                />
+              </div>
+              <div style={{ flex: 1.4 }}>
+                <label style={styles.labelMini}>Nombre Cliente:</label>
+                <input
+                  type="text"
+                  placeholder="Consumidor Final"
+                  value={nombreCliente}
+                  onChange={(e) => setNombreCliente(e.target.value)}
+                  style={styles.inputCliente}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={styles.labelMini}>Teléfono / WhatsApp:</label>
+              <input
+                type="text"
+                placeholder="Ej: 04121234567"
+                value={tlfCliente}
+                onChange={(e) => setTlfCliente(e.target.value)}
+                style={styles.inputCliente}
+              />
+            </div>
           </div>
-          <input type="text" placeholder="Teléfono WhatsApp" value={clienteActual.telefono || ''} onChange={(e) => setClienteActual(prev => ({ ...prev, telefono: e.target.value }))} style={styles.inputCliente} />
-          {saldoPrevio > 0 && (
-            <div style={{ marginTop: '4px', fontSize: '0.72rem', color: '#c62828', fontWeight: 'bold' }}>⚠️ Deuda previa: ${saldoPrevio.toFixed(2)}</div>
+
+          {/* BOTÓN RÁPIDO PARA FIAR / CRÉDITO COMPLETO */}
+          <div style={{ marginBottom: '10px' }}>
+            <button
+              type="button"
+              onClick={activarModoCredito}
+              style={{
+                ...styles.btnModoCredito,
+                backgroundColor: esCredito ? '#ffedd5' : '#f8fafc',
+                borderColor: esCredito ? '#ea580c' : '#cbd5e1',
+                color: esCredito ? '#c2410c' : '#475569'
+              }}
+            >
+              <BookOpen size={16} color={esCredito ? '#ea580c' : '#64748b'} />
+              <span>{esCredito ? 'Venta Marcada a Crédito (Fiado Total)' : 'Fiar Totalidad de la Cuenta'}</span>
+            </button>
+          </div>
+
+          {/* MÉTODOS DE PAGO */}
+          <div style={styles.seccionCampos}>
+            {/* DIVISAS $ */}
+            <div style={styles.cardMetodo}>
+              <div style={styles.metaRowMetodo}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <DollarSign size={16} color="#16a34a" />
+                  <span style={styles.nombreMetodo}>Divisas ($):</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setEsCredito(false); setPagoUSD(totalNumUSD.toFixed(2)); }}
+                  style={styles.btnExacto}
+                >
+                  Monto Exacto
+                </button>
+              </div>
+              <input
+                type="number"
+                step="any"
+                placeholder="0.00"
+                value={pagoUSD}
+                onChange={(e) => { setEsCredito(false); setPagoUSD(e.target.value); }}
+                style={styles.inputMonto}
+              />
+            </div>
+
+            {/* EFECTIVO BS */}
+            <div style={styles.cardMetodo}>
+              <div style={styles.metaRowMetodo}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Banknote size={16} color="#059669" />
+                  <span style={styles.nombreMetodo}>Efectivo Bolívares (Bs):</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setEsCredito(false); setPagoBsEfectivo((totalNumUSD * tasaNum).toFixed(2)); }}
+                  style={styles.btnExacto}
+                >
+                  Monto Exacto
+                </button>
+              </div>
+              <input
+                type="number"
+                step="any"
+                placeholder="0.00"
+                value={pagoBsEfectivo}
+                onChange={(e) => { setEsCredito(false); setPagoBsEfectivo(e.target.value); }}
+                style={styles.inputMonto}
+              />
+            </div>
+
+            {/* PAGO MÓVIL */}
+            <div style={styles.cardMetodo}>
+              <div style={styles.metaRowMetodo}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Smartphone size={16} color="#0284c7" />
+                  <span style={styles.nombreMetodo}>Pago Móvil (Bs):</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEsCredito(false);
+                    const restanteBs = Math.max(0, (totalNumUSD - usdIngresado) * tasaNum - bsEfectivoIngresado - puntoIngresado);
+                    setPagoPM(restanteBs.toFixed(2));
+                  }}
+                  style={styles.btnExacto}
+                >
+                  Completar Resto
+                </button>
+              </div>
+              <input
+                type="number"
+                step="any"
+                placeholder="0.00"
+                value={pagoPM}
+                onChange={(e) => { setEsCredito(false); setPagoPM(e.target.value); }}
+                style={styles.inputMonto}
+              />
+            </div>
+
+            {/* PUNTO DE VENTA */}
+            <div style={styles.cardMetodo}>
+              <div style={styles.metaRowMetodo}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <CreditCard size={16} color="#9333ea" />
+                  <span style={styles.nombreMetodo}>Punto Débito (Bs):</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEsCredito(false);
+                    const restanteBs = Math.max(0, (totalNumUSD - usdIngresado) * tasaNum - bsEfectivoIngresado - pmIngresado);
+                    setPagoPunto(restanteBs.toFixed(2));
+                  }}
+                  style={styles.btnExacto}
+                >
+                  Completar Resto
+                </button>
+              </div>
+              <input
+                type="number"
+                step="any"
+                placeholder="0.00"
+                value={pagoPunto}
+                onChange={(e) => { setEsCredito(false); setPagoPunto(e.target.value); }}
+                style={styles.inputMonto}
+              />
+            </div>
+          </div>
+
+          {/* VUELTO */}
+          {vueltoUSD > 0.01 && (
+            <div style={styles.bannerVuelto}>
+              <span style={{ fontSize: '0.74rem' }}>Vuelto a entregar:</span>
+              <strong style={{ fontSize: '1rem' }}>Bs. {vueltoBS.toFixed(2)} (${vueltoUSD.toFixed(2)})</strong>
+            </div>
           )}
-        </div>
 
-        <div style={styles.resumenTotal}>
-          <div>
-            <span style={{ fontSize: '0.78rem', color: '#555' }}>Total orden:</span>
-            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#0052cc' }}>Bs. {tBS.toFixed(2)}</div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <span style={{ fontSize: '0.78rem', color: '#555' }}>En Divisa:</span>
-            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#28a745' }}>${tUSD.toFixed(2)}</div>
-          </div>
-        </div>
+          {/* FALTANTE O CRÉDITO PARCIAL */}
+          {restaPorPagarUSD > 0.01 && (
+            <div style={styles.bannerResta}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.74rem' }}>Falta por cubrir:</span>
+                <strong style={{ fontSize: '0.92rem' }}>${restaPorPagarUSD.toFixed(2)} (Bs. {restaPorPagarBS.toFixed(2)})</strong>
+              </div>
+              <label style={styles.checkCreditoLabel}>
+                <input
+                  type="checkbox"
+                  checked={esCredito}
+                  onChange={(e) => setEsCredito(e.target.checked)}
+                />
+                <span style={{ fontSize: '0.78rem', fontWeight: 'bold' }}>¿Anotar resto como Crédito (Fiado)?</span>
+              </label>
+            </div>
+          )}
 
-        <div style={styles.cuerpoPagos}>
-          <div style={styles.grupoInput}>
-            <label style={styles.label}><Banknote size={15} color="#28a745" /> Efectivo Divisa ($):</label>
-            <input type="number" step="any" placeholder="0.00" value={valUSD} onChange={(e) => setValUSD(e.target.value)} style={styles.input} />
+          <div style={{ marginTop: '16px', paddingBottom: '30px' }}>
+            <button type="submit" style={styles.btnConfirmar}>
+              <Check size={18} /> Confirmar y Emitir Ticket
+            </button>
           </div>
-          <div style={styles.grupoInput}>
-            <label style={styles.label}><Smartphone size={15} color="#0052cc" /> Pago Móvil (Bs):</label>
-            <input type="number" step="any" placeholder="0.00" value={valPM} onChange={(e) => setValPM(e.target.value)} style={styles.input} />
-          </div>
-          <div style={styles.grupoInput}>
-            <label style={styles.label}><CreditCard size={15} color="#6f42c1" /> Punto (Bs):</label>
-            <input type="number" step="any" placeholder="0.00" value={valPunto} onChange={(e) => setValPunto(e.target.value)} style={styles.input} />
-          </div>
-        </div>
-
-        {esCredito ? (
-          <div style={{ ...styles.panelEstado, backgroundColor: '#fff3e0', borderColor: '#ffe0b2' }}>
-            <span style={{ fontSize: '0.78rem', color: '#e65100', fontWeight: 'bold' }}>QUEDARÁ DEBIENDO:</span>
-            <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#bf360c' }}>${faltaUSD.toFixed(2)} (Bs. {faltaBS.toFixed(2)})</div>
-          </div>
-        ) : (
-          <div style={{ ...styles.panelEstado, backgroundColor: pagadoCompleto ? '#e8f5e9' : '#ffebee', borderColor: pagadoCompleto ? '#a5d6a7' : '#ffcdd2' }}>
-            {pagadoCompleto ? (
-              <div style={{ color: '#1b5e20', fontWeight: 'bold', fontSize: '0.85rem' }}>{vueltoBS > 0 ? `VUELTO: Bs. ${vueltoBS.toFixed(2)} ($${vueltoUSD.toFixed(2)})` : "PAGO EXACTO"}</div>
-            ) : (
-              <div style={{ color: '#b71c1c', fontWeight: 'bold', fontSize: '0.85rem' }}>FALTA: Bs. {faltaBS.toFixed(2)}</div>
-            )}
-          </div>
-        )}
-
-        <button type="button" onClick={procesar} disabled={!puedeProcesar} style={{ ...styles.btnFinalizar, backgroundColor: puedeProcesar ? (esCredito ? '#e65100' : '#28a745') : '#ccc', cursor: puedeProcesar ? 'pointer' : 'not-allowed' }}>
-          <CheckCircle2 size={18} /> {esCredito ? 'Registrar Crédito' : 'Emitir Factura'}
-        </button>
+        </form>
       </div>
     </div>
   );
 }
 
 const styles = {
-  overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9998, padding: '16px' },
-  modal: { background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '360px', padding: '16px', boxShadow: '0 8px 30px rgba(0,0,0,0.4)', maxHeight: '95vh', overflowY: 'auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' },
-  switchTabs: { display: 'flex', gap: '6px', marginBottom: '10px', background: '#f1f3f5', padding: '4px', borderRadius: '8px' },
-  btnTab: { flex: 1, border: 'none', padding: '8px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 'bold', cursor: 'pointer' },
-  btnCerrar: { background: '#f1f3f5', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  seccionCliente: { backgroundColor: '#f8f9fa', padding: '10px', borderRadius: '10px', marginBottom: '10px', border: '1px solid #e2e8f0' },
-  inputCliente: { width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '0.82rem', outline: 'none' },
-  resumenTotal: { display: 'flex', justifyContent: 'space-between', padding: '8px 10px', backgroundColor: '#f8f9fa', borderRadius: '8px', marginBottom: '10px', border: '1px solid #e9ecef' },
-  cuerpoPagos: { display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' },
-  grupoInput: { display: 'flex', flexDirection: 'column', gap: '2px' },
-  label: { fontSize: '0.75rem', fontWeight: '600', color: '#444', display: 'flex', alignItems: 'center', gap: '4px' },
-  input: { padding: '8px', borderRadius: '6px', border: '1px solid #ced4da', fontSize: '0.88rem', fontWeight: 'bold', textAlign: 'right', outline: 'none' },
-  panelEstado: { padding: '8px', borderRadius: '8px', border: '1px solid', textAlign: 'center', marginBottom: '10px' },
-  btnFinalizar: { width: '100%', padding: '10px', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }
+  overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '12px' },
+  modalBox: { backgroundColor: '#fff', borderRadius: '16px', width: '100%', maxWidth: '375px', maxHeight: '95vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', overflow: 'hidden' },
+  modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #f1f5f9' },
+  btnCerrarModal: { background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' },
+  formScroll: { flex: 1, overflowY: 'auto', padding: '14px 16px' },
+  boxCliente: { backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '10px' },
+  labelMini: { fontSize: '0.68rem', fontWeight: 'bold', color: '#64748b', display: 'block', marginBottom: '3px' },
+  inputCliente: { width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none' },
+  btnModoCredito: { width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid', fontSize: '0.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer' },
+  seccionCampos: { display: 'flex', flexDirection: 'column', gap: '10px' },
+  cardMetodo: { backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '8px 10px' },
+  metaRowMetodo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' },
+  nombreMetodo: { fontSize: '0.74rem', fontWeight: 'bold', color: '#334155' },
+  btnExacto: { backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.68rem', fontWeight: 'bold', color: '#0052cc', cursor: 'pointer' },
+  inputMonto: { width: '100%', boxSizing: 'border-box', padding: '7px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.95rem', fontWeight: 'bold', outline: 'none' },
+  bannerVuelto: { backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', padding: '10px 12px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' },
+  bannerResta: { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c', padding: '10px 12px', borderRadius: '10px', marginTop: '12px' },
+  checkCreditoLabel: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', cursor: 'pointer' },
+  btnConfirmar: { width: '100%', padding: '13px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.92rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }
 };
