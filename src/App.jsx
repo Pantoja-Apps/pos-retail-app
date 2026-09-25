@@ -3,7 +3,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { 
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   CreditCard, Banknote, Smartphone, CheckCircle2, RefreshCw, 
-  Package, Edit, ArrowLeft, Image as ImageIcon, Zap, Repeat, Printer, Share2, User 
+  Package, Edit, ArrowLeft, Image as ImageIcon, Zap, Repeat, Printer, Share2, User, BookOpen, MessageCircle
 } from 'lucide-react';
 
 const PRODUCTOS_INICIALES = [
@@ -16,8 +16,8 @@ const PRODUCTOS_INICIALES = [
 ];
 
 const CLIENTES_INICIALES = [
-  { id: 1, doc: 'V-00000000', nombre: 'Consumidor Final', telefono: '' },
-  { id: 2, doc: 'V-22033378', nombre: 'Jetzabel Gonzalez', telefono: '584120000000' }
+  { id: 1, doc: 'V-00000000', nombre: 'Consumidor Final', telefono: '', saldoPendienteUSD: 0 },
+  { id: 2, doc: 'V-22033378', nombre: 'Jetzabel Gonzalez', telefono: '584120000000', saldoPendienteUSD: 0 }
 ];
 
 const FORMATOS_RETAIL = [
@@ -235,6 +235,7 @@ function ModalCobro({
   const [valUSD, setValUSD] = useState('');
   const [valPM, setValPM] = useState('');
   const [valPunto, setValPunto] = useState('');
+  const [esCredito, setEsCredito] = useState(false);
 
   if (!abierto) return null;
 
@@ -247,13 +248,16 @@ function ModalCobro({
   const nPunto = parseFloat(valPunto) || 0;
 
   const totalAbonadoBS = (nUSD * tasa) + nPM + nPunto;
+  const totalAbonadoUSD = (totalAbonadoBS / tasa);
   const balance = totalAbonadoBS - tBS;
 
   const faltaBS = balance < -0.01 ? Math.abs(balance) : 0;
+  const faltaUSD = faltaBS > 0 ? (faltaBS / tasa) : 0;
   const vueltoBS = balance > 0.01 ? balance : 0;
   const vueltoUSD = vueltoBS > 0 ? (vueltoBS / tasa) : 0;
 
   const pagadoCompleto = totalAbonadoBS >= (tBS - 0.05);
+  const puedeProcesar = esCredito ? (clienteActual.nombre && clienteActual.doc !== 'V-00000000') : pagadoCompleto;
 
   const manejarCambioDoc = (docIngresado) => {
     const docLimpio = docIngresado.trim().toUpperCase();
@@ -266,7 +270,12 @@ function ModalCobro({
   };
 
   const procesar = () => {
-    if (!pagadoCompleto) return;
+    if (!puedeProcesar) {
+      if (esCredito && (!clienteActual.nombre || clienteActual.doc === 'V-00000000')) {
+        alert('Para vender a crédito debes asignar una Cédula/RIF y Nombre al cliente.');
+      }
+      return;
+    }
     
     if (clienteActual.doc && clienteActual.nombre && clienteActual.doc !== 'V-00000000') {
       guardarClienteEnDB(clienteActual);
@@ -281,17 +290,20 @@ function ModalCobro({
       pagoPunto: nPunto.toFixed(2),
       vueltoBS: vueltoBS.toFixed(2),
       vueltoUSD: vueltoUSD.toFixed(2),
+      esCredito: esCredito,
+      saldoDeudaUSD: esCredito ? faltaUSD.toFixed(2) : '0.00',
+      saldoDeudaBS: esCredito ? faltaBS.toFixed(2) : '0.00',
       cliente: clienteActual,
       fecha: new Date().toLocaleString('es-VE')
     });
   };
 
   return (
-    <div style={stylesCobro.overlay}>
+    <div style={stylesCobro.overlay} translate="no">
       <div style={stylesCobro.modal}>
         <div style={stylesCobro.header}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.15rem', color: '#111' }}>Procesar Cobro y Factura</h2>
+            <h2 style={{ margin: 0, fontSize: '1.15rem', color: '#111' }}>Procesar Venta</h2>
             <small style={{ color: '#666' }}>Tasa BCV: Bs. {tasa.toFixed(2)}</small>
           </div>
           <button type="button" onClick={alCerrar} style={stylesCobro.btnCerrar}>
@@ -299,10 +311,27 @@ function ModalCobro({
           </button>
         </div>
 
+        <div style={stylesCobro.switchTipoVenta}>
+          <button 
+            type="button" 
+            onClick={() => setEsCredito(false)} 
+            style={{ ...stylesCobro.btnTab, backgroundColor: !esCredito ? '#0052cc' : '#f1f3f5', color: !esCredito ? '#fff' : '#444' }}
+          >
+            Venta de Contado
+          </button>
+          <button 
+            type="button" 
+            onClick={() => setEsCredito(true)} 
+            style={{ ...stylesCobro.btnTab, backgroundColor: esCredito ? '#e65100' : '#f1f3f5', color: esCredito ? '#fff' : '#444' }}
+          >
+            A Crédito / Fiado
+          </button>
+        </div>
+
         <div style={stylesCobro.seccionCliente}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#0052cc', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <User size={14} /> Datos para la Factura:
+            <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: esCredito ? '#e65100' : '#0052cc', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <User size={14} /> {esCredito ? 'Cliente Obligatorio (Crédito):' : 'Datos del Cliente:'}
             </span>
             <small style={{ fontSize: '0.7rem', color: '#666' }}>Autocompleta si ya existe</small>
           </div>
@@ -317,7 +346,7 @@ function ModalCobro({
             />
             <input
               type="text"
-              placeholder="Nombre o Razón Social"
+              placeholder="Nombre completo"
               value={clienteActual.nombre}
               onChange={(e) => setClienteActual(prev => ({ ...prev, nombre: e.target.value }))}
               style={{ ...stylesCobro.inputCliente, flex: 1 }}
@@ -325,16 +354,21 @@ function ModalCobro({
           </div>
           <input
             type="text"
-            placeholder="Teléfono (opcional para WhatsApp, ej: 58412...)"
+            placeholder="Teléfono WhatsApp (ej: 58412...)"
             value={clienteActual.telefono || ''}
             onChange={(e) => setClienteActual(prev => ({ ...prev, telefono: e.target.value }))}
             style={stylesCobro.inputCliente}
           />
+          {clienteActual.saldoPendienteUSD > 0 && (
+            <div style={{ marginTop: '6px', fontSize: '0.75rem', color: '#c62828', fontWeight: 'bold' }}>
+              ⚠️ Deuda previa de este cliente: ${clienteActual.saldoPendienteUSD.toFixed(2)} (Bs. {(clienteActual.saldoPendienteUSD * tasa).toFixed(2)})
+            </div>
+          )}
         </div>
 
         <div style={stylesCobro.resumenTotal}>
           <div>
-            <span style={{ fontSize: '0.8rem', color: '#555' }}>Total a pagar:</span>
+            <span style={{ fontSize: '0.8rem', color: '#555' }}>Total orden:</span>
             <div style={{ fontSize: '1.35rem', fontWeight: 'bold', color: '#0052cc' }}>
               Bs. {tBS.toFixed(2)}
             </div>
@@ -348,6 +382,9 @@ function ModalCobro({
         </div>
 
         <div style={stylesCobro.cuerpoPagos}>
+          <small style={{ fontWeight: 'bold', color: '#444' }}>
+            {esCredito ? 'Abono Inicial (opcional, deja en 0 si no paga nada hoy):' : 'Registro de Pagos:'}
+          </small>
           <div style={stylesCobro.grupoInput}>
             <label style={stylesCobro.label}>
               <Banknote size={16} color="#28a745" /> Efectivo Divisa ($):
@@ -391,41 +428,55 @@ function ModalCobro({
           </div>
         </div>
 
-        <div style={{
-          ...stylesCobro.panelEstado,
-          backgroundColor: pagadoCompleto ? '#e8f5e9' : '#ffebee',
-          borderColor: pagadoCompleto ? '#a5d6a7' : '#ffcdd2',
-        }}>
-          {pagadoCompleto ? (
-            <div>
-              <span style={{ fontSize: '0.8rem', color: '#2e7d32', fontWeight: 'bold' }}>
-                {vueltoBS > 0 ? "VUELTO A ENTREGAR:" : "PAGO COMPLETO Y EXACTO"}
-              </span>
-              <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1b5e20' }}>
-                Bs. {vueltoBS.toFixed(2)} <span style={{ fontSize: '0.95rem' }}>(${vueltoUSD.toFixed(2)})</span>
-              </div>
+        {esCredito ? (
+          <div style={{ ...stylesCobro.panelEstado, backgroundColor: '#fff3e0', borderColor: '#ffe0b2' }}>
+            <span style={{ fontSize: '0.8rem', color: '#e65100', fontWeight: 'bold' }}>QUEDARÁ DEBIENDO (FIADO):</span>
+            <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#bf360c' }}>
+              ${faltaUSD.toFixed(2)} <span style={{ fontSize: '0.9rem' }}>(Bs. {faltaBS.toFixed(2)})</span>
             </div>
-          ) : (
-            <div>
-              <span style={{ fontSize: '0.8rem', color: '#c62828', fontWeight: 'bold' }}>FALTA POR PAGAR:</span>
-              <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#b71c1c' }}>
-                Bs. {faltaBS.toFixed(2)}
+            {totalAbonadoUSD > 0 && (
+              <small style={{ color: '#2e7d32', display: 'block', marginTop: '2px', fontWeight: 'bold' }}>
+                Abona hoy: ${totalAbonadoUSD.toFixed(2)} (Bs. {totalAbonadoBS.toFixed(2)})
+              </small>
+            )}
+          </div>
+        ) : (
+          <div style={{
+            ...stylesCobro.panelEstado,
+            backgroundColor: pagadoCompleto ? '#e8f5e9' : '#ffebee',
+            borderColor: pagadoCompleto ? '#a5d6a7' : '#ffcdd2',
+          }}>
+            {pagadoCompleto ? (
+              <div>
+                <span style={{ fontSize: '0.8rem', color: '#2e7d32', fontWeight: 'bold' }}>
+                  {vueltoBS > 0 ? "VUELTO A ENTREGAR:" : "PAGO COMPLETO Y EXACTO"}
+                </span>
+                <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1b5e20' }}>
+                  Bs. {vueltoBS.toFixed(2)} <span style={{ fontSize: '0.95rem' }}>(${vueltoUSD.toFixed(2)})</span>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            ) : (
+              <div>
+                <span style={{ fontSize: '0.8rem', color: '#c62828', fontWeight: 'bold' }}>FALTA POR PAGAR:</span>
+                <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#b71c1c' }}>
+                  Bs. {faltaBS.toFixed(2)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           type="button"
           onClick={procesar}
-          disabled={!pagadoCompleto}
+          disabled={!puedeProcesar}
           style={{
             ...stylesCobro.btnFinalizar,
-            backgroundColor: pagadoCompleto ? '#28a745' : '#ccc',
-            cursor: pagadoCompleto ? 'pointer' : 'not-allowed',
+            backgroundColor: puedeProcesar ? (esCredito ? '#e65100' : '#28a745') : '#ccc',
+            cursor: puedeProcesar ? 'pointer' : 'not-allowed',
           }}
         >
-          <CheckCircle2 size={20} /> Emitir Factura y Guardar
+          <CheckCircle2 size={20} /> {esCredito ? 'Registrar Venta a Crédito' : 'Emitir Factura de Contado'}
         </button>
       </div>
     </div>
@@ -443,7 +494,14 @@ const stylesCobro = {
     boxShadow: '0 8px 30px rgba(0,0,0,0.4)', maxHeight: '95vh', overflowY: 'auto'
   },
   header: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px',
+  },
+  switchTipoVenta: {
+    display: 'flex', gap: '6px', marginBottom: '12px', background: '#f1f3f5', padding: '4px', borderRadius: '8px'
+  },
+  btnTab: {
+    flex: 1, border: 'none', padding: '9px 6px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
   },
   btnCerrar: {
     background: '#f1f3f5', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '32px', height: '32px',
@@ -476,6 +534,186 @@ const stylesCobro = {
   },
 };
 
+function ModuloCreditos({ clientes, tasaCambio, alRegistrarAbono, alVolver }) {
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [abonoUSD, setAbonoUSD] = useState('');
+  const [abonoPM, setAbonoPM] = useState('');
+  const [abonoPunto, setAbonoPunto] = useState('');
+
+  const tasa = parseFloat(tasaCambio) || 1;
+  const clientesConDeuda = clientes.filter(c => (c.saldoPendienteUSD || 0) > 0.01);
+  const totalDeudaGlobalUSD = clientesConDeuda.reduce((acc, c) => acc + c.saldoPendienteUSD, 0);
+
+  const enviarRecordatorioWhatsApp = (cli) => {
+    if (!cli.telefono) {
+      alert('Este cliente no tiene teléfono guardado para WhatsApp.');
+      return;
+    }
+    const saldoUSD = (cli.saldoPendienteUSD || 0).toFixed(2);
+    const saldoBS = ((cli.saldoPendienteUSD || 0) * tasa).toFixed(2);
+    const tasaStr = tasa.toFixed(2);
+    const fecha = new Date().toLocaleDateString('es-VE');
+
+    let t = "*RECORDATORIO DE PAGO*\n";
+    t += "COMERCIALIZADORA POS C.A.\n";
+    t += "--------------------------------\n";
+    t += "Estimado(a): " + cli.nombre + "\n";
+    t += "C.I./RIF:    " + cli.doc + "\n";
+    t += "Fecha:       " + fecha + "\n";
+    t += "--------------------------------\n";
+    t += "Le recordamos su saldo pendiente:\n\n";
+    t += "• TOTAL DEUDA:  $" + saldoUSD + "\n";
+    t += "• EN BOLÍVARES: Bs. " + saldoBS + "\n";
+    t += "(Calculado a Tasa BCV: Bs. " + tasaStr + ")\n";
+    t += "--------------------------------\n";
+    t += "Por favor realice su abono o cancelación a la brevedad.\n";
+    t += "¡Agradecemos su puntualidad!\n";
+
+    const b = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
+    const msg = b + "\n" + t + b;
+    const telf = cli.telefono.replace(/\D/g, '');
+    window.open("https://wa.me/" + telf + "?text=" + encodeURIComponent(msg), '_blank');
+  };
+
+  const procesarAbono = () => {
+    if (!clienteSeleccionado) return;
+    const nUSD = parseFloat(abonoUSD) || 0;
+    const nPM = parseFloat(abonoPM) || 0;
+    const nPunto = parseFloat(abonoPunto) || 0;
+
+    const totalAbonoUSD = nUSD + (nPM / tasa) + (nPunto / tasa);
+    if (totalAbonoUSD <= 0) {
+      alert('Ingresa un monto para abonar.');
+      return;
+    }
+
+    if (totalAbonoUSD > (clienteSeleccionado.saldoPendienteUSD + 0.05)) {
+      alert('El monto a abonar supera la deuda total del cliente.');
+      return;
+    }
+
+    alRegistrarAbono(clienteSeleccionado.id, totalAbonoUSD, {
+      pagoUSD: nUSD,
+      pagoPM: nPM,
+      pagoPunto: nPunto,
+      totalAbonoUSD: totalAbonoUSD
+    });
+
+    setClienteSeleccionado(null);
+    setAbonoUSD('');
+    setAbonoPM('');
+    setAbonoPunto('');
+  };
+
+  return (
+    <div style={stylesInv.contenedor} translate="no">
+      <header style={stylesInv.header}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button type="button" onClick={alVolver} style={stylesInv.btnBack}>
+            <ArrowLeft color="#333" size={20} />
+          </button>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#111' }}>Cuentas por Cobrar (Créditos)</h2>
+            <small style={{ color: '#666', fontSize: '0.75rem' }}>Deuda Total: ${totalDeudaGlobalUSD.toFixed(2)} (Bs. {(totalDeudaGlobalUSD * tasa).toFixed(2)})</small>
+          </div>
+        </div>
+      </header>
+
+      <div style={stylesInv.lista}>
+        {clientesConDeuda.length === 0 ? (
+          <div style={styles.carritoVacio}>
+            <CheckCircle2 color="#28a745" size={48} />
+            <p style={{ marginTop: '10px', fontSize: '0.9rem', color: '#555' }}>No hay cuentas pendientes por cobrar.</p>
+          </div>
+        ) : (
+          clientesConDeuda.map((cli) => {
+            const deudaUSD = cli.saldoPendienteUSD || 0;
+            const deudaBS = deudaUSD * tasa;
+
+            return (
+              <div key={cli.id} style={{ ...stylesInv.itemCard, flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong style={{ fontSize: '0.95rem', color: '#111' }}>{cli.nombre}</strong>
+                    <div style={{ fontSize: '0.78rem', color: '#666', marginTop: '2px' }}>
+                      Documento: {cli.doc} | Teléfono: {cli.telefono || 'Sin registrar'}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 'bold', color: '#bf360c' }}>${deudaUSD.toFixed(2)}</div>
+                    <small style={{ fontSize: '0.75rem', color: '#666' }}>Bs. {deudaBS.toFixed(2)}</small>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => setClienteSeleccionado(cli)} 
+                    style={{ ...stylesCobro.btnTab, backgroundColor: '#0052cc', color: '#fff' }}
+                  >
+                    <Plus size={14} /> Registrar Abono
+                  </button>
+
+                  <button 
+                    type="button" 
+                    onClick={() => enviarRecordatorioWhatsApp(cli)} 
+                    style={{ ...stylesCobro.btnTab, backgroundColor: '#25d366', color: '#fff' }}
+                    title="Enviar recordatorio de cobro por WhatsApp"
+                  >
+                    <MessageCircle size={15} /> Recordar por WhatsApp
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {clienteSeleccionado && (
+        <div style={stylesCobro.overlay} translate="no">
+          <div style={stylesCobro.modal}>
+            <div style={stylesCobro.header}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#111' }}>Abonar a Deuda</h3>
+                <small style={{ color: '#555' }}>Cliente: {clienteSeleccionado.nombre}</small>
+              </div>
+              <button type="button" onClick={() => setClienteSeleccionado(null)} style={stylesCobro.btnCerrar}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ backgroundColor: '#ffebee', padding: '10px', borderRadius: '8px', marginBottom: '12px', textAlign: 'center' }}>
+              <span style={{ fontSize: '0.78rem', color: '#c62828', fontWeight: 'bold' }}>DEUDA ACTUAL:</span>
+              <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#b71c1c' }}>
+                ${clienteSeleccionado.saldoPendienteUSD.toFixed(2)} (Bs. {(clienteSeleccionado.saldoPendienteUSD * tasa).toFixed(2)})
+              </div>
+            </div>
+
+            <div style={stylesCobro.cuerpoPagos}>
+              <div style={stylesCobro.grupoInput}>
+                <label style={stylesCobro.label}><Banknote size={16} color="#28a745" /> Abono Divisa ($):</label>
+                <input type="number" step="any" placeholder="0.00" value={abonoUSD} onChange={(e) => setAbonoUSD(e.target.value)} style={stylesCobro.input} />
+              </div>
+              <div style={stylesCobro.grupoInput}>
+                <label style={stylesCobro.label}><Smartphone size={16} color="#0052cc" /> Abono Pago Móvil (Bs):</label>
+                <input type="number" step="any" placeholder="0.00" value={abonoPM} onChange={(e) => setAbonoPM(e.target.value)} style={stylesCobro.input} />
+              </div>
+              <div style={stylesCobro.grupoInput}>
+                <label style={stylesCobro.label}><CreditCard size={16} color="#6f42c1" /> Abono Punto (Bs):</label>
+                <input type="number" step="any" placeholder="0.00" value={abonoPunto} onChange={(e) => setAbonoPunto(e.target.value)} style={stylesCobro.input} />
+              </div>
+            </div>
+
+            <button type="button" onClick={procesarAbono} style={{ ...stylesCobro.btnFinalizar, backgroundColor: '#28a745' }}>
+              Confirmar y Descontar Abono
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ModalTicket({ ticket, alCerrar }) {
   if (!ticket) return null;
 
@@ -484,16 +722,17 @@ function ModalTicket({ ticket, alCerrar }) {
   };
 
   const compartirWhatsApp = () => {
+    const esCred = ticket.esCredito;
     let t = "*COMERCIALIZADORA POS C.A.*\n";
     t += "RIF: J-41235678-0\n";
     t += "Av. Principal El Hatillo, Caracas\n\n";
-    t += "*FACTURA / TICKET DE CAJA*\n";
+    t += esCred ? "*COMPROBANTE VENTA A CRÉDITO*\n" : "*FACTURA / TICKET DE CAJA*\n";
     t += "--------------------------------\n";
     t += "Factura N: 000-" + ticket.id + "\n";
     t += "Fecha/Hora: " + ticket.fecha + "\n";
     t += "Cliente:    " + (ticket.cliente?.nombre || 'Consumidor Final') + "\n";
     t += "C.I./RIF:   " + (ticket.cliente?.doc || 'V-00000000') + "\n";
-    t += "Condición:  CONTADO\n";
+    t += "Condición:  " + (esCred ? "CRÉDITO (FIADO)" : "CONTADO") + "\n";
     t += "Tasa BCV:   Bs. " + ticket.tasa + "\n";
     t += "--------------------------------\n";
     t += "CANT  DESCRIPCIÓN        TOTAL $\n";
@@ -507,16 +746,29 @@ function ModalTicket({ ticket, alCerrar }) {
     });
 
     t += "--------------------------------\n";
-    t += "TOTAL DÓLAR ($):        $" + ticket.totalUSD.padStart(7, " ") + "\n";
+    t += "TOTAL ORDEN ($):        $" + ticket.totalUSD.padStart(7, " ") + "\n";
     t += "TOTAL BOLÍVARES:    Bs. " + ticket.totalBS.padStart(7, " ") + "\n";
     t += "--------------------------------\n";
-    t += "PAGADO:\n";
-    if (parseFloat(ticket.pagoUSD) > 0) t += "• Divisa Efectivo: $" + ticket.pagoUSD + "\n";
-    if (parseFloat(ticket.pagoPM) > 0)  t += "• Pago Móvil:      Bs. " + ticket.pagoPM + "\n";
-    if (parseFloat(ticket.pagoPunto) > 0) t += "• Punto Débito:    Bs. " + ticket.pagoPunto + "\n";
-    if (parseFloat(ticket.vueltoBS) > 0)  t += "• VUELTO:          Bs. " + ticket.vueltoBS + " ($" + ticket.vueltoUSD + ")\n";
+    
+    if (esCred) {
+      t += "ABONADO HOY:\n";
+      if (parseFloat(ticket.pagoUSD) > 0) t += "• Divisas ($):       $" + ticket.pagoUSD + "\n";
+      if (parseFloat(ticket.pagoPM) > 0)  t += "• Pago Móvil:      Bs. " + ticket.pagoPM + "\n";
+      if (parseFloat(ticket.pagoPunto) > 0) t += "• Punto Débito:    Bs. " + ticket.pagoPunto + "\n";
+      t += "--------------------------------\n";
+      t += "*SALDO PENDIENTE (DEUDA):*\n";
+      t += "• EN DIVISA ($):     $" + ticket.saldoDeudaUSD + "\n";
+      t += "• EN BOLÍVARES:    Bs. " + ticket.saldoDeudaBS + "\n";
+    } else {
+      t += "PAGADO:\n";
+      if (parseFloat(ticket.pagoUSD) > 0) t += "• Divisa Efectivo: $" + ticket.pagoUSD + "\n";
+      if (parseFloat(ticket.pagoPM) > 0)  t += "• Pago Móvil:      Bs. " + ticket.pagoPM + "\n";
+      if (parseFloat(ticket.pagoPunto) > 0) t += "• Punto Débito:    Bs. " + ticket.pagoPunto + "\n";
+      if (parseFloat(ticket.vueltoBS) > 0)  t += "• VUELTO:          Bs. " + ticket.vueltoBS + " ($" + ticket.vueltoUSD + ")\n";
+    }
+
     t += "--------------------------------\n";
-    t += "Revise su mercancía.\n¡Gracias por su compra!\n";
+    t += "Revise su mercancía.\n¡Gracias por su preferencia!\n";
 
     const codigoBloque = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
     const mensajeCompleto = codigoBloque + "\n" + t + codigoBloque;
@@ -536,7 +788,9 @@ function ModalTicket({ ticket, alCerrar }) {
     <div style={stylesTicket.overlay} translate="no">
       <div style={stylesTicket.modal}>
         <div style={stylesTicket.headerModal} className="no-print">
-          <span style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#111' }}>Factura Emitida</span>
+          <span style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#111' }}>
+            {ticket.esCredito ? 'Ticket Venta a Crédito' : 'Factura Emitida'}
+          </span>
           <button type="button" onClick={alCerrar} style={stylesTicket.btnCerrar}>
             <X size={20} />
           </button>
@@ -548,13 +802,13 @@ function ModalTicket({ ticket, alCerrar }) {
             <p style={stylesTicket.textoEmpresa}>RIF: J-41235678-0</p>
             <p style={stylesTicket.textoEmpresa}>Av. Principal El Hatillo, Caracas</p>
             <p style={stylesTicket.textoEmpresa}>Teléfono: (0212) 961-0000</p>
-            <p style={stylesTicket.tituloDoc}>FACTURA / TICKET DE CAJA</p>
+            <p style={stylesTicket.tituloDoc}>{ticket.esCredito ? 'COMPROBANTE DE VENTA A CRÉDITO' : 'FACTURA / TICKET DE CAJA'}</p>
             <div style={stylesTicket.lineaDoble}>================================</div>
           </div>
 
           <div style={stylesTicket.bloqueInfo}>
             <div style={stylesTicket.filaDato}>
-              <span>FACTURA Nº:</span>
+              <span>COMPROBANTE Nº:</span>
               <strong style={{ fontFamily: 'monospace' }}>000-{ticket.id}</strong>
             </div>
             <div style={stylesTicket.filaDato}>
@@ -571,7 +825,9 @@ function ModalTicket({ ticket, alCerrar }) {
             </div>
             <div style={stylesTicket.filaDato}>
               <span>CONDICIÓN:</span>
-              <span>CONTADO</span>
+              <strong style={{ color: ticket.esCredito ? '#e65100' : '#000' }}>
+                {ticket.esCredito ? 'A CRÉDITO (FIADO)' : 'CONTADO'}
+              </strong>
             </div>
           </div>
 
@@ -605,18 +861,8 @@ function ModalTicket({ ticket, alCerrar }) {
           <div style={stylesTicket.lineaSimple}>--------------------------------</div>
 
           <div style={stylesTicket.seccionTotales}>
-            <div style={stylesTicket.filaSubtotal}>
-              <span>SUBTOTAL DIVISA:</span>
-              <strong>${ticket.totalUSD}</strong>
-            </div>
-            <div style={stylesTicket.filaSubtotal}>
-              <span>EXENTO / BASE:</span>
-              <span>${ticket.totalUSD}</span>
-            </div>
-            <div style={stylesTicket.lineaSimple}>--------------------------------</div>
-            
             <div style={stylesTicket.filaGranTotal}>
-              <span>TOTAL DÓLAR ($):</span>
+              <span>TOTAL ORDEN ($):</span>
               <span>${ticket.totalUSD}</span>
             </div>
 
@@ -633,34 +879,53 @@ function ModalTicket({ ticket, alCerrar }) {
 
           <div style={stylesTicket.lineaDoble}>================================</div>
 
-          <div style={stylesTicket.seccionPagos}>
-            <div style={{ fontWeight: 'bold', marginBottom: '3px', fontSize: '0.72rem' }}>PAGADO POR CLIENTE:</div>
-            {parseFloat(ticket.pagoUSD) > 0 ? (
+          {ticket.esCredito ? (
+            <div style={stylesTicket.seccionPagos}>
+              <div style={{ fontWeight: 'bold', marginBottom: '3px', fontSize: '0.75rem', color: '#e65100' }}>
+                ESTADO DEL CRÉDITO:
+              </div>
               <div style={stylesTicket.filaDato}>
-                <span>- Efectivo Divisa ($):</span>
+                <span>Abono Efectivo Divisa:</span>
                 <strong>${ticket.pagoUSD}</strong>
               </div>
-            ) : null}
-            {parseFloat(ticket.pagoPM) > 0 ? (
               <div style={stylesTicket.filaDato}>
-                <span>- Pago Móvil:</span>
-                <strong>Bs. {ticket.pagoPM}</strong>
+                <span>Abono Bolívares (PM/Punto):</span>
+                <strong>Bs. {(parseFloat(ticket.pagoPM) + parseFloat(ticket.pagoPunto)).toFixed(2)}</strong>
               </div>
-            ) : null}
-            {parseFloat(ticket.pagoPunto) > 0 ? (
-              <div style={stylesTicket.filaDato}>
-                <span>- Punto Débito:</span>
-                <strong>Bs. {ticket.pagoPunto}</strong>
+              <div style={{ ...stylesTicket.filaDato, backgroundColor: '#ffebee', padding: '4px', marginTop: '4px' }}>
+                <strong style={{ color: '#c62828' }}>RESTA POR PAGAR:</strong>
+                <strong style={{ color: '#c62828' }}>${ticket.saldoDeudaUSD} (Bs. {ticket.saldoDeudaBS})</strong>
               </div>
-            ) : null}
-
-            {parseFloat(ticket.vueltoBS) > 0 ? (
-              <div style={{ ...stylesTicket.filaDato, backgroundColor: '#f1f1f1', padding: '3px 4px', marginTop: '4px' }}>
-                <strong style={{ color: '#000' }}>VUELTO ENTREGADO:</strong>
-                <strong>Bs. {ticket.vueltoBS} (${ticket.vueltoUSD})</strong>
-              </div>
-            ) : null}
-          </div>
+            </div>
+          ) : (
+            <div style={stylesTicket.seccionPagos}>
+              <div style={{ fontWeight: 'bold', marginBottom: '3px', fontSize: '0.72rem' }}>PAGADO POR CLIENTE:</div>
+              {parseFloat(ticket.pagoUSD) > 0 && (
+                <div style={stylesTicket.filaDato}>
+                  <span>- Efectivo Divisa ($):</span>
+                  <strong>${ticket.pagoUSD}</strong>
+                </div>
+              )}
+              {parseFloat(ticket.pagoPM) > 0 && (
+                <div style={stylesTicket.filaDato}>
+                  <span>- Pago Móvil:</span>
+                  <strong>Bs. {ticket.pagoPM}</strong>
+                </div>
+              )}
+              {parseFloat(ticket.pagoPunto) > 0 && (
+                <div style={stylesTicket.filaDato}>
+                  <span>- Punto Débito:</span>
+                  <strong>Bs. {ticket.pagoPunto}</strong>
+                </div>
+              )}
+              {parseFloat(ticket.vueltoBS) > 0 && (
+                <div style={{ ...stylesTicket.filaDato, backgroundColor: '#f1f1f1', padding: '3px 4px', marginTop: '4px' }}>
+                  <strong style={{ color: '#000' }}>VUELTO ENTREGADO:</strong>
+                  <strong>Bs. {ticket.vueltoBS} (${ticket.vueltoUSD})</strong>
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={stylesTicket.centro}>
             <div style={{ margin: '10px 0 4px 0' }}>
@@ -721,7 +986,6 @@ const stylesTicket = {
   filaProducto: { display: 'flex', flexDirection: 'column', fontSize: '0.75rem' },
   subPrecioFila: { fontSize: '0.65rem', color: '#555', paddingLeft: '35px' },
   seccionTotales: { display: 'flex', flexDirection: 'column', gap: '3px' },
-  filaSubtotal: { display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' },
   filaGranTotal: { display: 'flex', justifyContent: 'space-between', fontSize: '0.92rem', fontWeight: 'bold' },
   filaGranTotalBs: {
     display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: 'bold',
@@ -822,7 +1086,7 @@ function ModuloInventario({ productos, alGuardarProducto, alEliminarProducto, al
   };
 
   return (
-    <div style={stylesInv.contenedor}>
+    <div style={stylesInv.contenedor} translate="no">
       <header style={stylesInv.header}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button type="button" onClick={alVolver} style={stylesInv.btnBack}>
@@ -830,11 +1094,11 @@ function ModuloInventario({ productos, alGuardarProducto, alEliminarProducto, al
           </button>
           <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#111' }}>Inventario de Productos</h2>
         </div>
-        {!modoEdicion ? (
+        {!modoEdicion && (
           <button type="button" onClick={iniciarNuevo} style={stylesInv.btnNuevo}>
             <Plus size={16} /> Nuevo
           </button>
-        ) : null}
+        )}
       </header>
 
       {modoEdicion ? (
@@ -866,7 +1130,7 @@ function ModuloInventario({ productos, alGuardarProducto, alEliminarProducto, al
               onChange={manejarSeleccionImagen} 
               style={{ display: 'none' }} 
             />
-            {imagen ? (
+            {imagen && (
               <button 
                 type="button" 
                 onClick={() => setImagen('')} 
@@ -874,7 +1138,7 @@ function ModuloInventario({ productos, alGuardarProducto, alEliminarProducto, al
               >
                 Quitar foto
               </button>
-            ) : null}
+            )}
           </div>
 
           <div style={stylesInv.campo}>
@@ -1008,7 +1272,7 @@ const stylesInv = {
   },
   lista: { flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' },
   itemCard: {
-    backgroundColor: '#fff', padding: '10px 12px', borderRadius: '12px',
+    backgroundColor: '#fff', padding: '12px 14px', borderRadius: '12px',
     display: 'flex', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
   },
   thumbMini: { width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover' },
@@ -1068,7 +1332,7 @@ export default function App() {
   
   const [productos, setProductos] = useState(() => {
     try {
-      const guardados = localStorage.getItem('pos_productos_v11');
+      const guardados = localStorage.getItem('pos_productos_v15');
       if (guardados) return JSON.parse(guardados);
     } catch (e) {}
     return PRODUCTOS_INICIALES;
@@ -1076,7 +1340,7 @@ export default function App() {
 
   const [clientes, setClientes] = useState(() => {
     try {
-      const guardados = localStorage.getItem('pos_clientes_v11');
+      const guardados = localStorage.getItem('pos_clientes_v15');
       if (guardados) return JSON.parse(guardados);
     } catch (e) {}
     return CLIENTES_INICIALES;
@@ -1085,7 +1349,8 @@ export default function App() {
   const [clienteActual, setClienteActual] = useState({
     doc: 'V-00000000',
     nombre: 'Consumidor Final',
-    telefono: ''
+    telefono: '',
+    saldoPendienteUSD: 0
   });
 
   const [tasaCambio, setTasaCambio] = useState(45.50);
@@ -1098,13 +1363,13 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('pos_productos_v11', JSON.stringify(productos));
+      localStorage.setItem('pos_productos_v15', JSON.stringify(productos));
     } catch (e) {}
   }, [productos]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('pos_clientes_v11', JSON.stringify(clientes));
+      localStorage.setItem('pos_clientes_v15', JSON.stringify(clientes));
     } catch (e) {}
   }, [clientes]);
 
@@ -1159,7 +1424,7 @@ export default function App() {
 
   const limpiarCarrito = () => {
     setCarrito([]);
-    setClienteActual({ doc: 'V-00000000', nombre: 'Consumidor Final', telefono: '' });
+    setClienteActual({ doc: 'V-00000000', nombre: 'Consumidor Final', telefono: '', saldoPendienteUSD: 0 });
   };
 
   const tasaNum = parseFloat(tasaCambio) || 0;
@@ -1182,7 +1447,43 @@ export default function App() {
         actualizados[index] = { ...actualizados[index], ...nuevoCliente };
         return actualizados;
       }
-      return [...actuales, { id: Date.now(), ...nuevoCliente }];
+      return [...actuales, { id: Date.now(), saldoPendienteUSD: 0, ...nuevoCliente }];
+    });
+  };
+
+  const registrarAbonoCliente = (clienteId, montoAbonadoUSD, desglose) => {
+    setClientes((actuales) => {
+      return actuales.map(c => {
+        if (c.id === clienteId) {
+          const nuevoSaldo = Math.max(0, (c.saldoPendienteUSD || 0) - montoAbonadoUSD);
+          
+          if (c.telefono) {
+            let t = "*COMPROBANTE DE ABONO*\n";
+            t += "COMERCIALIZADORA POS C.A.\n";
+            t += "--------------------------------\n";
+            t += "Cliente:    " + c.nombre + "\n";
+            t += "Doc:        " + c.doc + "\n";
+            t += "Fecha/Hora: " + new Date().toLocaleString('es-VE') + "\n";
+            t += "Tasa BCV:   Bs. " + tasaCambio.toFixed(2) + "\n";
+            t += "--------------------------------\n";
+            t += "MONTO ABONADO:  $" + montoAbonadoUSD.toFixed(2) + "\n";
+            t += "En Bolívares:   Bs. " + (montoAbonadoUSD * tasaNum).toFixed(2) + "\n";
+            t += "--------------------------------\n";
+            t += "*SALDO RESTANTE:* $" + nuevoSaldo.toFixed(2) + "\n";
+            t += "En Bolívares:   Bs. " + (nuevoSaldo * tasaNum).toFixed(2) + "\n";
+            t += "--------------------------------\n";
+            t += "¡Gracias por su pago puntual!\n";
+
+            const b = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
+            const msg = b + "\n" + t + b;
+            const telf = c.telefono.replace(/\D/g, '');
+            window.open("https://wa.me/" + telf + "?text=" + encodeURIComponent(msg), '_blank');
+          }
+
+          return { ...c, saldoPendienteUSD: nuevoSaldo };
+        }
+        return c;
+      });
     });
   };
 
@@ -1194,6 +1495,23 @@ export default function App() {
       items: [...carrito],
       ...datos
     };
+
+    if (datos.esCredito && parseFloat(datos.saldoDeudaUSD) > 0) {
+      setClientes((actuales) => {
+        const index = actuales.findIndex(c => c.doc.toUpperCase() === datos.cliente.doc.toUpperCase());
+        const incremento = parseFloat(datos.saldoDeudaUSD);
+        if (index >= 0) {
+          const actualizados = [...actuales];
+          const saldoAnterior = actualizados[index].saldoPendienteUSD || 0;
+          actualizados[index] = { 
+            ...actualizados[index], 
+            saldoPendienteUSD: saldoAnterior + incremento 
+          };
+          return actualizados;
+        }
+        return [...actuales, { id: Date.now(), ...datos.cliente, saldoPendienteUSD: incremento }];
+      });
+    }
 
     setProductos((prodsActuales) => {
       return prodsActuales.map((p) => {
@@ -1238,18 +1556,40 @@ export default function App() {
     );
   }
 
+  if (vistaActual === 'creditos') {
+    return (
+      <ModuloCreditos 
+        clientes={clientes}
+        tasaCambio={tasaCambio}
+        alRegistrarAbono={registrarAbonoCliente}
+        alVolver={() => setVistaActual('pos')}
+      />
+    );
+  }
+
+  const clientesMorosos = clientes.filter(c => (c.saldoPendienteUSD || 0) > 0.01).length;
+
   return (
     <div style={styles.contenedor} translate="no">
       <header style={styles.header}>
         <div>
           <h1 style={styles.titulo}>Punto de Venta POS</h1>
-          <button 
-            type="button"
-            onClick={() => setVistaActual('inventario')} 
-            style={styles.btnIrInventario}
-          >
-            <Package size={14} /> Gestionar Inventario
-          </button>
+          <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+            <button 
+              type="button"
+              onClick={() => setVistaActual('inventario')} 
+              style={styles.btnIrInventario}
+            >
+              <Package size={13} /> Inventario
+            </button>
+            <button 
+              type="button"
+              onClick={() => setVistaActual('creditos')} 
+              style={{ ...styles.btnIrInventario, backgroundColor: clientesMorosos > 0 ? '#fff3e0' : '#e6f0ff', color: clientesMorosos > 0 ? '#e65100' : '#0052cc' }}
+            >
+              <BookOpen size={13} /> Créditos {clientesMorosos > 0 ? `(${clientesMorosos})` : ''}
+            </button>
+          </div>
         </div>
         <div style={styles.boxTasa}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1286,15 +1626,22 @@ export default function App() {
               if (encontrado) {
                 setClienteActual(encontrado);
               } else {
-                setClienteActual(prev => ({ ...prev, doc: valor, nombre: valor ? 'Cliente Nuevo' : 'Consumidor Final' }));
+                setClienteActual(prev => ({ ...prev, doc: valor, nombre: valor ? 'Cliente Nuevo' : 'Consumidor Final', saldoPendienteUSD: 0 }));
               }
             }}
             style={styles.inputDocMostrador}
           />
         </div>
-        <span style={styles.nombreClienteTag}>
-          {clienteActual.nombre}
-        </span>
+        <div style={{ textAlign: 'right' }}>
+          <span style={styles.nombreClienteTag}>
+            {clienteActual.nombre}
+          </span>
+          {clienteActual.saldoPendienteUSD > 0 && (
+            <div style={{ fontSize: '0.68rem', color: '#c62828', fontWeight: 'bold' }}>
+              Debe: ${clienteActual.saldoPendienteUSD.toFixed(2)}
+            </div>
+          )}
+        </div>
       </section>
 
       <section style={styles.seccionBuscador}>
@@ -1452,8 +1799,8 @@ const styles = {
   titulo: { margin: 0, fontSize: '1.05rem', color: '#111' },
   btnIrInventario: {
     background: '#e6f0ff', color: '#0052cc', border: 'none', borderRadius: '6px',
-    padding: '4px 8px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer',
-    marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px',
+    padding: '4px 8px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: '4px',
   },
   boxTasa: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' },
   btnSyncTasa: {
@@ -1470,11 +1817,11 @@ const styles = {
   },
   inputDocMostrador: {
     border: 'none', background: '#f1f5f9', padding: '6px 10px', borderRadius: '6px',
-    fontSize: '0.82rem', fontWeight: 'bold', width: '180px', outline: 'none',
+    fontSize: '0.82rem', fontWeight: 'bold', width: '170px', outline: 'none',
   },
   nombreClienteTag: {
     fontSize: '0.78rem', color: '#334155', fontWeight: '600', maxWidth: '140px',
-    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block'
   },
   seccionBuscador: {
     padding: '10px 16px', backgroundColor: '#fff', display: 'flex', gap: '8px', borderBottom: '1px solid #e1e4e8',
@@ -1515,7 +1862,7 @@ const styles = {
   cantTexto: { fontWeight: 'bold', fontSize: '0.95rem' },
   subtotalItem: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flex: 1 },
   footer: {
-    backgroundColor: '#fff', padding: '14px 16px', borderTop: '1px solid #e1e4e8',
+    backgroundColor: '#fff', padding: '14px 16px 32px 16px', borderTop: '1px solid #e1e4e8',
     boxShadow: '0 -2px 10px rgba(0,0,0,0.05)',
   },
   filaTotales: { display: 'flex', justifyContent: 'space-between', marginBottom: '12px' },
