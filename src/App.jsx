@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   RefreshCw, Package, User, BookOpen, Wallet, Search, History, 
-  PauseCircle, PlayCircle, Settings, Store, TrendingUp, Tag, Percent
+  PauseCircle, PlayCircle, Settings, Store, TrendingUp, Tag, Percent,
+  LogOut, Users, ShieldCheck, UserCheck
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -14,6 +15,8 @@ import CajaModal from './components/CajaModal';
 import HistorialModal from './components/HistorialModal';
 import ConfiguracionModal from './components/ConfiguracionModal';
 import MetricasModal from './components/MetricasModal';
+import LoginModal from './components/LoginModal';
+import UsuariosModal from './components/UsuariosModal';
 
 const PRODUCTOS_INICIALES = [
   { id: 1, codigo: '7591001000123', nombre: 'Harina PAN Blanca 1kg', costoUSD: 0.92, precioUSD: 1.10, aplicaPrecioMayor: true, precioMayorUSD: 0.98, cantMinimaMayor: 3, stock: 50, categoria: 'Víveres', imagen: '' },
@@ -46,6 +49,30 @@ function normalizarDoc(str) {
 
 export default function App() {
   const [vistaActual, setVistaActual] = useState('pos');
+
+  const [cuentaMaster, setCuentaMaster] = useState(() => {
+    try {
+      const g = localStorage.getItem('pos_cuenta_dueno');
+      if (g) return JSON.parse(g);
+    } catch (e) {}
+    return null;
+  });
+
+  const [usuarioActivo, setUsuarioActivo] = useState(() => {
+    try {
+      const g = localStorage.getItem('pos_usuario_activo');
+      if (g) return JSON.parse(g);
+    } catch (e) {}
+    return null;
+  });
+
+  const [cajeros, setCajeros] = useState(() => {
+    try {
+      const g = localStorage.getItem('pos_cajeros_lista');
+      if (g) return JSON.parse(g);
+    } catch (e) {}
+    return [];
+  });
   
   const [configEmpresa, setConfigEmpresa] = useState(() => {
     try {
@@ -113,7 +140,6 @@ export default function App() {
   const [busquedaInput, setBusquedaInput] = useState('');
   const [mostrarPredictivo, setMostrarPredictivo] = useState(false);
 
-  // Estados de Descuento
   const [modalDescuentoAbierto, setModalDescuentoAbierto] = useState(false);
   const [tipoDescuento, setTipoDescuento] = useState('monto');
   const [valorDescuento, setValorDescuento] = useState('');
@@ -127,6 +153,9 @@ export default function App() {
   const inputRef = useRef(null);
   const wrapperRef = useRef(null);
 
+  useEffect(() => { try { localStorage.setItem('pos_cuenta_dueno', JSON.stringify(cuentaMaster)); } catch (e) {} }, [cuentaMaster]);
+  useEffect(() => { try { localStorage.setItem('pos_usuario_activo', JSON.stringify(usuarioActivo)); } catch (e) {} }, [usuarioActivo]);
+  useEffect(() => { try { localStorage.setItem('pos_cajeros_lista', JSON.stringify(cajeros)); } catch (e) {} }, [cajeros]);
   useEffect(() => { try { localStorage.setItem('pos_config_empresa', JSON.stringify(configEmpresa)); } catch (e) {} }, [configEmpresa]);
   useEffect(() => { try { localStorage.setItem('pos_prods_final', JSON.stringify(productos)); } catch (e) {} }, [productos]);
   useEffect(() => { try { localStorage.setItem('pos_clis_final', JSON.stringify(clientes)); } catch (e) {} }, [clientes]);
@@ -153,11 +182,41 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickAfuera);
   }, []);
 
-  // EXPORTAR COPIA DE SEGURIDAD (BACKUP JSON)
+  const registrarDueno = (datos) => {
+    setCuentaMaster(datos);
+    setConfigEmpresa(prev => ({ ...prev, nombre: datos.nombreNegocio }));
+    setUsuarioActivo({ rol: 'dueno', nombre: datos.nombreDueno });
+  };
+
+  const iniciarSesionDueno = (correo, password) => {
+    if (cuentaMaster && cuentaMaster.correo === correo && cuentaMaster.password === password) {
+      setUsuarioActivo({ rol: 'dueno', nombre: cuentaMaster.nombreDueno });
+      return true;
+    }
+    return false;
+  };
+
+  const iniciarSesionCajero = (cajeroId, pin) => {
+    const c = cajeros.find(item => item.id === cajeroId);
+    if (c && c.pin === pin) {
+      setUsuarioActivo({ rol: 'cajero', nombre: c.nombre, id: c.id });
+      return true;
+    }
+    return false;
+  };
+
+  const cerrarSesion = () => {
+    if (confirm('¿Cerrar sesión o bloquear la pantalla de caja?')) {
+      setUsuarioActivo(null);
+    }
+  };
+
   const exportarBackupCompleto = () => {
     const backupData = {
-      version: '1.4.0',
+      version: '1.5.0',
       fechaExportacion: new Date().toISOString(),
+      cuentaMaster,
+      cajeros,
       configEmpresa,
       productos,
       clientes,
@@ -177,8 +236,9 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  // RESTAURAR COPIA DE SEGURIDAD
   const importarBackupCompleto = (datos) => {
+    if (datos.cuentaMaster) setCuentaMaster(datos.cuentaMaster);
+    if (Array.isArray(datos.cajeros)) setCajeros(datos.cajeros);
     if (datos.configEmpresa) setConfigEmpresa(datos.configEmpresa);
     if (Array.isArray(datos.productos)) setProductos(datos.productos);
     if (Array.isArray(datos.clientes)) setClientes(datos.clientes);
@@ -373,6 +433,7 @@ export default function App() {
       id: idTicket,
       tipo: 'venta',
       anulada: false,
+      cajeroCobrador: usuarioActivo ? `${usuarioActivo.nombre} (${usuarioActivo.rol === 'dueno' ? 'Dueño' : 'Cajero'})` : 'Caja Principal',
       items: [...carrito],
       subtotalUSD: subtotalUSD.toFixed(2),
       descuentoUSD: montoDescuentoCalculado.toFixed(2),
@@ -471,9 +532,23 @@ export default function App() {
   });
   const saldoActualMostrador = clienteEncontrado ? (clienteEncontrado.saldoPendienteUSD || 0) : (clienteActual.saldoPendienteUSD || 0);
 
+  if (!usuarioActivo) {
+    return (
+      <LoginModal 
+        cuentaMaster={cuentaMaster}
+        cajeros={cajeros}
+        alRegistrarDueno={registrarDueno}
+        alIniciarSesionDueno={iniciarSesionDueno}
+        alIniciarSesionCajero={iniciarSesionCajero}
+      />
+    );
+  }
+
+  const esDueno = usuarioActivo.rol === 'dueno';
+
   return (
     <div style={styles.contenedor} translate="no">
-      {vistaActual === 'configuracion' && (
+      {vistaActual === 'configuracion' && esDueno && (
         <ConfiguracionModal 
           config={configEmpresa}
           alGuardarConfig={(nuevaConfig) => setConfigEmpresa(nuevaConfig)}
@@ -483,7 +558,26 @@ export default function App() {
         />
       )}
 
-      {vistaActual === 'metricas' && (
+      {vistaActual === 'usuarios' && esDueno && (
+        <UsuariosModal 
+          cajeros={cajeros}
+          alGuardarCajero={(cajero) => {
+            setCajeros(prev => {
+              const idx = prev.findIndex(item => item.id === cajero.id);
+              if (idx >= 0) {
+                const copia = [...prev];
+                copia[idx] = cajero;
+                return copia;
+              }
+              return [...prev, cajero];
+            });
+          }}
+          alEliminarCajero={(id) => setCajeros(prev => prev.filter(c => c.id !== id))}
+          alVolver={() => setVistaActual('pos')}
+        />
+      )}
+
+      {vistaActual === 'metricas' && esDueno && (
         <MetricasModal 
           transaccionesTurno={transacciones}
           historicoGlobal={historicoVentasGlobal}
@@ -496,6 +590,7 @@ export default function App() {
       {vistaActual === 'inventario' && (
         <InventarioModal 
           productos={productos}
+          esDueno={esDueno}
           alGuardarProducto={(p) => setProductos(prev => {
             const idx = prev.findIndex(item => item.id === p.id);
             if (idx >= 0) { const cp = [...prev]; cp[idx] = p; return cp; }
@@ -545,57 +640,135 @@ export default function App() {
       {/* MOSTRADOR POS PRINCIPAL */}
       {vistaActual === 'pos' && (
         <>
+          {/* CABECERA RESPONSIVA ADAPTATIVA */}
           <header style={styles.topHeader}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-              {configEmpresa.logo ? (
-                <img src={configEmpresa.logo} alt="Logo" style={styles.logoMini} />
-              ) : (
-                <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
-              )}
-              <div style={{ minWidth: 0 }}>
-                <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
-                <div style={styles.statusBadge}>
-                  <span style={styles.puntoVerde}></span>
-                  <span>Caja 01 · Activa</span>
-                </div>
-              </div>
-            </div>
+            {esDueno ? (
+              /* MODO DUEÑO: 2 FILAS EQUILIBRADAS */
+              <>
+                <div style={styles.headerFila1}>
+                  <div style={styles.marcaContainer}>
+                    {configEmpresa.logo ? (
+                      <img src={configEmpresa.logo} alt="Logo" style={styles.logoMini} />
+                    ) : (
+                      <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
+                    )}
+                    <div style={styles.infoNegocio}>
+                      <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
+                      <div style={{ ...styles.badgeRol, backgroundColor: '#f0fdf4', color: '#15803d' }}>
+                        <ShieldCheck size={11} color="#16a34a" />
+                        <span>Dueño: {usuarioActivo.nombre}</span>
+                      </div>
+                    </div>
+                  </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-              <div style={styles.tasaChip}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                  <span style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
-                  <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar tasa BCV">
-                    <RefreshCw size={10} color="#0052cc" />
+                  <button 
+                    type="button" 
+                    onClick={cerrarSesion} 
+                    style={styles.btnLogout} 
+                    title="Cerrar Turno / Salir"
+                  >
+                    <LogOut size={14} color="#dc2626" />
+                    <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#dc2626' }}>Salir</span>
                   </button>
                 </div>
-                <input 
-                  type="number" 
-                  step="any" 
-                  value={tasaCambio} 
-                  onChange={(e) => setTasaCambio(e.target.value)} 
-                  style={styles.inputTasaMini} 
-                />
+
+                <div style={styles.headerFila2}>
+                  <div style={styles.tasaChip}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      <span style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
+                      <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar BCV">
+                        <RefreshCw size={10} color="#0052cc" />
+                      </button>
+                    </div>
+                    <input 
+                      type="number" 
+                      step="any" 
+                      value={tasaCambio} 
+                      onChange={(e) => setTasaCambio(e.target.value)} 
+                      style={styles.inputTasaMini} 
+                    />
+                  </div>
+
+                  <div style={styles.grupoBotonesDueno}>
+                    <button 
+                      type="button" 
+                      onClick={() => setVistaActual('usuarios')} 
+                      style={styles.btnPillHeader} 
+                      title="Personal y Cajeros"
+                    >
+                      <Users size={14} color="#0052cc" />
+                      <span>Cajeros</span>
+                    </button>
+
+                    <button 
+                      type="button" 
+                      onClick={() => setVistaActual('metricas')} 
+                      style={styles.btnPillHeader} 
+                      title="Rendimiento y Ganancias"
+                    >
+                      <TrendingUp size={14} color="#16a34a" />
+                      <span>Ganancias</span>
+                    </button>
+
+                    <button 
+                      type="button" 
+                      onClick={() => setVistaActual('configuracion')} 
+                      style={styles.btnPillHeader} 
+                      title="Configuración"
+                    >
+                      <Settings size={14} color="#475569" />
+                      <span>Ajustes</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* MODO CAJERO: 1 SOLA FILA LIMPIA */
+              <div style={styles.headerFilaUnicaCajero}>
+                <div style={styles.marcaContainer}>
+                  {configEmpresa.logo ? (
+                    <img src={configEmpresa.logo} alt="Logo" style={styles.logoMini} />
+                  ) : (
+                    <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
+                  )}
+                  <div style={styles.infoNegocio}>
+                    <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
+                    <div style={{ ...styles.badgeRol, backgroundColor: '#eff6ff', color: '#1d4ed8' }}>
+                      <UserCheck size={11} color="#2563eb" />
+                      <span>Cajero: {usuarioActivo.nombre}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={styles.tasaChip}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      <span style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
+                      <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar BCV">
+                        <RefreshCw size={10} color="#0052cc" />
+                      </button>
+                    </div>
+                    <input 
+                      type="number" 
+                      step="any" 
+                      value={tasaCambio} 
+                      onChange={(e) => setTasaCambio(e.target.value)} 
+                      style={styles.inputTasaMini} 
+                    />
+                  </div>
+
+                  <button 
+                    type="button" 
+                    onClick={cerrarSesion} 
+                    style={styles.btnLogout} 
+                    title="Cerrar Turno / Salir"
+                  >
+                    <LogOut size={14} color="#dc2626" />
+                    <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#dc2626' }}>Salir</span>
+                  </button>
+                </div>
               </div>
-
-              <button 
-                type="button" 
-                onClick={() => setVistaActual('metricas')} 
-                style={styles.btnMetricas} 
-                title="Rendimiento y Ganancias"
-              >
-                <TrendingUp size={17} color="#16a34a" />
-              </button>
-
-              <button 
-                type="button" 
-                onClick={() => setVistaActual('configuracion')} 
-                style={styles.btnAjustes} 
-                title="Configuración"
-              >
-                <Settings size={17} color="#475569" />
-              </button>
-            </div>
+            )}
           </header>
 
           <nav style={styles.barraModulos}>
@@ -764,7 +937,6 @@ export default function App() {
             )}
           </main>
 
-          {/* FOOTER TOTALES CON BOTÓN DE DESCUENTO */}
           <footer style={styles.footer}>
             {carrito.length > 0 && (
               <div style={styles.barraDescuentoLive}>
@@ -818,7 +990,7 @@ export default function App() {
         </>
       )}
 
-      {/* MODAL PARA APLICAR DESCUENTO O REBAJA */}
+      {/* MODAL DESCUENTO */}
       {modalDescuentoAbierto && (
         <div style={styles.overlay} translate="no">
           <div style={styles.modalBox}>
@@ -975,17 +1147,27 @@ export default function App() {
 
 const styles = {
   contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#f8fafc' },
-  topHeader: { padding: '8px 12px', backgroundColor: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
+  topHeader: { padding: '8px 12px 6px 12px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #e2e8f0', flexShrink: 0, gap: '6px' },
+  
+  headerFila1: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
+  headerFilaUnicaCajero: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
+  
+  marcaContainer: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 },
   logoMini: { width: '32px', height: '32px', borderRadius: '8px', objectFit: 'contain', border: '1px solid #e2e8f0', flexShrink: 0 },
   avatarIcon: { width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  nombreNegocio: { margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  statusBadge: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.62rem', color: '#64748b' },
-  puntoVerde: { width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e', flexShrink: 0 },
-  tasaChip: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', backgroundColor: '#f8fafc', padding: '2px 6px', borderRadius: '6px', border: '1px solid #cbd5e1' },
+  infoNegocio: { display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' },
+  nombreNegocio: { margin: 0, fontSize: '0.88rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  badgeRol: { display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 6px', borderRadius: '4px', marginTop: '1px', width: 'fit-content' },
+  btnLogout: { background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '8px', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', flexShrink: 0 },
+  
+  headerFila2: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '6px' },
+  tasaChip: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc', padding: '3px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
   btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
-  inputTasaMini: { width: '65px', padding: 0, border: 'none', background: 'transparent', textAlign: 'right', fontWeight: 'bold', fontSize: '0.78rem', color: '#0f172a', outline: 'none' },
-  btnMetricas: { background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
-  btnAjustes: { background: '#f1f5f9', border: 'none', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
+  inputTasaMini: { width: '60px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.76rem', color: '#0f172a', outline: 'none' },
+  
+  grupoBotonesDueno: { display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'flex-end' },
+  btnPillHeader: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 'bold', color: '#334155' },
+
   barraModulos: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', padding: '6px 12px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   btnTabItem: { background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', cursor: 'pointer', padding: '2px 0' },
   iconoTab: { position: 'relative', width: '38px', height: '36px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' },

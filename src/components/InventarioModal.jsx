@@ -12,7 +12,14 @@ const CATEGORIAS_CONFIG = [
   { nombre: 'Otros', margen: 30, exento: false }
 ];
 
-export default function InventarioModal({ productos, alGuardarProducto, alEliminarProducto, alVolver, alAbrirCamara }) {
+export default function InventarioModal({ 
+  productos, 
+  esDueno = false, 
+  alGuardarProducto, 
+  alEliminarProducto, 
+  alVolver, 
+  alAbrirCamara 
+}) {
   const [busqueda, setBusqueda] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('Todas');
   const [modalFormAbierto, setModalFormAbierto] = useState(false);
@@ -44,6 +51,7 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
   const productoExistente = productos.find(p => p.codigo && p.codigo === codigo.trim() && (!prodEditando || prodEditando.id !== p.id));
 
   const abrirFormulario = (producto = null) => {
+    if (!esDueno) return;
     if (producto) {
       setProdEditando(producto);
       setCodigo(producto.codigo || '');
@@ -56,7 +64,6 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
       setPrecioVentaUSD(producto.precioUSD.toString());
       setAplicaIVA(Boolean(producto.aplicaIVA));
       
-      // Cargar datos de precio al mayor
       setAplicaPrecioMayor(Boolean(producto.aplicaPrecioMayor));
       setPrecioMayorUSD(producto.precioMayorUSD ? producto.precioMayorUSD.toString() : '');
       setCantMinimaMayor(producto.cantMinimaMayor ? producto.cantMinimaMayor.toString() : '3');
@@ -144,11 +151,11 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
 
   const guardar = (e) => {
     e.preventDefault();
+    if (!esDueno) return;
     if (!nombre.trim() || !precioVentaUSD) return alert('Nombre y precio de venta son requeridos.');
 
     const cUnit = parseFloat(costoUnitario) || 0;
     const pVenta = parseFloat(precioVentaUSD) || 0;
-
     const targetId = productoExistente ? productoExistente.id : (prodEditando ? prodEditando.id : Date.now());
 
     const productoFinal = {
@@ -188,12 +195,18 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
           <button type="button" onClick={alVolver} style={styles.btnBack}><ArrowLeft color="#333" size={20} /></button>
           <div>
             <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#111' }}>Inventario de Productos</h2>
-            <small style={{ color: '#666', fontSize: '0.72rem' }}>{productos.length} ítems en stock</small>
+            <small style={{ color: '#666', fontSize: '0.72rem' }}>
+              {productos.length} ítems en catálogo {esDueno ? '· Modo Dueño' : '· Consulta Cajero'}
+            </small>
           </div>
         </div>
-        <button type="button" onClick={() => abrirFormulario(null)} style={styles.btnNuevo}>
-          <Plus size={16} /> Nuevo
-        </button>
+
+        {/* SOLO EL DUEÑO PUEDE CREAR PRODUCTOS */}
+        {esDueno && (
+          <button type="button" onClick={() => abrirFormulario(null)} style={styles.btnNuevo}>
+            <Plus size={16} /> Nuevo
+          </button>
+        )}
       </header>
 
       {/* FILTROS Y BÚSQUEDA */}
@@ -259,7 +272,9 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                   <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
                     Cód: {p.codigo} · Stock: <strong style={{ color: p.stock <= 5 ? '#dc2626' : '#0f172a' }}>{p.stock}</strong> und.
                   </div>
-                  {p.costoUSD > 0 && (
+
+                  {/* COSTOS Y GANANCIAS VISIBLES ÚNICAMENTE PARA EL DUEÑO */}
+                  {esDueno && p.costoUSD > 0 && (
                     <div style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: '600', marginTop: '2px' }}>
                       Costo: ${p.costoUSD.toFixed(2)} | Ganancia: +${gan}
                     </div>
@@ -268,10 +283,14 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
 
                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                   <div style={{ fontSize: '1.05rem', fontWeight: '900', color: '#0052cc' }}>${p.precioUSD.toFixed(2)}</div>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button type="button" onClick={() => abrirFormulario(p)} style={styles.btnAccionEdit} title="Editar"><Edit3 size={13} /></button>
-                    <button type="button" onClick={() => alEliminarProducto(p.id)} style={styles.btnAccionDel} title="Eliminar"><Trash2 size={13} /></button>
-                  </div>
+                  
+                  {/* BOTONES DE EDICIÓN VISIBLES ÚNICAMENTE PARA EL DUEÑO */}
+                  {esDueno && (
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button type="button" onClick={() => abrirFormulario(p)} style={styles.btnAccionEdit} title="Editar"><Edit3 size={13} /></button>
+                      <button type="button" onClick={() => alEliminarProducto(p.id)} style={styles.btnAccionDel} title="Eliminar"><Trash2 size={13} /></button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -279,8 +298,8 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
         )}
       </div>
 
-      {/* FORMULARIO */}
-      {modalFormAbierto && (
+      {/* FORMULARIO (SOLO ACCESIBLE SI ES DUEÑO) */}
+      {modalFormAbierto && esDueno && (
         <div style={styles.overlay} translate="no">
           <div style={styles.modalBox}>
             <div style={styles.modalHeader}>
@@ -292,7 +311,6 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
 
             <form onSubmit={guardar} style={styles.formScroll}>
               
-              {/* CÓDIGO */}
               <div style={styles.campo}>
                 <label style={styles.label}>Código de Barras:</label>
                 <div style={{ display: 'flex', gap: '6px' }}>
@@ -316,7 +334,6 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                 </div>
               </div>
 
-              {/* AVISO DE REABASTECIMIENTO */}
               {productoExistente && (
                 <div style={styles.alertaExistente}>
                   <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -328,7 +345,6 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                 </div>
               )}
 
-              {/* NOMBRE */}
               <div style={styles.campo}>
                 <label style={styles.label}>Nombre del Producto:</label>
                 <input
@@ -341,7 +357,6 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                 />
               </div>
 
-              {/* CATEGORÍA E IMPUESTO */}
               <div style={{ display: 'flex', gap: '8px' }}>
                 <div style={{ ...styles.campo, flex: 1.4 }}>
                   <label style={styles.label}>Categoría:</label>
@@ -373,7 +388,6 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                 </div>
               </div>
 
-              {/* ENTRADA POR BULTO O POR UNIDAD */}
               <div style={styles.boxCalculadora}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '0.74rem', fontWeight: 'bold', color: '#1e293b' }}>
@@ -476,7 +490,6 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                   </div>
                 )}
 
-                {/* MARGEN DE GANANCIA */}
                 <div style={{ marginTop: '8px' }}>
                   <label style={styles.labelMini}>Margen Ganancia Deseado (%):</label>
                   <input
@@ -493,7 +506,6 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                 </div>
               </div>
 
-              {/* PRECIO DE VENTA AL DETAL */}
               <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                 <div style={{ ...styles.campo, flex: 1.2 }}>
                   <label style={{ ...styles.label, color: '#0052cc' }}>Precio Venta al Detal ($):</label>
@@ -517,7 +529,6 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                 </div>
               </div>
 
-              {/* SECCIÓN CONFIGURACIÓN PRECIO AL MAYOR */}
               <div style={styles.boxMayorista}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -564,7 +575,6 @@ export default function InventarioModal({ productos, alGuardarProducto, alElimin
                 )}
               </div>
 
-              {/* GANANCIA ESTIMADA */}
               {pNum > 0 && cNum > 0 && (
                 <div style={styles.bannerGanancia}>
                   <span>Ganancia Neta por Unidad:</span>
