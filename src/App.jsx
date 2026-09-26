@@ -3,7 +3,7 @@ import {
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   RefreshCw, Package, User, BookOpen, Wallet, Search, History, 
   PauseCircle, PlayCircle, Settings, Store, TrendingUp, Tag, Percent,
-  LogOut, Users, ShieldCheck, UserCheck
+  LogOut, Users, ShieldCheck, UserCheck, Cloud, CloudOff
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -17,6 +17,7 @@ import ConfiguracionModal from './components/ConfiguracionModal';
 import MetricasModal from './components/MetricasModal';
 import LoginModal from './components/LoginModal';
 import UsuariosModal from './components/UsuariosModal';
+import { apiService } from './services/api';
 
 const PRODUCTOS_INICIALES = [
   { id: 1, codigo: '7591001000123', nombre: 'Harina PAN Blanca 1kg', costoUSD: 0.92, precioUSD: 1.10, aplicaPrecioMayor: true, precioMayorUSD: 0.98, cantMinimaMayor: 3, stock: 50, categoria: 'Víveres', imagen: '' },
@@ -49,6 +50,7 @@ function normalizarDoc(str) {
 
 export default function App() {
   const [vistaActual, setVistaActual] = useState('pos');
+  const [onlineBackend, setOnlineBackend] = useState(false);
 
   const [cuentaMaster, setCuentaMaster] = useState(() => {
     try {
@@ -173,24 +175,58 @@ export default function App() {
     } catch (e) {}
   };
 
+  const verificarConexionBackend = async () => {
+    const negocioTarget = cuentaMaster?.negocioId || usuarioActivo?.negocioId;
+    if (negocioTarget) {
+      const res = await apiService.consultarLicencia(negocioTarget);
+      setOnlineBackend(Boolean(res));
+    }
+  };
+
   useEffect(() => {
     obtenerTasaBCV();
+    verificarConexionBackend();
+    const intervalo = setInterval(verificarConexionBackend, 30000);
     function handleClickAfuera(e) {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setMostrarPredictivo(false);
     }
     document.addEventListener('mousedown', handleClickAfuera);
-    return () => document.removeEventListener('mousedown', handleClickAfuera);
-  }, []);
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener('mousedown', handleClickAfuera);
+    };
+  }, [cuentaMaster, usuarioActivo]);
 
-  const registrarDueno = (datos) => {
-    setCuentaMaster(datos);
+  const registrarDueno = async (datos) => {
+    const resBackend = await apiService.registrarDueno(datos);
+    const negocioId = resBackend?.negocio?.id || 'neg_local_' + Date.now();
+    const token = resBackend?.token || '';
+
+    const cuentaFinal = {
+      ...datos,
+      negocioId,
+      token,
+      licenciaHasta: resBackend?.negocio?.licenciaHasta || null
+    };
+
+    setCuentaMaster(cuentaFinal);
     setConfigEmpresa(prev => ({ ...prev, nombre: datos.nombreNegocio }));
-    setUsuarioActivo({ rol: 'dueno', nombre: datos.nombreDueno });
+    setUsuarioActivo({ rol: 'dueno', nombre: datos.nombreDueno, negocioId });
+    setOnlineBackend(Boolean(resBackend));
   };
 
-  const iniciarSesionDueno = (correo, password) => {
-    if (cuentaMaster && cuentaMaster.correo === correo && cuentaMaster.password === password) {
-      setUsuarioActivo({ rol: 'dueno', nombre: cuentaMaster.nombreDueno });
+  const iniciarSesionDueno = async (correo, password) => {
+    const res = await apiService.loginDueno(correo, password);
+    if (res && res.usuario) {
+      setUsuarioActivo({ rol: 'dueno', nombre: res.usuario.nombre, negocioId: res.negocio.id });
+      setCuentaMaster(prev => ({
+        ...prev,
+        token: res.token,
+        negocioId: res.negocio.id,
+        licenciaHasta: res.negocio.licenciaHasta,
+        password: password
+      }));
+      setOnlineBackend(true);
       return true;
     }
     return false;
@@ -199,7 +235,7 @@ export default function App() {
   const iniciarSesionCajero = (cajeroId, pin) => {
     const c = cajeros.find(item => item.id === cajeroId);
     if (c && c.pin === pin) {
-      setUsuarioActivo({ rol: 'cajero', nombre: c.nombre, id: c.id });
+      setUsuarioActivo({ rol: 'cajero', nombre: c.nombre, id: c.id, negocioId: cuentaMaster?.negocioId });
       return true;
     }
     return false;
@@ -213,7 +249,7 @@ export default function App() {
 
   const exportarBackupCompleto = () => {
     const backupData = {
-      version: '1.5.0',
+      version: '1.6.0',
       fechaExportacion: new Date().toISOString(),
       cuentaMaster,
       cajeros,
@@ -444,6 +480,13 @@ export default function App() {
     setTransacciones(prev => [ventaCompleta, ...prev]);
     setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
 
+    const negocioTarget = cuentaMaster?.negocioId || usuarioActivo?.negocioId;
+    if (negocioTarget) {
+      apiService.sincronizarVentas(negocioTarget, [ventaCompleta]).then(r => {
+        if (r) setOnlineBackend(true);
+      });
+    }
+
     if (datos.esCredito && parseFloat(datos.saldoDeudaUSD) > 0) {
       setClientes(actuales => {
         const nTarget = normalizarDoc(datos.cliente.doc);
@@ -571,6 +614,10 @@ export default function App() {
               }
               return [...prev, cajero];
             });
+            const negocioTarget = cuentaMaster?.negocioId || usuarioActivo?.negocioId;
+            if (negocioTarget) {
+              apiService.crearCajero(negocioTarget, cajero.nombre, cajero.pin);
+            }
           }}
           alEliminarCajero={(id) => setCajeros(prev => prev.filter(c => c.id !== id))}
           alVolver={() => setVistaActual('pos')}
@@ -640,10 +687,8 @@ export default function App() {
       {/* MOSTRADOR POS PRINCIPAL */}
       {vistaActual === 'pos' && (
         <>
-          {/* CABECERA RESPONSIVA ADAPTATIVA */}
           <header style={styles.topHeader}>
             {esDueno ? (
-              /* MODO DUEÑO: 2 FILAS EQUILIBRADAS */
               <>
                 <div style={styles.headerFila1}>
                   <div style={styles.marcaContainer}>
@@ -653,7 +698,14 @@ export default function App() {
                       <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
                     )}
                     <div style={styles.infoNegocio}>
-                      <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
+                        {onlineBackend ? (
+                          <span title="Sincronizado con la nube" style={styles.badgeOnline}><Cloud size={11} /> Nube</span>
+                        ) : (
+                          <span title="Modo local offline" style={styles.badgeOffline}><CloudOff size={11} /> Local</span>
+                        )}
+                      </div>
                       <div style={{ ...styles.badgeRol, backgroundColor: '#f0fdf4', color: '#15803d' }}>
                         <ShieldCheck size={11} color="#16a34a" />
                         <span>Dueño: {usuarioActivo.nombre}</span>
@@ -723,7 +775,6 @@ export default function App() {
                 </div>
               </>
             ) : (
-              /* MODO CAJERO: 1 SOLA FILA LIMPIA */
               <div style={styles.headerFilaUnicaCajero}>
                 <div style={styles.marcaContainer}>
                   {configEmpresa.logo ? (
@@ -732,7 +783,14 @@ export default function App() {
                     <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
                   )}
                   <div style={styles.infoNegocio}>
-                    <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
+                      {onlineBackend ? (
+                        <span title="Sincronizado con la nube" style={styles.badgeOnline}><Cloud size={11} /> Nube</span>
+                      ) : (
+                        <span title="Modo local offline" style={styles.badgeOffline}><CloudOff size={11} /> Local</span>
+                      )}
+                    </div>
                     <div style={{ ...styles.badgeRol, backgroundColor: '#eff6ff', color: '#1d4ed8' }}>
                       <UserCheck size={11} color="#2563eb" />
                       <span>Cajero: {usuarioActivo.nombre}</span>
@@ -990,7 +1048,6 @@ export default function App() {
         </>
       )}
 
-      {/* MODAL DESCUENTO */}
       {modalDescuentoAbierto && (
         <div style={styles.overlay} translate="no">
           <div style={styles.modalBox}>
@@ -1158,6 +1215,8 @@ const styles = {
   infoNegocio: { display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' },
   nombreNegocio: { margin: 0, fontSize: '0.88rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   badgeRol: { display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 6px', borderRadius: '4px', marginTop: '1px', width: 'fit-content' },
+  badgeOnline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.58rem', fontWeight: 'bold', backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 4px', borderRadius: '4px' },
+  badgeOffline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.58rem', fontWeight: 'bold', backgroundColor: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: '4px' },
   btnLogout: { background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '8px', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', flexShrink: 0 },
   
   headerFila2: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '6px' },
