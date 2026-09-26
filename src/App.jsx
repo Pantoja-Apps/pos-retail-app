@@ -3,7 +3,7 @@ import {
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   RefreshCw, Package, User, BookOpen, Wallet, Search, History, 
   PauseCircle, PlayCircle, Settings, Store, TrendingUp, Tag, Percent,
-  LogOut, Users, ShieldCheck, UserCheck, Cloud, CloudOff
+  LogOut, Users, ShieldCheck, UserCheck, Cloud, CloudOff, AlertOctagon, PhoneCall, PartyPopper, CheckCircle2, Sparkles
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -51,6 +51,12 @@ function normalizarDoc(str) {
 export default function App() {
   const [vistaActual, setVistaActual] = useState('pos');
   const [onlineBackend, setOnlineBackend] = useState(false);
+  const [licenciaBloqueada, setLicenciaBloqueada] = useState(false);
+  const [modalReactivado, setModalReactivado] = useState(false);
+  const [infoLicencia, setInfoLicencia] = useState(null);
+
+  const prevBloqueadaRef = useRef(false);
+  const prevVenceRef = useRef(null);
 
   const [cuentaMaster, setCuentaMaster] = useState(() => {
     try {
@@ -179,14 +185,35 @@ export default function App() {
     const negocioTarget = cuentaMaster?.negocioId || usuarioActivo?.negocioId;
     if (negocioTarget) {
       const res = await apiService.consultarLicencia(negocioTarget);
-      setOnlineBackend(Boolean(res));
+      if (res) {
+        setOnlineBackend(true);
+        setInfoLicencia(res);
+
+        if (res.activa === false) {
+          setLicenciaBloqueada(true);
+          prevBloqueadaRef.current = true;
+        } else {
+          // Detectar si fue reactivada de una suspensión O si se extendieron días desde el panel
+          const fechaVenceActual = new Date(res.licenciaHasta).getTime();
+          const fechaPrevia = prevVenceRef.current ? new Date(prevVenceRef.current).getTime() : null;
+
+          if (prevBloqueadaRef.current || (fechaPrevia && fechaVenceActual > fechaPrevia)) {
+            setModalReactivado(true);
+            prevBloqueadaRef.current = false;
+          }
+          prevVenceRef.current = res.licenciaHasta;
+          setLicenciaBloqueada(false);
+        }
+      } else {
+        setOnlineBackend(false);
+      }
     }
   };
 
   useEffect(() => {
     obtenerTasaBCV();
     verificarConexionBackend();
-    const intervalo = setInterval(verificarConexionBackend, 30000);
+    const intervalo = setInterval(verificarConexionBackend, 8000);
     function handleClickAfuera(e) {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setMostrarPredictivo(false);
     }
@@ -218,6 +245,10 @@ export default function App() {
   const iniciarSesionDueno = async (correo, password) => {
     const res = await apiService.loginDueno(correo, password);
     if (res && res.usuario) {
+      if (res.negocio.suscripcionVencida) {
+        setLicenciaBloqueada(true);
+        prevBloqueadaRef.current = true;
+      }
       setUsuarioActivo({ rol: 'dueno', nombre: res.usuario.nombre, negocioId: res.negocio.id });
       setCuentaMaster(prev => ({
         ...prev,
@@ -249,7 +280,7 @@ export default function App() {
 
   const exportarBackupCompleto = () => {
     const backupData = {
-      version: '1.6.0',
+      version: '1.7.0',
       fechaExportacion: new Date().toISOString(),
       cuentaMaster,
       cajeros,
@@ -575,6 +606,39 @@ export default function App() {
   });
   const saldoActualMostrador = clienteEncontrado ? (clienteEncontrado.saldoPendienteUSD || 0) : (clienteActual.saldoPendienteUSD || 0);
 
+  // 1. PANTALLA DE BLOQUEO POR SUSPENSIÓN
+  if (licenciaBloqueada) {
+    return (
+      <div style={styles.overlayBloqueo} translate="no">
+        <div style={styles.cardBloqueo}>
+          <div style={styles.iconoBloqueo}>
+            <AlertOctagon size={48} color="#ef4444" />
+          </div>
+          <h2 style={{ margin: '10px 0 4px 0', color: '#0f172a', fontSize: '1.25rem' }}>Servicio Suspendido</h2>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
+            La suscripción de <strong>{configEmpresa.nombre}</strong> no se encuentra activa en el servidor central.
+          </p>
+
+          <div style={styles.cajaAvisoContacto}>
+            <PhoneCall size={18} color="#0052cc" />
+            <div style={{ textAlign: 'left', fontSize: '0.76rem', color: '#1e293b' }}>
+              <div>Para reactivar el punto de venta o reportar tu pago, comunícate con soporte:</div>
+              <strong style={{ display: 'block', marginTop: '2px', color: '#0052cc' }}>soporte@pantojaapps.com</strong>
+            </div>
+          </div>
+
+          <button 
+            type="button" 
+            onClick={verificarConexionBackend} 
+            style={styles.btnReintentarLicencia}
+          >
+            <RefreshCw size={15} /> Verificar Pago / Reconectar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!usuarioActivo) {
     return (
       <LoginModal 
@@ -591,9 +655,58 @@ export default function App() {
 
   return (
     <div style={styles.contenedor} translate="no">
+      {/* 2. MODAL PREMIUM DE FELICITACIONES POR ACTIVACIÓN O RENOVACIÓN */}
+      {modalReactivado && (
+        <div style={styles.overlayFelicitacion} translate="no">
+          <div style={styles.cardFelicitacionPro}>
+            {/* Header decorativo verde */}
+            <div style={styles.bannerProTop}>
+              <div style={styles.iconoGlowCirculo}>
+                <Sparkles size={28} color="#15803d" />
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 20px 22px 20px', textAlign: 'center' }}>
+              <div style={styles.pillStatusVerde}>
+                <CheckCircle2 size={13} color="#16a34a" />
+                <span>Suscripción Verificada</span>
+              </div>
+
+              <h2 style={{ margin: '8px 0 6px 0', color: '#0f172a', fontSize: '1.28rem', fontWeight: '800' }}>
+                ¡Licencia Activa con Éxito!
+              </h2>
+
+              <p style={{ margin: 0, fontSize: '0.84rem', color: '#64748b', lineHeight: 1.5 }}>
+                Tu cuenta para <strong>{configEmpresa.nombre}</strong> ha sido actualizada en la nube. Tienes acceso completo para continuar cobrando y administrando tu negocio.
+              </p>
+
+              {infoLicencia && (
+                <div style={styles.infoDiasBoxPro}>
+                  <div style={{ fontSize: '0.74rem', color: '#166534', fontWeight: 'bold' }}>
+                    Vigencia Actual: {infoLicencia.diasRestantes} días restantes
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#475569', marginTop: '2px' }}>
+                    Válida hasta el {new Date(infoLicencia.licenciaHasta).toLocaleDateString('es-VE')}
+                  </div>
+                </div>
+              )}
+
+              <button 
+                type="button" 
+                onClick={() => setModalReactivado(false)} 
+                style={styles.btnContinuarPro}
+              >
+                Continuar Facturando
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {vistaActual === 'configuracion' && esDueno && (
         <ConfiguracionModal 
           config={configEmpresa}
+          infoLicencia={infoLicencia}
           alGuardarConfig={(nuevaConfig) => setConfigEmpresa(nuevaConfig)}
           alExportarBackup={exportarBackupCompleto}
           alImportarBackup={importarBackupCompleto}
@@ -1205,10 +1318,8 @@ export default function App() {
 const styles = {
   contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#f8fafc' },
   topHeader: { padding: '8px 12px 6px 12px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #e2e8f0', flexShrink: 0, gap: '6px' },
-  
   headerFila1: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
   headerFilaUnicaCajero: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
-  
   marcaContainer: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 },
   logoMini: { width: '32px', height: '32px', borderRadius: '8px', objectFit: 'contain', border: '1px solid #e2e8f0', flexShrink: 0 },
   avatarIcon: { width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
@@ -1218,15 +1329,12 @@ const styles = {
   badgeOnline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.58rem', fontWeight: 'bold', backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 4px', borderRadius: '4px' },
   badgeOffline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.58rem', fontWeight: 'bold', backgroundColor: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: '4px' },
   btnLogout: { background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '8px', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', flexShrink: 0 },
-  
   headerFila2: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '6px' },
   tasaChip: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc', padding: '3px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
   btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
   inputTasaMini: { width: '60px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.76rem', color: '#0f172a', outline: 'none' },
-  
   grupoBotonesDueno: { display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'flex-end' },
   btnPillHeader: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 'bold', color: '#334155' },
-
   barraModulos: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', padding: '6px 12px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   btnTabItem: { background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', cursor: 'pointer', padding: '2px 0' },
   iconoTab: { position: 'relative', width: '38px', height: '36px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' },
@@ -1270,5 +1378,21 @@ const styles = {
   btnChipDesc: { flex: 1, backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 0', fontSize: '0.74rem', fontWeight: 'bold', color: '#475569', cursor: 'pointer' },
   btnAplicarDescuento: { width: '100%', padding: '10px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.84rem', fontWeight: 'bold', cursor: 'pointer' },
   itemEsperaCard: { backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0' },
-  btnMini: { border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }
+  btnMini: { border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' },
+
+  /* PANTALLA BLOQUEO SUSPENDIDO */
+  overlayBloqueo: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#090d16', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999999, padding: '20px' },
+  cardBloqueo: { backgroundColor: '#fff', borderRadius: '20px', padding: '24px 20px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', fontFamily: 'system-ui, sans-serif' },
+  iconoBloqueo: { width: '70px', height: '70px', borderRadius: '20px', backgroundColor: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px auto' },
+  cajaAvisoContacto: { backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '12px', display: 'flex', alignItems: 'center', gap: '10px', margin: '18px 0' },
+  btnReintentarLicencia: { width: '100%', padding: '12px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.86rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' },
+
+  /* MODAL PREMIUM FELICITACIONES ACTIVACIÓN / RENOVACIÓN */
+  overlayFelicitacion: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(9, 13, 22, 0.85)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999999, padding: '20px' },
+  cardFelicitacionPro: { backgroundColor: '#fff', borderRadius: '24px', maxWidth: '360px', width: '100%', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', fontFamily: 'system-ui, sans-serif', animation: 'scaleUp 0.25s ease' },
+  bannerProTop: { height: '80px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  iconoGlowCirculo: { width: '60px', height: '60px', borderRadius: '50%', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 20px rgba(0,0,0,0.15)', position: 'absolute', bottom: '-26px' },
+  pillStatusVerde: { display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '3px 10px', borderRadius: '20px', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '22px' },
+  infoDiasBoxPro: { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 12px', margin: '14px 0 18px 0' },
+  btnContinuarPro: { width: '100%', padding: '13px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '0.92rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)', transition: 'background-color 0.2s' }
 };

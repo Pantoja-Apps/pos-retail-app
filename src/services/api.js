@@ -97,5 +97,36 @@ export const apiService = {
       if (res.ok) return await res.json();
     } catch (e) {}
     return null;
+  },
+
+  // MÉTODOS SUPERADMIN
+  async adminObtenerNegocios() {
+    try {
+      const res = await fetch(`${API_URL}/admin/negocios`);
+      if (res.ok) return await res.json();
+    } catch (e) {}
+    return [];
+  },
+
+  async adminExtenderLicencia(negocioId, dias) {
+    try {
+      const res = await fetch(`${API_URL}/admin/extender-licencia`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ negocioId, dias })
+      });
+      return await res.json();
+    } catch (e) { return null; }
+  },
+
+  async adminCambiarEstado(negocioId, estado) {
+    try {
+      const res = await fetch(`${API_URL}/admin/cambiar-estado`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ negocioId, estado })
+      });
+      return await res.json();
+    } catch (e) { return null; }
   }
 };

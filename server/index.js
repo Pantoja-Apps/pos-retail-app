@@ -7,6 +7,7 @@ const db = require('./database');
 const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'clave_secreta_super_pos_venezuela_2026';
+const SUPERADMIN_KEY = process.env.SUPERADMIN_KEY || 'master_saas_admin_key_2026';
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -17,6 +18,15 @@ function calcularVencimientoDias(dias = 30) {
   return f.toISOString();
 }
 
+function verificarSuperAdmin(req, res, next) {
+  const key = req.headers['x-admin-key'];
+  if (!key || key !== SUPERADMIN_KEY) {
+    return res.status(403).json({ error: 'Acceso denegado: Clave maestra de SuperAdmin inválida o ausente.' });
+  }
+  next();
+}
+
+// 1. REGISTRO Y LOGIN DE CLIENTES (POS)
 app.post('/api/auth/registro-negocio', async (req, res) => {
   try {
     const { nombreNegocio, nombreDueno, correo, password } = req.body;
@@ -100,6 +110,7 @@ app.post('/api/auth/login-dueno', (req, res) => {
   });
 });
 
+// 2. GESTIÓN DE CAJEROS
 app.post('/api/cajeros', async (req, res) => {
   try {
     const { negocioId, nombre, pin } = req.body;
@@ -160,6 +171,7 @@ app.post('/api/auth/login-cajero', (req, res) => {
   });
 });
 
+// 3. SINCRONIZACIÓN OFFLINE DE VENTAS
 app.post('/api/sync/ventas', (req, res) => {
   const { negocioId, ventas = [] } = req.body;
   if (!negocioId || !Array.isArray(ventas)) {
@@ -200,6 +212,7 @@ app.post('/api/sync/ventas', (req, res) => {
   });
 });
 
+// 4. CONSULTA DE ESTADO DE LICENCIA
 app.get('/api/licencia/estado/:negocioId', (req, res) => {
   const { negocioId } = req.params;
   db.get(`SELECT id, nombre, licencia_valida_hasta, estado FROM negocios WHERE id = ?`, [negocioId], (err, row) => {
@@ -220,6 +233,7 @@ app.get('/api/licencia/estado/:negocioId', (req, res) => {
   });
 });
 
+// 5. RECUPERACIÓN DE CONTRASEÑA (OTP)
 const codigosRescateMemoria = {};
 
 app.post('/api/auth/solicitar-recuperacion', (req, res) => {
@@ -267,6 +281,77 @@ app.post('/api/auth/restablecer-password', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// 6. ENDPOINTS SUPERADMIN
+app.get('/api/admin/negocios', verificarSuperAdmin, (req, res) => {
+  const query = `
+    SELECT 
+      n.*, 
+      (SELECT COUNT(*) FROM usuarios u WHERE u.negocio_id = n.id AND u.rol = 'cajero') as total_cajeros,
+      (SELECT COUNT(*) FROM ventas v WHERE v.negocio_id = n.id AND v.anulada = 0) as total_ventas,
+      (SELECT COALESCE(SUM(v.total_usd), 0) FROM ventas v WHERE v.negocio_id = n.id AND v.anulada = 0) as ingresos_totales_usd,
+      (SELECT u.correo FROM usuarios u WHERE u.negocio_id = n.id AND u.rol = 'dueno' LIMIT 1) as correo_dueno,
+      (SELECT u.nombre FROM usuarios u WHERE u.negocio_id = n.id AND u.rol = 'dueno' LIMIT 1) as nombre_dueno
+    FROM negocios n
+    ORDER BY n.fecha_creacion DESC
+  `;
+
+  db.all(query, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/api/admin/extender-licencia', verificarSuperAdmin, (req, res) => {
+  const { negocioId, dias = 30 } = req.body;
+  if (!negocioId) return res.status(400).json({ error: 'ID de negocio requerido.' });
+
+  db.get(`SELECT licencia_valida_hasta FROM negocios WHERE id = ?`, [negocioId], (err, row) => {
+    if (err || !row) return res.status(404).json({ error: 'Negocio no encontrado.' });
+
+    const baseFecha = new Date(row.licencia_valida_hasta > new Date().toISOString() ? row.licencia_valida_hasta : new Date());
+    baseFecha.setDate(baseFecha.getDate() + parseInt(dias, 10));
+    const nuevaFecha = baseFecha.toISOString();
+
+    db.run(
+      `UPDATE negocios SET licencia_valida_hasta = ?, estado = 'activo' WHERE id = ?`,
+      [nuevaFecha, negocioId],
+      function (errUpdate) {
+        if (errUpdate) return res.status(500).json({ error: errUpdate.message });
+        res.json({ mensaje: 'Licencia extendida con éxito.', nuevaLicenciaHasta: nuevaFecha });
+      }
+    );
+  });
+});
+
+// NUEVO: Fijar días exactos directamente desde hoy
+app.post('/api/admin/fijar-dias', verificarSuperAdmin, (req, res) => {
+  const { negocioId, dias } = req.body;
+  if (!negocioId || dias === undefined) return res.status(400).json({ error: 'Datos incompletos.' });
+
+  const f = new Date();
+  f.setDate(f.getDate() + parseInt(dias, 10));
+  const nuevaFecha = f.toISOString();
+
+  db.run(
+    `UPDATE negocios SET licencia_valida_hasta = ?, estado = 'activo' WHERE id = ?`,
+    [nuevaFecha, negocioId],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ mensaje: `Licencia fijada en ${dias} días a partir de hoy.`, nuevaLicenciaHasta: nuevaFecha });
+    }
+  );
+});
+
+app.post('/api/admin/cambiar-estado', verificarSuperAdmin, (req, res) => {
+  const { negocioId, estado } = req.body;
+  if (!negocioId || !estado) return res.status(400).json({ error: 'Datos incompletos.' });
+
+  db.run(`UPDATE negocios SET estado = ? WHERE id = ?`, [estado, negocioId], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ mensaje: `Negocio ${estado} correctamente.` });
+  });
 });
 
 app.listen(PORT, '0.0.0.0', () => {

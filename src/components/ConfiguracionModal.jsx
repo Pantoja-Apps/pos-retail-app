@@ -1,235 +1,204 @@
 import React, { useState, useRef } from 'react';
-import { ArrowLeft, Save, Upload, Building, Phone, MapPin, FileText, Download, RotateCcw, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Save, Upload, Download, Building, Phone, MapPin, FileText, Image, ShieldCheck, Calendar, Clock } from 'lucide-react';
 
-export default function ConfiguracionModal({ 
-  config, 
-  alGuardarConfig, 
-  alExportarBackup, 
-  alImportarBackup, 
-  alVolver 
-}) {
-  const [nombre, setNombre] = useState(config.nombre || '');
-  const [rif, setRif] = useState(config.rif || '');
-  const [direccion, setDireccion] = useState(config.direccion || '');
-  const [telefono, setTelefono] = useState(config.telefono || '');
-  const [mensajePie, setMensajePie] = useState(config.mensajePie || '');
-  const [logo, setLogo] = useState(config.logo || '');
-
+export default function ConfiguracionModal({ config, alGuardarConfig, alExportarBackup, alImportarBackup, alVolver, infoLicencia }) {
+  const [form, setForm] = useState({ ...config });
   const fileInputRef = useRef(null);
-  const backupInputRef = useRef(null);
 
   const manejarLogo = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 1024 * 1024 * 2) {
-        return alert('La imagen es muy pesada. Debe pesar menos de 2MB.');
-      }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setLogo(reader.result);
+        setForm(prev => ({ ...prev, logo: reader.result }));
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const manejarSubidaBackup = (e) => {
+  const guardar = (e) => {
+    e.preventDefault();
+    alGuardarConfig(form);
+    alert('Configuración guardada correctamente.');
+    alVolver();
+  };
+
+  const manejarArchivoBackup = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const datos = JSON.parse(event.target.result);
-        if (confirm('¿Restaurar esta base de datos? Se actualizarán el inventario, clientes y ventas con los datos del respaldo.')) {
+        if (confirm('¿Restaurar datos desde este respaldo? Se sobrescribirán los datos actuales.')) {
           alImportarBackup(datos);
-          alert('¡Base de datos restaurada con éxito!');
+          alert('¡Respaldo restaurado con éxito!');
+          alVolver();
         }
       } catch (err) {
-        alert('Archivo de respaldo inválido o corrupto.');
+        alert('Archivo de respaldo no válido.');
       }
     };
     reader.readAsText(file);
-    e.target.value = '';
-  };
-
-  const guardar = (e) => {
-    e.preventDefault();
-    if (!nombre.trim()) return alert('El nombre del negocio es obligatorio.');
-
-    alGuardarConfig({
-      ...config,
-      nombre: nombre.trim(),
-      rif: rif.trim() || 'J-00000000-0',
-      direccion: direccion.trim() || 'Caracas, Venezuela',
-      telefono: telefono.trim(),
-      mensajePie: mensajePie.trim(),
-      logo: logo
-    });
-
-    alert('Configuración guardada exitosamente.');
-    alVolver();
   };
 
   return (
     <div style={styles.contenedor} translate="no">
       <header style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button type="button" onClick={alVolver} style={styles.btnBack}>
-            <ArrowLeft color="#333" size={20} />
+            <ArrowLeft color="#334155" size={20} />
           </button>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#111' }}>Ajustes del Negocio</h2>
-            <small style={{ color: '#666', fontSize: '0.72rem' }}>Personalización y Respaldos</small>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>Ajustes del Negocio</h2>
+            <small style={{ color: '#64748b', fontSize: '0.72rem' }}>Datos fiscales, logo y suscripción</small>
           </div>
         </div>
       </header>
 
-      <form onSubmit={guardar} style={styles.scrollArea}>
-        
-        {/* LOGO DEL NEGOCIO */}
-        <div style={styles.seccionCard}>
-          <span style={styles.tituloSeccion}>Logotipo del Comercio</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
-            <div style={styles.previewLogoBox}>
-              {logo ? (
-                <img src={logo} alt="Logo" style={styles.previewImg} />
-              ) : (
-                <Building size={28} color="#94a3b8" />
-              )}
+      <div style={styles.cuerpo}>
+        {/* TARJETA DETALLES DE LICENCIA */}
+        <section style={styles.cardLicencia}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <ShieldCheck size={18} color="#16a34a" />
+              <strong style={{ fontSize: '0.88rem', color: '#0f172a' }}>Estado de la Licencia SaaS</strong>
             </div>
-            <div style={{ flex: 1 }}>
+            <span style={{
+              fontSize: '0.66rem',
+              fontWeight: 'bold',
+              padding: '2px 8px',
+              borderRadius: '6px',
+              backgroundColor: infoLicencia?.activa ? '#dcfce7' : '#fee2e2',
+              color: infoLicencia?.activa ? '#15803d' : '#b91c1c'
+            }}>
+              {infoLicencia?.activa ? 'ACTIVA' : 'INACTIVA / SUSPENDIDA'}
+            </span>
+          </div>
+
+          <div style={styles.gridLicencia}>
+            <div style={styles.itemLicencia}>
+              <Calendar size={14} color="#64748b" />
+              <div>
+                <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block' }}>Válida hasta</span>
+                <strong style={{ fontSize: '0.8rem', color: '#1e293b' }}>
+                  {infoLicencia?.licenciaHasta ? new Date(infoLicencia.licenciaHasta).toLocaleDateString('es-VE') : 'No sincronizado'}
+                </strong>
+              </div>
+            </div>
+
+            <div style={styles.itemLicencia}>
+              <Clock size={14} color="#0052cc" />
+              <div>
+                <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block' }}>Tiempo restante</span>
+                <strong style={{ fontSize: '0.8rem', color: infoLicencia?.diasRestantes <= 5 ? '#dc2626' : '#16a34a' }}>
+                  {infoLicencia?.diasRestantes !== undefined ? `${infoLicencia.diasRestantes} días` : '--'}
+                </strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* FORMULARIO DE DATOS */}
+        <form onSubmit={guardar} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={styles.seccionCampos}>
+            <div style={styles.campo}>
+              <label style={styles.label}><Building size={13} /> Nombre del Comercio:</label>
               <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={manejarLogo}
-                style={{ display: 'none' }}
+                type="text"
+                value={form.nombre}
+                onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                style={styles.input}
+                required
               />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                style={styles.btnSubirLogo}
-              >
-                <Upload size={14} /> Subir Imagen / Logo
-              </button>
-              {logo && (
-                <button
-                  type="button"
-                  onClick={() => setLogo('')}
-                  style={styles.btnQuitarLogo}
-                >
-                  Quitar logotipo
-                </button>
-              )}
+            </div>
+
+            <div style={styles.campo}>
+              <label style={styles.label}><FileText size={13} /> RIF / Documento Fiscal:</label>
+              <input
+                type="text"
+                value={form.rif}
+                onChange={(e) => setForm({ ...form, rif: e.target.value })}
+                style={styles.input}
+                placeholder="Ej: J-12345678-0"
+              />
+            </div>
+
+            <div style={styles.campo}>
+              <label style={styles.label}><Phone size={13} /> Teléfono de Contacto:</label>
+              <input
+                type="text"
+                value={form.telefono}
+                onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                style={styles.input}
+                placeholder="Ej: 0412-1234567"
+              />
+            </div>
+
+            <div style={styles.campo}>
+              <label style={styles.label}><MapPin size={13} /> Dirección Física:</label>
+              <input
+                type="text"
+                value={form.direccion}
+                onChange={(e) => setForm({ ...form, direccion: e.target.value })}
+                style={styles.input}
+                placeholder="Ej: Av. Principal, Local 2"
+              />
+            </div>
+
+            <div style={styles.campo}>
+              <label style={styles.label}><FileText size={13} /> Mensaje al Pie del Ticket:</label>
+              <input
+                type="text"
+                value={form.mensajePie}
+                onChange={(e) => setForm({ ...form, mensajePie: e.target.value })}
+                style={styles.input}
+              />
+            </div>
+
+            <div style={styles.campo}>
+              <label style={styles.label}><Image size={13} /> Logotipo del Negocio:</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+                {form.logo && (
+                  <img src={form.logo} alt="Logo" style={styles.previewLogo} />
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={manejarLogo}
+                  style={{ fontSize: '0.78rem' }}
+                />
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* DATOS FISCALES Y DE CONTACTO */}
-        <div style={styles.seccionCard}>
-          <span style={styles.tituloSeccion}>Datos de la Empresa / Bodega</span>
-          
-          <div style={styles.campo}>
-            <label style={styles.label}>Nombre Comercial:</label>
-            <input
-              type="text"
-              placeholder="Ej: Inversiones Los Socios C.A."
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              style={styles.input}
-              required
-            />
-          </div>
-
-          <div style={styles.campo}>
-            <label style={styles.label}>RIF / C.I.:</label>
-            <input
-              type="text"
-              placeholder="Ej: J-12345678-9"
-              value={rif}
-              onChange={(e) => setRif(e.target.value)}
-              style={styles.input}
-            />
-          </div>
-
-          <div style={styles.campo}>
-            <label style={styles.label}>Teléfono de Contacto:</label>
-            <input
-              type="text"
-              placeholder="Ej: 0412-1234567"
-              value={telefono}
-              onChange={(e) => setTelefono(e.target.value)}
-              style={styles.input}
-            />
-          </div>
-
-          <div style={styles.campo}>
-            <label style={styles.label}>Dirección Física:</label>
-            <input
-              type="text"
-              placeholder="Ej: Av. Principal, Local 02"
-              value={direccion}
-              onChange={(e) => setDireccion(e.target.value)}
-              style={styles.input}
-            />
-          </div>
-
-          <div style={styles.campo}>
-            <label style={styles.label}>Mensaje al Pie del Ticket:</label>
-            <textarea
-              rows="2"
-              placeholder="Ej: ¡Gracias por su compra! Revise su mercancía antes de salir."
-              value={mensajePie}
-              onChange={(e) => setMensajePie(e.target.value)}
-              style={styles.textarea}
-            />
-          </div>
-        </div>
-
-        {/* COPIA DE SEGURIDAD Y RESPALDOS */}
-        <div style={styles.seccionCard}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <ShieldCheck size={16} color="#0052cc" />
-            <span style={styles.tituloSeccion}>Copia de Seguridad y Restauración</span>
-          </div>
-          <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '4px 0 10px 0' }}>
-            Descarga un respaldo con tu inventario, deudas de clientes y ventas, o restáuralo si cambias de teléfono.
-          </p>
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={alExportarBackup}
-              style={styles.btnBackupExport}
-            >
-              <Download size={14} /> Descargar Copia (JSON)
-            </button>
-
-            <input
-              ref={backupInputRef}
-              type="file"
-              accept=".json"
-              onChange={manejarSubidaBackup}
-              style={{ display: 'none' }}
-            />
-
-            <button
-              type="button"
-              onClick={() => backupInputRef.current && backupInputRef.current.click()}
-              style={styles.btnBackupImport}
-            >
-              <RotateCcw size={14} /> Restaurar Copia
-            </button>
-          </div>
-        </div>
-
-        <div style={{ marginTop: '16px', paddingBottom: '30px' }}>
           <button type="submit" style={styles.btnGuardar}>
             <Save size={16} /> Guardar Ajustes
           </button>
-        </div>
+        </form>
 
-      </form>
+        {/* COPIAS DE SEGURIDAD LOCAL */}
+        <section style={styles.seccionBackup}>
+          <strong style={{ fontSize: '0.82rem', color: '#0f172a', display: 'block', marginBottom: '8px' }}>
+            Copias de Seguridad del Negocio
+          </strong>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button type="button" onClick={alExportarBackup} style={styles.btnBackup}>
+              <Download size={14} /> Exportar Respaldo
+            </button>
+            <button type="button" onClick={() => fileInputRef.current?.click()} style={styles.btnBackup}>
+              <Upload size={14} /> Importar Respaldo
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={manejarArchivoBackup}
+              style={{ display: 'none' }}
+            />
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -238,18 +207,16 @@ const styles = {
   contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f8fafc', fontFamily: 'system-ui, -apple-system, sans-serif' },
   header: { padding: '12px 16px', backgroundColor: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   btnBack: { background: '#f1f5f9', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  scrollArea: { flex: 1, overflowY: 'auto', padding: '14px 16px', WebkitOverflowScrolling: 'touch' },
-  seccionCard: { backgroundColor: '#fff', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', marginBottom: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' },
-  tituloSeccion: { fontSize: '0.76rem', fontWeight: 'bold', color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.3px' },
-  previewLogoBox: { width: '56px', height: '56px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  previewImg: { width: '100%', height: '100%', objectFit: 'contain' },
-  btnSubirLogo: { backgroundColor: '#eff6ff', color: '#0052cc', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '7px 12px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' },
-  btnQuitarLogo: { background: 'none', border: 'none', color: '#dc2626', fontSize: '0.7rem', cursor: 'pointer', marginTop: '4px', display: 'block', padding: 0 },
-  campo: { display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '10px' },
-  label: { fontSize: '0.72rem', fontWeight: 'bold', color: '#475569' },
+  cuerpo: { flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' },
+  cardLicencia: { backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
+  gridLicencia: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '6px' },
+  itemLicencia: { display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#f8fafc', padding: '8px 10px', borderRadius: '8px', border: '1px solid #f1f5f9' },
+  seccionCampos: { backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' },
+  campo: { display: 'flex', flexDirection: 'column', gap: '4px' },
+  label: { fontSize: '0.74rem', fontWeight: 'bold', color: '#475569', display: 'flex', alignItems: 'center', gap: '5px' },
   input: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' },
-  textarea: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', resize: 'none', fontFamily: 'inherit' },
-  btnBackupExport: { flex: 1, backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '9px 6px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' },
-  btnBackupImport: { flex: 1, backgroundColor: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '9px 6px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' },
-  btnGuardar: { width: '100%', padding: '12px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.9rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }
+  previewLogo: { width: '40px', height: '40px', objectFit: 'contain', borderRadius: '6px', border: '1px solid #cbd5e1' },
+  btnGuardar: { width: '100%', padding: '11px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' },
+  seccionBackup: { backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' },
+  btnBackup: { flex: 1, padding: '9px', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.74rem', fontWeight: 'bold', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }
 };
