@@ -110,9 +110,11 @@ export default function App() {
     return CONFIG_INICIAL;
   });
 
+  const currentNegocioId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+
   const [productos, setProductos] = useState(() => {
     try {
-      const g = localStorage.getItem('pos_prods_final');
+      const g = localStorage.getItem(`pos_prods_${currentNegocioId}`);
       if (g) return JSON.parse(g);
     } catch (e) {}
     return PRODUCTOS_INICIALES;
@@ -140,7 +142,7 @@ export default function App() {
 
   const [transacciones, setTransacciones] = useState(() => {
     try {
-      const g = localStorage.getItem('pos_txs_final');
+      const g = localStorage.getItem(`pos_txs_${currentNegocioId}`);
       if (g) return JSON.parse(g);
     } catch (e) {}
     return [];
@@ -156,7 +158,7 @@ export default function App() {
 
   const [historicoVentasGlobal, setHistoricoVentasGlobal] = useState(() => {
     try {
-      const g = localStorage.getItem('pos_historico_ventas_global');
+      const g = localStorage.getItem(`pos_historico_${currentNegocioId}`);
       if (g) return JSON.parse(g);
     } catch (e) {}
     return [];
@@ -197,17 +199,18 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem('pos_usuario_activo', JSON.stringify(usuarioActivo)); } catch (e) {} }, [usuarioActivo]);
   useEffect(() => { try { localStorage.setItem('pos_cajeros_lista', JSON.stringify(cajeros)); } catch (e) {} }, [cajeros]);
   useEffect(() => { try { localStorage.setItem('pos_config_empresa', JSON.stringify(configEmpresa)); } catch (e) {} }, [configEmpresa]);
-  useEffect(() => { try { localStorage.setItem('pos_prods_final', JSON.stringify(productos)); } catch (e) {} }, [productos]);
+  useEffect(() => { try { localStorage.setItem(`pos_prods_${currentNegocioId}`, JSON.stringify(productos)); } catch (e) {} }, [productos, currentNegocioId]);
   useEffect(() => { try { localStorage.setItem('pos_clis_final', JSON.stringify(clientes)); } catch (e) {} }, [clientes]);
-  useEffect(() => { try { localStorage.setItem('pos_txs_final', JSON.stringify(transacciones)); } catch (e) {} }, [transacciones]);
+  useEffect(() => { try { localStorage.setItem(`pos_txs_${currentNegocioId}`, JSON.stringify(transacciones)); } catch (e) {} }, [transacciones, currentNegocioId]);
   useEffect(() => { try { localStorage.setItem('pos_gastos_caja', JSON.stringify(gastosCaja)); } catch (e) {} }, [gastosCaja]);
-  useEffect(() => { try { localStorage.setItem('pos_historico_ventas_global', JSON.stringify(historicoVentasGlobal)); } catch (e) {} }, [historicoVentasGlobal]);
+  useEffect(() => { try { localStorage.setItem(`pos_historico_${currentNegocioId}`, JSON.stringify(historicoVentasGlobal)); } catch (e) {} }, [historicoVentasGlobal, currentNegocioId]);
   useEffect(() => { try { localStorage.setItem('pos_espera_final', JSON.stringify(cuentasEnEspera)); } catch (e) {} }, [cuentasEnEspera]);
 
-  // CARGAR PRODUCTOS DESDE SUPABASE AL INICIAR
+  // CARGAR PRODUCTOS FILTRADOS POR NEGOCIO
   const cargarCatalogoSupabase = async () => {
     try {
-      const data = await dbService.getProductos();
+      const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+      const data = await dbService.getProductos(negId);
       if (Array.isArray(data) && data.length > 0) {
         setProductos(data.map(p => ({
           id: p.id,
@@ -223,10 +226,11 @@ export default function App() {
           cantMinimaMayor: Number(p.cant_minima_mayor || 3)
         })));
       } else {
-        // Inicializar Supabase con el catálogo inicial si la tabla está vacía
+        // Inicializar este negocio con catálogo base
         for (const item of PRODUCTOS_INICIALES) {
           await dbService.upsertProducto({
-            id: String(item.id),
+            id: `${negId}_${item.id}`,
+            negocio_id: negId,
             nombre: item.nombre,
             codigo_barras: item.codigo,
             precio_usd: item.precioUSD,
@@ -235,21 +239,30 @@ export default function App() {
             departamento: item.categoria
           });
         }
+        const dataRecargada = await dbService.getProductos(negId);
+        if (dataRecargada?.length) {
+          setProductos(dataRecargada.map(p => ({
+            id: p.id,
+            codigo: p.codigo_barras || '',
+            nombre: p.nombre,
+            precioUSD: Number(p.precio_usd || 0),
+            costoUSD: Number(p.costo_usd || 0),
+            stock: Number(p.stock || 0),
+            categoria: p.departamento || 'General'
+          })));
+        }
       }
     } catch (err) {
       console.warn('Error inicializando catálogo con Supabase:', err);
     }
   };
 
-  // SINCRONIZACIÓN AUTOMÁTICA SILENCIOSA (SUPABASE + BACKEND)
+  // SINCRONIZACIÓN AUTOMÁTICA SILENCIOSA
   const sincronizarSilenciosamente = async () => {
     const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
-
-    // Verificar conexión activa a Supabase
     const conectadoSupabase = await dbService.checkConnection();
     setOnlineBackend(conectadoSupabase);
 
-    // Si soy Dueño, mantengo la configuración sincronizada
     if (usuarioActivo?.rol === 'dueno') {
       if (configEmpresa.nombre && configEmpresa.nombre !== 'Mi Bodega POS') {
         apiService.guardarConfiguracion(configEmpresa);
@@ -264,7 +277,6 @@ export default function App() {
       }
     }
 
-    // Descargar transacciones del servidor
     const ventasServidor = await apiService.obtenerVentasServidor(negId);
     if (Array.isArray(ventasServidor) && ventasServidor.length > 0) {
       setTransacciones(actuales => {
@@ -280,9 +292,7 @@ export default function App() {
     }
 
     const lic = await apiService.consultarLicencia(negId);
-    if (lic) {
-      setInfoLicencia(lic);
-    }
+    if (lic) setInfoLicencia(lic);
   };
 
   const obtenerTasaBCV = async () => {
@@ -297,7 +307,9 @@ export default function App() {
 
   useEffect(() => {
     obtenerTasaBCV();
-    cargarCatalogoSupabase();
+    if (usuarioActivo) {
+      cargarCatalogoSupabase();
+    }
     sincronizarSilenciosamente();
     const intervalo = setInterval(sincronizarSilenciosamente, 4000);
     function handleClickAfuera(e) {
@@ -312,7 +324,7 @@ export default function App() {
 
   const registrarDueno = async (datos) => {
     const resBackend = await apiService.registrarDueno(datos);
-    const negocioId = resBackend?.negocio?.id || 'neg_local_' + Date.now();
+    const negocioId = resBackend?.negocio?.id || 'neg_' + Date.now().toString(36);
     const token = resBackend?.token || '';
 
     const cuentaFinal = {
@@ -322,11 +334,17 @@ export default function App() {
       licenciaHasta: resBackend?.negocio?.licenciaHasta || null
     };
 
+    // Registrar en Supabase tabla negocios y usuarios
+    await dbService.registrarNegocio(
+      { id: negocioId, nombre: datos.nombreNegocio },
+      { id: 'usr_' + Date.now(), nombre: datos.nombreDueno, correo: datos.correo }
+    );
+
     setCuentaMaster(cuentaFinal);
     setConfigEmpresa(prev => ({ ...prev, nombre: datos.nombreNegocio }));
     setUsuarioActivo({ rol: 'dueno', nombre: datos.nombreDueno, negocioId });
     setCajaActiva(CAJAS_DEFAULT[0]);
-    setOnlineBackend(Boolean(resBackend));
+    setOnlineBackend(true);
   };
 
   const iniciarSesionDueno = async (correo, password) => {
@@ -351,12 +369,6 @@ export default function App() {
       if (cuentaMaster.password === password) {
         setUsuarioActivo({ rol: 'dueno', nombre: cuentaMaster.nombreDueno || 'Dueño', negocioId: cuentaMaster.negocioId || 'neg_local' });
         if (!cajaActiva) setCajaActiva(CAJAS_DEFAULT[0]);
-        apiService.registrarDueno({
-          nombreNegocio: configEmpresa.nombre || cuentaMaster.nombreNegocio || 'Mi Bodega POS',
-          nombreDueno: cuentaMaster.nombreDueno || 'Dueño',
-          correo: correoLimpio,
-          password: password
-        });
         return true;
       }
     }
@@ -386,7 +398,7 @@ export default function App() {
   };
 
   const cerrarSesion = () => {
-    if (confirm('¿Cerrar turno y bloquear la pantalla de caja?')) {
+    if (confirm('¿Cerrar turno y salir a la pantalla de inicio?')) {
       setUsuarioActivo(null);
     }
   };
@@ -411,7 +423,7 @@ export default function App() {
         id: coincidencia.id,
         nombre: coincidencia.nombre,
         tipoGaveta: coincidencia.tipoGaveta,
-        negocioId: 'neg_local'
+        negocioId: cuentaMaster?.negocioId || 'neg_local'
       });
       return true;
     }
@@ -484,11 +496,11 @@ export default function App() {
 
   const agregarProductoUnidadAlCarrito = (prod) => {
     setCarrito(actual => {
-      const existe = actual.find(item => item.id === prod.id);
+      const existe = actual.find(item => String(item.id) === String(prod.id));
       if (existe) {
         const nuevaCant = existe.cantidad + 1;
         const info = calcularPrecioItem(prod, nuevaCant);
-        return actual.map(item => item.id === prod.id ? { 
+        return actual.map(item => String(item.id) === String(prod.id) ? { 
           ...item, 
           cantidad: nuevaCant, 
           precioUSD: info.precioUnitario, 
@@ -525,12 +537,12 @@ export default function App() {
   const modificarCantidadItem = (id, delta) => {
     setCarrito(prev => {
       return prev.map(item => {
-        if (item.id === id) {
+        if (String(item.id) === String(id)) {
           const paso = item.esPesado ? 0.100 : 1;
           const nuevaCant = Math.round((item.cantidad + (delta > 0 ? paso : -paso)) * 1000) / 1000;
           if (nuevaCant <= 0) return null;
           
-          const prodOriginal = productos.find(p => p.id === id) || item;
+          const prodOriginal = productos.find(p => String(p.id) === String(id)) || item;
           const info = calcularPrecioItem(prodOriginal, nuevaCant);
           return { 
             ...item, 
@@ -667,6 +679,7 @@ export default function App() {
 
   const finalizarVenta = (datos) => {
     const idTicket = Math.floor(100000 + Math.random() * 900000);
+    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
 
     const ventaCompleta = { 
       id: idTicket,
@@ -685,9 +698,10 @@ export default function App() {
     setTransacciones(prev => [ventaCompleta, ...prev]);
     setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
 
-    // Sincronizar venta en Supabase en segundo plano
+    // Registrar en Supabase con negocio_id
     dbService.registrarVenta({
       id: String(idTicket),
+      negocio_id: negId,
       fecha: new Date().toISOString(),
       cajero_id: String(usuarioActivo.id || 'usr_01'),
       cajero_nombre: usuarioActivo.nombre,
@@ -701,9 +715,7 @@ export default function App() {
       metodos_pago: datos.metodosPago || []
     }).catch(console.error);
 
-    // Enviar al backend legacy si está activo
-    const negocioTarget = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
-    apiService.sincronizarVentas(negocioTarget, [ventaCompleta]);
+    apiService.sincronizarVentas(negId, [ventaCompleta]);
 
     if (datos.esCredito && parseFloat(datos.saldoDeudaUSD) > 0) {
       setClientes(actuales => {
@@ -741,7 +753,7 @@ export default function App() {
       });
     }
 
-    // Actualizar inventario local y en Supabase
+    // Descontar inventario vinculado al negocio
     setProductos(prods => prods.map(p => {
       const itemsVendidos = carrito.filter(it => String(it.id) === String(p.id));
       if (itemsVendidos.length > 0) {
@@ -751,6 +763,7 @@ export default function App() {
 
         dbService.upsertProducto({
           id: String(p.id),
+          negocio_id: negId,
           nombre: p.nombre,
           codigo_barras: p.codigo,
           precio_usd: p.precioUSD,
@@ -773,6 +786,7 @@ export default function App() {
 
   const anularVenta = (venta) => {
     if (!confirm(`¿Confirmas anular la factura #${venta.id}? Se repondrá la mercancía al inventario.`)) return;
+    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
 
     setProductos(prods => prods.map(p => {
       const dev = (venta.items || []).filter(it => String(it.id) === String(p.id));
@@ -783,6 +797,7 @@ export default function App() {
 
         dbService.upsertProducto({
           id: String(p.id),
+          negocio_id: negId,
           nombre: p.nombre,
           codigo_barras: p.codigo,
           precio_usd: p.precioUSD,
@@ -955,8 +970,15 @@ export default function App() {
               }
               return [...prev, cajero];
             });
-            const negocioTarget = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
-            apiService.crearCajero(negocioTarget, cajero.nombre, cajero.pin);
+            const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+            apiService.crearCajero(negId, cajero.nombre, cajero.pin);
+            dbService.upsertCajero({
+              id: String(cajero.id || Date.now()),
+              negocio_id: negId,
+              nombre: cajero.nombre,
+              rol: 'cajero',
+              pin: String(cajero.pin)
+            });
           }}
           alEliminarCajero={(id) => setCajeros(prev => prev.filter(c => c.id !== id))}
           alVolver={() => setVistaActual('pos')}
@@ -979,13 +1001,19 @@ export default function App() {
           tasaCambio={tasaCambio}
           esDueno={esDueno}
           alGuardarProducto={(p) => {
+            const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+            const prodId = p.id ? String(p.id) : `${negId}_${Date.now()}`;
+            const productoFormateado = { ...p, id: prodId };
+
             setProductos(prev => {
-              const idx = prev.findIndex(item => String(item.id) === String(p.id));
-              if (idx >= 0) { const cp = [...prev]; cp[idx] = p; return cp; }
-              return [...prev, p];
+              const idx = prev.findIndex(item => String(item.id) === String(prodId));
+              if (idx >= 0) { const cp = [...prev]; cp[idx] = productoFormateado; return cp; }
+              return [...prev, productoFormateado];
             });
+
             dbService.upsertProducto({
-              id: String(p.id || Date.now()),
+              id: prodId,
+              negocio_id: negId,
               nombre: p.nombre,
               codigo_barras: p.codigo,
               precio_usd: p.precioUSD,
