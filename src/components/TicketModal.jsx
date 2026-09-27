@@ -1,320 +1,297 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { X, Printer, Share2, Copy } from 'lucide-react';
 
 export default function TicketModal({ ticket, configEmpresa, alCerrar }) {
-  const ticketRef = useRef(null);
-
   if (!ticket) return null;
 
-  const esAnulada = Boolean(ticket.anulada);
-  const tasa = parseFloat(ticket.tasa) || 1;
-  const cfg = configEmpresa || {
-    nombre: 'Mi Bodega POS',
-    rif: 'J-50000000-0',
-    direccion: 'Caracas, Venezuela',
-    telefono: '0412-0000000',
-    mensajePie: '¡Gracias por su compra! Revise su mercancía',
-    logo: ''
-  };
+  const tasaNum = parseFloat(ticket.tasaCambio) || parseFloat(ticket.tasa) || 1;
+  const items = Array.isArray(ticket.items) ? ticket.items : [];
 
-  const totalArticulos = (ticket.items || []).reduce((acc, it) => acc + (parseFloat(it.cantidad) || 0), 0);
-  const tieneDescuento = parseFloat(ticket.descuentoUSD) > 0.009;
+  let totalPiezas = 0;
+  let totalKilos = 0;
 
-  const imprimir = () => {
-    window.print();
-  };
-
-  const copiarPortapapeles = () => {
-    let t = "";
-    if (esAnulada) {
-      t += "================================\n";
-      t += "   *** DOCUMENTO ANULADO *** \n";
-      t += "================================\n";
-    }
-    t += `     ${cfg.nombre.toUpperCase()}     \n`;
-    t += `       RIF: ${cfg.rif}        \n`;
-    t += `      Tlf: ${cfg.telefono}      \n`;
-    t += `    ${cfg.direccion}       \n`;
-    t += "--------------------------------\n";
-    t += `COMPROBANTE: #${ticket.id}\n`;
-    t += `FECHA/HORA:  ${ticket.fecha}\n`;
-    t += `CAJERO:      Caja Principal 01\n`;
-    t += `CLIENTE:     ${ticket.cliente?.nombre || 'Consumidor Final'}\n`;
-    t += `C.I./RIF:    ${ticket.cliente?.doc || 'V-00000000'}\n`;
-    if (ticket.cliente?.telefono) t += `TELÉFONO:    ${ticket.cliente.telefono}\n`;
-    t += `TASA OFICIAL: Bs. ${tasa.toFixed(2)}\n`;
-    t += "--------------------------------\n";
-    t += "CANT  DESCRIPCIÓN       TOTAL\n";
-    t += "--------------------------------\n";
-    (ticket.items || []).forEach(it => {
-      const totUSD = (it.precioUSD * it.cantidad).toFixed(2);
-      const totBS = ((it.precioUSD * it.cantidad) * tasa).toFixed(2);
-      t += `${it.cantidad}x ${it.nombre}\n`;
-      t += `   P.U: $${it.precioUSD.toFixed(2)}  = $${totUSD} (Bs.${totBS})\n`;
-    });
-    t += "--------------------------------\n";
-    t += `TOTAL PIEZAS: ${totalArticulos}\n`;
-    if (tieneDescuento) {
-      t += `SUBTOTAL:     $${ticket.subtotalUSD || ticket.totalUSD}\n`;
-      t += `DESCUENTO:   -$${ticket.descuentoUSD} (${ticket.descuentoTexto || 'Promo'})\n`;
-    }
-    t += `TOTAL USD:    $${ticket.totalUSD}\n`;
-    t += `TOTAL BS:     Bs. ${ticket.totalBS}\n`;
-    t += "--------------------------------\n";
-    if (ticket.esCredito) {
-      t += "FORMA DE PAGO: CRÉDITO PENDIENTE\n";
-      t += `SALDO ADEUDADO: $${ticket.saldoDeudaUSD} (Bs. ${ticket.saldoDeudaBS})\n`;
+  items.forEach(it => {
+    if (it.esPesado) {
+      totalKilos += (parseFloat(it.cantidad) || 0);
     } else {
-      t += "DESGLOSE DE PAGO:\n";
-      if (parseFloat(ticket.pagoUSD) > 0) t += `• Divisas $:       $${ticket.pagoUSD}\n`;
-      if (parseFloat(ticket.pagoBsEfectivo) > 0) t += `• Efectivo Bs:     Bs. ${ticket.pagoBsEfectivo}\n`;
-      if (parseFloat(ticket.pagoPM) > 0) t += `• Pago Móvil:      Bs. ${ticket.pagoPM}\n`;
-      if (parseFloat(ticket.pagoPunto) > 0) t += `• Punto de Venta:  Bs. ${ticket.pagoPunto}\n`;
-      if (parseFloat(ticket.vueltoBS) > 0) {
-        t += `• Vuelto Entregado: Bs. ${ticket.vueltoBS} ($${ticket.vueltoUSD})\n`;
-      }
+      totalPiezas += (parseFloat(it.cantidad) || 0);
     }
-    t += "--------------------------------\n";
-    t += esAnulada ? "ESTA FACTURA FUE ANULADA EN SISTEMA\n" : `${cfg.mensajePie}\n`;
+  });
 
-    navigator.clipboard.writeText(t).then(() => {
-      alert('Ticket copiado al portapapeles.');
-    }).catch(() => {});
+  const copiarTextoTicket = () => {
+    let t = `*${configEmpresa.nombre}*\n`;
+    t += `RIF: ${configEmpresa.rif}\n`;
+    t += `Comprobante #${ticket.id}\n`;
+    t += `Fecha: ${ticket.fecha}\n`;
+    t += `Cajero: ${ticket.cajeroCobrador || 'Caja Principal'}\n`;
+    t += `Cliente: ${ticket.cliente?.nombre || 'Consumidor Final'} (${ticket.cliente?.doc || 'V-00000000'})\n`;
+    t += `Tasa BCV: Bs. ${tasaNum.toFixed(2)}/$\n`;
+    t += `--------------------------------\n`;
+    items.forEach(it => {
+      const subUSD = (it.precioUSD * it.cantidad).toFixed(2);
+      const cantTexto = it.esPesado ? `${it.cantidad} Kg` : `${it.cantidad} und`;
+      t += `${it.nombre}\n  ${cantTexto} x $${parseFloat(it.precioUSD).toFixed(2)} = $${subUSD}\n`;
+    });
+    t += `--------------------------------\n`;
+    if (parseFloat(ticket.descuentoUSD) > 0) {
+      t += `Rebaja: -$${ticket.descuentoUSD}\n`;
+    }
+    t += `TOTAL A PAGAR: $${ticket.totalUSD}\n`;
+    t += `TOTAL EN BS: Bs. ${ticket.totalBS}\n`;
+    t += `--------------------------------\n`;
+    t += `FORMAS DE COBRO:\n`;
+    if (parseFloat(ticket.pagoUSD) > 0) t += `• Efectivo USD: $${parseFloat(ticket.pagoUSD).toFixed(2)}\n`;
+    if (parseFloat(ticket.pagoBsEfectivo) > 0) t += `• Efectivo Bs: Bs. ${parseFloat(ticket.pagoBsEfectivo).toFixed(2)}\n`;
+    if (parseFloat(ticket.pagoPM) > 0) t += `• Pago Móvil: Bs. ${parseFloat(ticket.pagoPM).toFixed(2)}\n`;
+    if (parseFloat(ticket.pagoPunto) > 0) t += `• Punto de Venta: Bs. ${parseFloat(ticket.pagoPunto).toFixed(2)}\n`;
+    if (parseFloat(ticket.vueltoUSD) > 0) t += `Vuelto: $${parseFloat(ticket.vueltoUSD).toFixed(2)}\n`;
+    t += `--------------------------------\n`;
+    t += `${configEmpresa.mensajePie || '¡Gracias por su compra!'}\n`;
+
+    navigator.clipboard.writeText(t);
+    alert('Ticket copiado al portapapeles.');
   };
 
   const compartirWhatsApp = () => {
-    let t = "";
-    if (esAnulada) t += "🚫 *FACTURA ANULADA - SIN VALIDEZ* 🚫\n\n";
-    t += `*${cfg.nombre.toUpperCase()}*\n`;
-    t += `*RIF:* ${cfg.rif} | *Tlf:* ${cfg.telefono}\n`;
-    t += `*Ticket:* #${ticket.id}\n`;
-    t += `*Fecha:* ${ticket.fecha}\n`;
-    t += `*Cliente:* ${ticket.cliente?.nombre || 'Consumidor Final'} (${ticket.cliente?.doc || 'V-00000000'})\n`;
-    t += `*Tasa Oficial:* Bs. ${tasa.toFixed(2)}\n`;
-    t += "--------------------------------\n";
-    (ticket.items || []).forEach(it => {
-      const totUSD = (it.precioUSD * it.cantidad).toFixed(2);
-      t += `• ${it.cantidad}x ${it.nombre} = $${totUSD}\n`;
-    });
-    t += "--------------------------------\n";
-    if (tieneDescuento) {
-      t += `Subtotal: $${ticket.subtotalUSD || ticket.totalUSD}\n`;
-      t += `Descuento Aplicado: -$${ticket.descuentoUSD} (${ticket.descuentoTexto || 'Rebaja'})\n`;
-    }
-    t += `*TOTAL COMPRA: $${ticket.totalUSD} (Bs. ${ticket.totalBS})*\n`;
-    if (ticket.esCredito) {
-      t += `*Condición:* CRÉDITO PENDIENTE\n`;
-      t += `*Saldo pendiente:* $${ticket.saldoDeudaUSD} (Bs. ${ticket.saldoDeudaBS})\n`;
-    }
-    t += esAnulada ? "\n⚠️ Operación anulada sin validez fiscal." : `\n${cfg.mensajePie}`;
+    let tel = (ticket.cliente?.telefono || '').replace(/[^0-9]/g, '');
+    if (tel.startsWith('0')) tel = '58' + tel.substring(1);
 
-    const b = String.fromCharCode(96, 96, 96);
-    const msg = b + "\n" + t + b;
-    const tel = (ticket.cliente?.telefono || '').replace(/[^0-9]/g, '');
-    const url = tel ? `https://wa.me/${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    let t = `🧾 *COMPROBANTE DE COMPRA #${ticket.id}*\n`;
+    t += `*${configEmpresa.nombre}*\n`;
+    t += `RIF: ${configEmpresa.rif}\n`;
+    t += `Fecha: ${ticket.fecha}\n`;
+    t += `Cliente: ${ticket.cliente?.nombre || 'Consumidor Final'}\n`;
+    t += `--------------------------------\n`;
+    items.forEach(it => {
+      const cantTexto = it.esPesado ? `${it.cantidad} Kg` : `${it.cantidad} und`;
+      t += `• *${it.nombre}* (${cantTexto}) = $${(it.precioUSD * it.cantidad).toFixed(2)}\n`;
+    });
+    t += `--------------------------------\n`;
+    if (parseFloat(ticket.descuentoUSD) > 0) {
+      t += `Rebaja aplicada: -$${ticket.descuentoUSD}\n`;
+    }
+    t += `*TOTAL A PAGAR: $${ticket.totalUSD}*\n`;
+    t += `*TOTAL EN BS: Bs. ${ticket.totalBS}*\n`;
+    t += `(Tasa BCV: Bs. ${tasaNum.toFixed(2)}/$)\n\n`;
+    t += `${configEmpresa.mensajePie || '¡Gracias por su compra!'}`;
+
+    const url = `https://wa.me/${tel}?text=${encodeURIComponent(t)}`;
     window.open(url, '_blank');
   };
 
   return (
-    <div style={styles.overlay} translate="no">
-      <div style={styles.modal}>
-        <div style={styles.topBar}>
-          <span style={styles.tituloVentana}>{esAnulada ? 'Ticket Anulado' : 'Ticket de Compra'}</span>
-          <button type="button" onClick={alCerrar} style={styles.btnCerrar}><X size={18} /></button>
+    <div style={styles.overlay} className="ticket-modal-overlay" translate="no">
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          .ticket-modal-overlay,
+          .ticket-modal-overlay * {
+            visibility: visible !important;
+          }
+          .ticket-modal-overlay {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            background: #fff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            display: block !important;
+          }
+          .ticket-modal-card {
+            box-shadow: none !important;
+            border: none !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+          .ticket-papel-impresion {
+            border: none !important;
+            background: #fff !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            width: 100% !important;
+            max-width: 80mm !important;
+            margin: 0 auto !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      <div style={styles.modalBox} className="ticket-modal-card">
+        {/* HEADER DEL MODAL (OCULTO AL IMPRIMIR) */}
+        <div style={styles.headerModal} className="no-print">
+          <strong style={{ fontSize: '0.88rem', color: '#1e293b' }}>Comprobante de Compra</strong>
+          <button type="button" onClick={alCerrar} style={styles.btnCerrar} title="Cerrar"><X size={18} /></button>
         </div>
 
-        <div style={styles.scrollTicket}>
-          <div ref={ticketRef} style={{ ...styles.papel, borderColor: esAnulada ? '#ef9a9a' : '#e2e8f0' }}>
-            
-            {esAnulada && (
-              <div style={styles.watermarkContainer}>
-                <div style={styles.watermark}>ANULADO</div>
+        {/* CONTENEDOR CON SCROLL */}
+        <div style={styles.scrollArea}>
+          <div style={styles.reciboModerno} className="ticket-papel-impresion">
+            {/* LOGO DE LA EMPRESA */}
+            {configEmpresa.logo && (
+              <div style={styles.contenedorLogo}>
+                <img src={configEmpresa.logo} alt="Logo" style={styles.logoTicket} />
               </div>
             )}
 
-            {esAnulada && (
-              <div style={styles.alertaAnulada}>
-                VENTA ANULADA - SIN VALOR
-              </div>
-            )}
-
-            <div style={styles.encabezado}>
-              {cfg.logo && (
-                <div style={{ marginBottom: '6px' }}>
-                  <img src={cfg.logo} alt="Logo" style={{ maxHeight: '48px', maxWidth: '140px', objectFit: 'contain' }} />
-                </div>
-              )}
-              <h2 style={styles.nombreComercio}>{cfg.nombre}</h2>
-              <div style={styles.datosComercio}>RIF: {cfg.rif}</div>
-              <div style={styles.datosComercio}>{cfg.direccion}</div>
-              <div style={styles.datosComercio}>Teléfono: {cfg.telefono}</div>
+            {/* DATOS COMERCIO */}
+            <div style={{ textAlign: 'center', borderBottom: '1px dashed #cbd5e1', paddingBottom: '8px', marginBottom: '8px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a', fontWeight: '800' }}>{configEmpresa.nombre}</h3>
+              <div style={{ fontSize: '0.7rem', color: '#64748b' }}>RIF: {configEmpresa.rif}</div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{configEmpresa.direccion}</div>
+              {configEmpresa.telefono && <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Teléfono: {configEmpresa.telefono}</div>}
             </div>
 
-            <div style={styles.lineaGris} />
-
-            <div style={styles.bloqueMeta}>
-              <div style={styles.metaRow}><span>COMPROBANTE:</span> <strong>#{ticket.id}</strong></div>
-              <div style={styles.metaRow}><span>FECHA / HORA:</span> <span>{ticket.fecha}</span></div>
-              <div style={styles.metaRow}><span>CAJERO / CAJA:</span> <span>Caja 01 - Principal</span></div>
-              <div style={styles.metaRow}><span>CLIENTE:</span> <strong>{ticket.cliente?.nombre || 'Consumidor Final'}</strong></div>
-              <div style={styles.metaRow}><span>C.I. / RIF:</span> <span>{ticket.cliente?.doc || 'V-00000000'}</span></div>
-              {ticket.cliente?.telefono && (
-                <div style={styles.metaRow}><span>TELÉFONO:</span> <span>{ticket.cliente.telefono}</span></div>
-              )}
-              <div style={styles.metaRow}><span>TASA CAMBIO:</span> <strong>Bs. {tasa.toFixed(2)} / $</strong></div>
+            {/* METADATOS */}
+            <div style={{ fontSize: '0.72rem', color: '#334155', borderBottom: '1px dashed #cbd5e1', paddingBottom: '6px', marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>COMPROBANTE:</span><strong>#{ticket.id}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>FECHA / HORA:</span><span>{ticket.fecha}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>CAJERO:</span><span>{ticket.cajeroCobrador || 'Caja Principal'}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>CLIENTE:</span><strong>{ticket.cliente?.nombre || 'Consumidor Final'}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>C.I. / RIF:</span><span>{ticket.cliente?.doc || 'V-00000000'}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}><span>TASA BCV:</span><strong>Bs. {tasaNum.toFixed(2)} / $</strong></div>
             </div>
 
-            <div style={styles.lineaGris} />
-
-            <div style={styles.tablaHeader}>
-              <span style={{ flex: 3.2 }}>DESCRIPCIÓN</span>
-              <span style={{ flex: 0.8, textAlign: 'center' }}>CANT</span>
-              <span style={{ flex: 1.6, textAlign: 'right' }}>TOTAL</span>
+            {/* CABECERA */}
+            <div style={{ display: 'flex', fontSize: '0.68rem', fontWeight: 'bold', color: '#64748b', borderBottom: '1px dashed #cbd5e1', paddingBottom: '4px', marginBottom: '6px' }}>
+              <span style={{ flex: 2 }}>DESCRIPCIÓN</span>
+              <span style={{ width: '65px', textAlign: 'center' }}>CANT</span>
+              <span style={{ width: '65px', textAlign: 'right' }}>TOTAL</span>
             </div>
 
-            <div style={styles.itemsLista}>
-              {(ticket.items || []).map((it, idx) => {
-                const subUSD = it.precioUSD * it.cantidad;
-                const subBS = subUSD * tasa;
+            {/* LISTA PRODUCTOS */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderBottom: '1px dashed #cbd5e1', paddingBottom: '8px', marginBottom: '8px' }}>
+              {items.map((it, idx) => {
+                const subUSD = (it.precioUSD * it.cantidad).toFixed(2);
+                const subBS = (it.precioUSD * it.cantidad * tasaNum).toFixed(2);
+                const cantTexto = it.esPesado ? `${it.cantidad} Kg` : `${it.cantidad}`;
+
                 return (
-                  <div key={idx} style={styles.itemRow}>
-                    <div style={{ flex: 3.2, paddingRight: '4px' }}>
-                      <div style={{ fontWeight: '600', color: '#1e293b' }}>{it.nombre}</div>
-                      <div style={{ fontSize: '0.67rem', color: '#64748b' }}>
-                        ${it.precioUSD.toFixed(2)} (Bs. {(it.precioUSD * tasa).toFixed(2)}) c/u
-                      </div>
+                  <div key={idx}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                      <strong style={{ flex: 2, color: '#0f172a' }}>{it.nombre}</strong>
+                      <span style={{ width: '65px', textAlign: 'center', fontWeight: 'bold', color: '#334155' }}>{cantTexto}</span>
+                      <strong style={{ width: '65px', textAlign: 'right', color: '#0f172a' }}>${subUSD}</strong>
                     </div>
-                    <div style={{ flex: 0.8, textAlign: 'center', fontWeight: 'bold' }}>{it.cantidad}</div>
-                    <div style={{ flex: 1.6, textAlign: 'right' }}>
-                      <div style={{ fontWeight: 'bold', color: '#0f172a' }}>${subUSD.toFixed(2)}</div>
-                      <div style={{ fontSize: '0.65rem', color: '#64748b' }}>Bs.{subBS.toFixed(2)}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#64748b', marginTop: '1px' }}>
+                      <span>${parseFloat(it.precioUSD).toFixed(2)}{it.esPesado ? '/Kg' : ' c/u'}</span>
+                      <span>Bs. {subBS}</span>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            <div style={styles.lineaPunteada} />
-
-            <div style={styles.seccionTotales}>
-              <div style={styles.metaRow}>
-                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>CANTIDAD ARTÍCULOS:</span>
-                <strong style={{ fontSize: '0.78rem' }}>{totalArticulos} und.</strong>
+            {/* TOTALES */}
+            <div style={{ fontSize: '0.74rem', borderBottom: '1px dashed #cbd5e1', paddingBottom: '6px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                <span>CANTIDAD ARTÍCULOS:</span>
+                <span>
+                  {totalPiezas > 0 && `${totalPiezas} und. `}
+                  {totalKilos > 0 && `${totalKilos.toFixed(3)} Kg`}
+                </span>
               </div>
 
-              {tieneDescuento && (
-                <>
-                  <div style={styles.metaRow}>
-                    <span style={{ fontSize: '0.74rem', color: '#64748b' }}>SUBTOTAL VENTA:</span>
-                    <strong style={{ fontSize: '0.84rem', color: '#475569' }}>${ticket.subtotalUSD || ticket.totalUSD}</strong>
-                  </div>
-                  <div style={{ ...styles.metaRow, color: '#e11d48', fontWeight: 'bold' }}>
-                    <span style={{ fontSize: '0.74rem' }}>DESCUENTO ({ticket.descuentoTexto || 'Rebaja'}):</span>
-                    <span style={{ fontSize: '0.84rem' }}>-${ticket.descuentoUSD}</span>
-                  </div>
-                </>
+              {parseFloat(ticket.descuentoUSD) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#dc2626', fontWeight: 'bold', marginTop: '2px' }}>
+                  <span>REBAJA / DESCUENTO:</span>
+                  <span>-${ticket.descuentoUSD}</span>
+                </div>
               )}
 
-              <div style={styles.filaTotalUSD}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem', fontWeight: '900', color: '#0f172a', marginTop: '4px' }}>
                 <span>TOTAL A PAGAR:</span>
-                <span style={{ textDecoration: esAnulada ? 'line-through' : 'none' }}>${ticket.totalUSD}</span>
+                <span>${ticket.totalUSD}</span>
               </div>
-              <div style={styles.filaTotalBS}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.94rem', fontWeight: '900', color: '#0052cc' }}>
                 <span>TOTAL EN BS:</span>
-                <span style={{ textDecoration: esAnulada ? 'line-through' : 'none' }}>Bs. {ticket.totalBS}</span>
+                <span>Bs. {ticket.totalBS}</span>
               </div>
             </div>
 
-            <div style={styles.lineaGris} />
-
-            <div style={styles.seccionPagos}>
-              <div style={{ fontSize: '0.68rem', fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>MÉTODO DE PAGO:</div>
-              {ticket.esCredito ? (
-                <div style={styles.creditoBadge}>
-                  <div style={{ fontWeight: 'bold' }}>VENTA A CRÉDITO (FIADO)</div>
-                  <div style={{ fontSize: '0.72rem', marginTop: '2px' }}>Saldo por cobrar: ${ticket.saldoDeudaUSD} (Bs. {ticket.saldoDeudaBS})</div>
+            {/* FORMA DE COBRO */}
+            <div style={{ fontSize: '0.72rem', color: '#334155', borderBottom: '1px dashed #cbd5e1', paddingBottom: '6px', marginBottom: '8px' }}>
+              <div style={{ fontWeight: 'bold', color: '#475569', marginBottom: '4px' }}>MÉTODO DE PAGO:</div>
+              {parseFloat(ticket.pagoUSD) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>• Efectivo Dólares ($):</span>
+                  <span>${parseFloat(ticket.pagoUSD).toFixed(2)}</span>
                 </div>
-              ) : (
-                <div style={{ fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  {parseFloat(ticket.pagoUSD) > 0 && (
-                    <div style={styles.metaRow}><span>• Divisas ($):</span> <strong>${ticket.pagoUSD}</strong></div>
-                  )}
-                  {parseFloat(ticket.pagoBsEfectivo) > 0 && (
-                    <div style={styles.metaRow}><span>• Efectivo (Bs):</span> <strong>Bs. {ticket.pagoBsEfectivo}</strong></div>
-                  )}
-                  {parseFloat(ticket.pagoPM) > 0 && (
-                    <div style={styles.metaRow}><span>• Pago Móvil:</span> <strong>Bs. {ticket.pagoPM}</strong></div>
-                  )}
-                  {parseFloat(ticket.pagoPunto) > 0 && (
-                    <div style={styles.metaRow}><span>• Punto de Venta:</span> <strong>Bs. {ticket.pagoPunto}</strong></div>
-                  )}
-                  {parseFloat(ticket.vueltoBS) > 0 && (
-                    <div style={{ ...styles.metaRow, color: '#0052cc', fontWeight: 'bold', borderTop: '1px dotted #cbd5e1', paddingTop: '3px', marginTop: '2px' }}>
-                      <span>• Vuelto al Cliente:</span> <span>Bs. {ticket.vueltoBS} (${ticket.vueltoUSD})</span>
-                    </div>
-                  )}
+              )}
+              {parseFloat(ticket.pagoBsEfectivo) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>• Efectivo Bolívares:</span>
+                  <span>Bs. {parseFloat(ticket.pagoBsEfectivo).toFixed(2)}</span>
+                </div>
+              )}
+              {parseFloat(ticket.pagoPM) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>• Pago Móvil:</span>
+                  <span>Bs. {parseFloat(ticket.pagoPM).toFixed(2)}</span>
+                </div>
+              )}
+              {parseFloat(ticket.pagoPunto) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>• Punto de Venta:</span>
+                  <span>Bs. {parseFloat(ticket.pagoPunto).toFixed(2)}</span>
+                </div>
+              )}
+              {ticket.esCredito && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#dc2626', fontWeight: 'bold' }}>
+                  <span>• Saldo a Crédito:</span>
+                  <span>${ticket.saldoDeudaUSD}</span>
+                </div>
+              )}
+              {parseFloat(ticket.vueltoUSD) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a', fontWeight: 'bold', marginTop: '2px' }}>
+                  <span>VUELTO ENTREGADO:</span>
+                  <span>${parseFloat(ticket.vueltoUSD).toFixed(2)}</span>
                 </div>
               )}
             </div>
 
-            <div style={styles.pieMensaje}>
-              {esAnulada ? (
-                <span style={{ color: '#d32f2f', fontWeight: 'bold' }}>*** TRANSACCIÓN ANULADA EN AUDITORÍA ***</span>
-              ) : (
-                <>
-                  <div>{cfg.mensajePie}</div>
-                  <div style={{ fontSize: '0.62rem', color: '#94a3b8', marginTop: '2px' }}>Conserve este ticket para reclamos</div>
-                </>
-              )}
+            <div style={{ textAlign: 'center', fontSize: '0.68rem', color: '#64748b', fontStyle: 'italic', marginTop: '6px' }}>
+              {configEmpresa.mensajePie || '¡Gracias por su compra! Revise su mercancía'}
             </div>
-
           </div>
         </div>
 
-        <div style={styles.footerAcciones}>
-          <button type="button" onClick={compartirWhatsApp} style={{ ...styles.btnFoot, backgroundColor: '#25d366', color: '#fff' }}>
+        {/* BOTONERA FIJA (NO SE IMPRIME) */}
+        <div style={styles.footerAccionesFijas} className="no-print">
+          <button type="button" onClick={compartirWhatsApp} style={styles.btnWhatsApp}>
             <Share2 size={15} /> WhatsApp
           </button>
-          <button type="button" onClick={copiarPortapapeles} style={{ ...styles.btnFoot, backgroundColor: '#f1f5f9', color: '#334155' }}>
+          <button type="button" onClick={copiarTextoTicket} style={styles.btnCopiar}>
             <Copy size={15} /> Copiar
           </button>
-          <button type="button" onClick={imprimir} style={{ ...styles.btnFoot, backgroundColor: '#0052cc', color: '#fff' }}>
+          <button type="button" onClick={() => window.print()} style={styles.btnImprimir}>
             <Printer size={15} /> Imprimir
           </button>
         </div>
-
       </div>
     </div>
   );
 }
 
 const styles = {
-  overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '12px' },
-  modal: { backgroundColor: '#fff', borderRadius: '16px', width: '100%', maxWidth: '370px', maxHeight: '95vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', overflow: 'hidden' },
-  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid #f1f5f9' },
-  tituloVentana: { fontSize: '0.88rem', fontWeight: 'bold', color: '#1e293b' },
-  btnCerrar: { background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' },
-  scrollTicket: { flex: 1, overflowY: 'auto', padding: '12px 14px' },
-  papel: { position: 'relative', backgroundColor: '#fafafa', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 12px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', overflow: 'hidden' },
-  watermarkContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 5 },
-  watermark: { border: '3px solid rgba(239, 68, 68, 0.35)', color: 'rgba(239, 68, 68, 0.35)', fontSize: '2.2rem', fontWeight: '900', padding: '4px 14px', transform: 'rotate(-25deg)', borderRadius: '8px', letterSpacing: '5px' },
-  alertaAnulada: { backgroundColor: '#fee2e2', color: '#991b1b', textAlign: 'center', padding: '4px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold', marginBottom: '8px', border: '1px solid #fecaca' },
-  encabezado: { textAlign: 'center', marginBottom: '6px' },
-  nombreComercio: { margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f172a' },
-  datosComercio: { fontSize: '0.68rem', color: '#64748b', marginTop: '1px' },
-  lineaGris: { height: '1px', backgroundColor: '#e2e8f0', margin: '8px 0' },
-  lineaPunteada: { borderTop: '1px dashed #cbd5e1', margin: '8px 0' },
-  bloqueMeta: { fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '2px' },
-  metaRow: { display: 'flex', justifyContent: 'space-between', color: '#334155' },
-  tablaHeader: { display: 'flex', fontSize: '0.67rem', fontWeight: 'bold', color: '#64748b', paddingBottom: '3px', borderBottom: '1px solid #e2e8f0' },
-  itemsLista: { display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' },
-  itemRow: { display: 'flex', alignItems: 'flex-start', fontSize: '0.73rem' },
-  seccionTotales: { display: 'flex', flexDirection: 'column', gap: '3px', padding: '2px 0' },
-  filaTotalUSD: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1.02rem', fontWeight: '900', color: '#0f172a' },
-  filaTotalBS: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.86rem', fontWeight: 'bold', color: '#0052cc' },
-  seccionPagos: { padding: '2px 0' },
-  creditoBadge: { backgroundColor: '#fff7ed', color: '#c2410c', padding: '6px 8px', borderRadius: '6px', fontSize: '0.73rem', textAlign: 'center', border: '1px solid #ffedd5' },
-  pieMensaje: { textAlign: 'center', fontSize: '0.68rem', color: '#475569', marginTop: '10px', fontWeight: '600' },
-  footerAcciones: { display: 'flex', gap: '6px', padding: '10px 14px', borderTop: '1px solid #f1f5f9' },
-  btnFoot: { flex: 1, border: 'none', padding: '9px 4px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }
+  overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(2px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '12px' },
+  modalBox: { background: '#fff', borderRadius: '18px', width: '100%', maxWidth: '380px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden' },
+  headerModal: { padding: '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 },
+  btnCerrar: { background: '#f1f5f9', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' },
+  scrollArea: { flex: 1, overflowY: 'auto', padding: '12px 14px' },
+  reciboModerno: { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', fontFamily: 'system-ui, -apple-system, sans-serif' },
+  
+  contenedorLogo: { textAlign: 'center', marginBottom: '6px' },
+  logoTicket: { maxWidth: '75px', maxHeight: '60px', objectFit: 'contain', margin: '0 auto', display: 'block' },
+
+  footerAccionesFijas: { padding: '10px 14px', borderTop: '1px solid #e2e8f0', backgroundColor: '#fff', display: 'flex', gap: '6px', flexShrink: 0 },
+  btnWhatsApp: { flex: 1, backgroundColor: '#22c55e', color: '#fff', border: 'none', borderRadius: '10px', padding: '11px 4px', fontSize: '0.78rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' },
+  btnCopiar: { flex: 1, backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '11px 4px', fontSize: '0.78rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' },
+  btnImprimir: { flex: 1, backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '10px', padding: '11px 4px', fontSize: '0.78rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' }
 };

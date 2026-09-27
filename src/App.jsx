@@ -3,7 +3,7 @@ import {
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   RefreshCw, Package, User, BookOpen, Wallet, Search, History, 
   PauseCircle, PlayCircle, Settings, Store, TrendingUp, Tag, Percent,
-  LogOut, Users, ShieldCheck, UserCheck, Cloud, CloudOff, AlertOctagon, PhoneCall, PartyPopper, CheckCircle2, Sparkles
+  LogOut, Users, ShieldCheck, UserCheck, Cloud, CloudOff, AlertOctagon, PhoneCall, CheckCircle2, Sparkles, Scale
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -17,15 +17,16 @@ import ConfiguracionModal from './components/ConfiguracionModal';
 import MetricasModal from './components/MetricasModal';
 import LoginModal from './components/LoginModal';
 import UsuariosModal from './components/UsuariosModal';
+import ModalPeso from './components/ModalPeso';
 import { apiService } from './services/api';
 
 const PRODUCTOS_INICIALES = [
-  { id: 1, codigo: '7591001000123', nombre: 'Harina PAN Blanca 1kg', costoUSD: 0.92, precioUSD: 1.10, aplicaPrecioMayor: true, precioMayorUSD: 0.98, cantMinimaMayor: 3, stock: 50, categoria: 'Víveres', imagen: '' },
-  { id: 2, codigo: '7591002000456', nombre: 'Arroz Blanco Primor 1kg', costoUSD: 1.05, precioUSD: 1.35, aplicaPrecioMayor: true, precioMayorUSD: 1.20, cantMinimaMayor: 3, stock: 40, categoria: 'Víveres', imagen: '' },
-  { id: 3, codigo: '7591003000789', nombre: 'Pasta Corta Plumitas 500g', costoUSD: 0.75, precioUSD: 0.95, aplicaPrecioMayor: true, precioMayorUSD: 0.85, cantMinimaMayor: 4, stock: 60, categoria: 'Víveres', imagen: '' },
-  { id: 4, codigo: '7591004000321', nombre: 'Aceite Mazeite 1L', costoUSD: 2.55, precioUSD: 3.20, aplicaPrecioMayor: false, precioMayorUSD: 0, cantMinimaMayor: 0, stock: 25, categoria: 'Víveres', imagen: '' },
-  { id: 5, codigo: '7591005000654', nombre: 'Azúcar Montalbán 1kg', costoUSD: 0.98, precioUSD: 1.25, aplicaPrecioMayor: false, precioMayorUSD: 0, cantMinimaMayor: 0, stock: 30, categoria: 'Víveres', imagen: '' },
-  { id: 6, codigo: '7591472015188', nombre: 'Spray Aclarante Farmatodo', costoUSD: 3.30, precioUSD: 4.50, aplicaPrecioMayor: false, precioMayorUSD: 0, cantMinimaMayor: 0, stock: 15, categoria: 'Higiene Personal', imagen: '' },
+  { id: 1, codigo: '7591001000123', nombre: 'Harina PAN Blanca 1kg', costoUSD: 0.92, precioUSD: 1.10, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 0.98, cantMinimaMayor: 3, stock: 50, categoria: 'Víveres', imagen: '' },
+  { id: 2, codigo: '7591002000456', nombre: 'Arroz Blanco Primor 1kg', costoUSD: 1.05, precioUSD: 1.35, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 1.20, cantMinimaMayor: 3, stock: 40, categoria: 'Víveres', imagen: '' },
+  { id: 3, codigo: 'Q-001', nombre: 'Queso Blanco Llanero', costoUSD: 3.50, precioUSD: 4.80, esPesado: true, aplicaPrecioMayor: true, precioMayorUSD: 4.30, cantMinimaMayor: 3, stock: 15.5, categoria: 'Charcutería', imagen: '' },
+  { id: 4, codigo: 'J-002', nombre: 'Jamón de Pierna Plumrose', costoUSD: 6.20, precioUSD: 8.50, esPesado: true, aplicaPrecioMayor: false, precioMayorUSD: 0, cantMinimaMayor: 0, stock: 8.2, categoria: 'Charcutería', imagen: '' },
+  { id: 5, codigo: 'V-003', nombre: 'Tomate Manzano', costoUSD: 1.10, precioUSD: 1.60, esPesado: true, aplicaPrecioMayor: false, precioMayorUSD: 0, cantMinimaMayor: 0, stock: 25.0, categoria: 'Verduras y Frutas', imagen: '' },
+  { id: 6, codigo: '7591472015188', nombre: 'Spray Aclarante Farmatodo', costoUSD: 3.30, precioUSD: 4.50, esPesado: false, aplicaPrecioMayor: false, precioMayorUSD: 0, cantMinimaMayor: 0, stock: 15, categoria: 'Higiene Personal', imagen: '' },
 ];
 
 const CLIENTES_INICIALES = [
@@ -158,6 +159,8 @@ export default function App() {
   const [camaraAbierta, setCamaraAbierta] = useState(false);
   const [onScanCallback, setOnScanCallback] = useState(null);
 
+  const [productoParaPesar, setProductoParaPesar] = useState(null);
+
   const inputRef = useRef(null);
   const wrapperRef = useRef(null);
 
@@ -193,7 +196,6 @@ export default function App() {
           setLicenciaBloqueada(true);
           prevBloqueadaRef.current = true;
         } else {
-          // Detectar si fue reactivada de una suspensión O si se extendieron días desde el panel
           const fechaVenceActual = new Date(res.licenciaHasta).getTime();
           const fechaPrevia = prevVenceRef.current ? new Date(prevVenceRef.current).getTime() : null;
 
@@ -280,7 +282,7 @@ export default function App() {
 
   const exportarBackupCompleto = () => {
     const backupData = {
-      version: '1.7.0',
+      version: '1.8.0',
       fechaExportacion: new Date().toISOString(),
       cuentaMaster,
       cajeros,
@@ -314,14 +316,24 @@ export default function App() {
   };
 
   const calcularPrecioItem = (prod, cantidad) => {
-    const cant = parseInt(cantidad, 10) || 1;
+    const cant = parseFloat(cantidad) || 1;
     if (prod.aplicaPrecioMayor && prod.precioMayorUSD > 0 && cant >= (prod.cantMinimaMayor || 3)) {
       return { precioUnitario: parseFloat(prod.precioMayorUSD), esMayor: true };
     }
     return { precioUnitario: parseFloat(prod.precioUSD), esMayor: false };
   };
 
-  const agregarProductoAlCarrito = (prod) => {
+  const procesarSeleccionProducto = (prod) => {
+    setBusquedaInput('');
+    setMostrarPredictivo(false);
+    if (prod.esPesado) {
+      setProductoParaPesar(prod);
+    } else {
+      agregarProductoUnidadAlCarrito(prod);
+    }
+  };
+
+  const agregarProductoUnidadAlCarrito = (prod) => {
     setCarrito(actual => {
       const existe = actual.find(item => item.id === prod.id);
       if (existe) {
@@ -343,8 +355,21 @@ export default function App() {
         esMayor: info.esMayor 
       }];
     });
-    setBusquedaInput('');
-    setMostrarPredictivo(false);
+    if (inputRef.current) inputRef.current.focus();
+  };
+
+  const agregarProductoPesadoAlCarrito = (prod, kilos) => {
+    const info = calcularPrecioItem(prod, kilos);
+    setCarrito(actual => {
+      return [...actual, {
+        ...prod,
+        cantidad: parseFloat(kilos.toFixed(3)),
+        precioUSD: info.precioUnitario,
+        precioDetalOriginal: prod.precioUSD,
+        esMayor: info.esMayor,
+        esPesado: true
+      }];
+    });
     if (inputRef.current) inputRef.current.focus();
   };
 
@@ -352,7 +377,8 @@ export default function App() {
     setCarrito(prev => {
       return prev.map(item => {
         if (item.id === id) {
-          const nuevaCant = item.cantidad + delta;
+          const paso = item.esPesado ? 0.100 : 1;
+          const nuevaCant = Math.round((item.cantidad + (delta > 0 ? paso : -paso)) * 1000) / 1000;
           if (nuevaCant <= 0) return null;
           
           const prodOriginal = productos.find(p => p.id === id) || item;
@@ -376,13 +402,13 @@ export default function App() {
 
     const coincidenciaExactaCodigo = productos.find(p => p.codigo === busquedaInput.trim());
     if (coincidenciaExactaCodigo) {
-      agregarProductoAlCarrito(coincidenciaExactaCodigo);
+      procesarSeleccionProducto(coincidenciaExactaCodigo);
       return;
     }
 
     const coincidenciaNombre = productos.find(p => p.nombre.toLowerCase().includes(limpio) || p.codigo.includes(limpio));
     if (coincidenciaNombre) {
-      agregarProductoAlCarrito(coincidenciaNombre);
+      procesarSeleccionProducto(coincidenciaNombre);
     } else {
       alert('Producto o código "' + busquedaInput + '" no encontrado.');
     }
@@ -555,8 +581,13 @@ export default function App() {
     }
 
     setProductos(prods => prods.map(p => {
-      const itemVendido = carrito.find(it => it.id === p.id);
-      return itemVendido ? { ...p, stock: Math.max(0, (p.stock || 0) - itemVendido.cantidad) } : p;
+      const itemsVendidos = carrito.filter(it => it.id === p.id);
+      if (itemsVendidos.length > 0) {
+        const totalRestar = itemsVendidos.reduce((acc, it) => acc + it.cantidad, 0);
+        const nuevoStock = Math.max(0, (p.stock || 0) - totalRestar);
+        return { ...p, stock: Math.round(nuevoStock * 1000) / 1000 };
+      }
+      return p;
     }));
 
     setCarrito([]);
@@ -570,8 +601,12 @@ export default function App() {
     if (!confirm(`¿Confirmas anular la factura #${venta.id}? Se repondrá la mercancía al inventario.`)) return;
 
     setProductos(prods => prods.map(p => {
-      const dev = (venta.items || []).find(it => it.id === p.id);
-      return dev ? { ...p, stock: (p.stock || 0) + dev.cantidad } : p;
+      const dev = (venta.items || []).filter(it => it.id === p.id);
+      if (dev.length > 0) {
+        const totalDev = dev.reduce((acc, it) => acc + it.cantidad, 0);
+        return { ...p, stock: Math.round(((p.stock || 0) + totalDev) * 1000) / 1000 };
+      }
+      return p;
     }));
 
     if (venta.esCredito && parseFloat(venta.saldoDeudaUSD) > 0) {
@@ -606,7 +641,6 @@ export default function App() {
   });
   const saldoActualMostrador = clienteEncontrado ? (clienteEncontrado.saldoPendienteUSD || 0) : (clienteActual.saldoPendienteUSD || 0);
 
-  // 1. PANTALLA DE BLOQUEO POR SUSPENSIÓN
   if (licenciaBloqueada) {
     return (
       <div style={styles.overlayBloqueo} translate="no">
@@ -655,11 +689,9 @@ export default function App() {
 
   return (
     <div style={styles.contenedor} translate="no">
-      {/* 2. MODAL PREMIUM DE FELICITACIONES POR ACTIVACIÓN O RENOVACIÓN */}
       {modalReactivado && (
         <div style={styles.overlayFelicitacion} translate="no">
           <div style={styles.cardFelicitacionPro}>
-            {/* Header decorativo verde */}
             <div style={styles.bannerProTop}>
               <div style={styles.iconoGlowCirculo}>
                 <Sparkles size={28} color="#15803d" />
@@ -702,6 +734,15 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* CALCULADORA DE PESO / BALANZA */}
+      <ModalPeso 
+        abierto={Boolean(productoParaPesar)}
+        producto={productoParaPesar}
+        tasaCambio={tasaCambio}
+        alConfirmar={agregarProductoPesadoAlCarrito}
+        alCerrar={() => setProductoParaPesar(null)}
+      />
 
       {vistaActual === 'configuracion' && esDueno && (
         <ConfiguracionModal 
@@ -750,6 +791,7 @@ export default function App() {
       {vistaActual === 'inventario' && (
         <InventarioModal 
           productos={productos}
+          tasaCambio={tasaCambio}
           esDueno={esDueno}
           alGuardarProducto={(p) => setProductos(prev => {
             const idx = prev.findIndex(item => item.id === p.id);
@@ -1044,17 +1086,24 @@ export default function App() {
               {mostrarPredictivo && productosSugeridos.length > 0 && (
                 <div style={styles.dropdownPredictivo}>
                   {productosSugeridos.map(p => (
-                    <div key={p.id} onClick={() => agregarProductoAlCarrito(p)} style={styles.itemPredictivo}>
+                    <div key={p.id} onClick={() => procesarSeleccionProducto(p)} style={styles.itemPredictivo}>
                       <div>
-                        <strong style={{ fontSize: '0.85rem', color: '#1e293b' }}>{p.nombre}</strong>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <strong style={{ fontSize: '0.85rem', color: '#1e293b' }}>{p.nombre}</strong>
+                          {p.esPesado && <span style={styles.badgePesadoMini}>Balanza</span>}
+                        </div>
                         <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                          Cód: {p.codigo} | Stock: {p.stock || 0}
-                          {p.aplicaPrecioMayor && ` · Mayor: $${p.precioMayorUSD} (≥${p.cantMinimaMayor}u)`}
+                          Cód: {p.codigo} | Stock: {p.stock || 0} {p.esPesado ? 'Kg' : 'u'}
+                          {p.aplicaPrecioMayor && ` · Mayor: $${p.precioMayorUSD} (≥${p.cantMinimaMayor})`}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#16a34a' }}>${p.precioUSD.toFixed(2)}</span>
-                        <small style={{ display: 'block', fontSize: '0.68rem', color: '#64748b' }}>Bs. {(p.precioUSD * tasaNum).toFixed(2)}</small>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#16a34a' }}>
+                          ${p.precioUSD.toFixed(2)}{p.esPesado ? '/Kg' : ''}
+                        </span>
+                        <small style={{ display: 'block', fontSize: '0.68rem', color: '#64748b' }}>
+                          Bs. {(p.precioUSD * tasaNum).toFixed(2)}
+                        </small>
                       </div>
                     </div>
                   ))}
@@ -1076,27 +1125,34 @@ export default function App() {
               </div>
             ) : (
               <div style={styles.listaItems}>
-                {carrito.map((item) => {
+                {carrito.map((item, idx) => {
                   const itemSubUSD = item.precioUSD * item.cantidad;
                   const itemSubBS = itemSubUSD * tasaNum;
                   return (
-                    <div key={item.id} style={styles.itemFila}>
+                    <div key={idx} style={styles.itemFila}>
                       <div style={{ flex: 2, display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                           <strong style={{ fontSize: '0.88rem', color: '#1e293b' }}>{item.nombre}</strong>
-                          {item.esMayor && (
-                            <span style={styles.badgeMayorLive}>Mayorista</span>
-                          )}
+                          {item.esPesado && <span style={styles.badgePesadoMini}>Balanza</span>}
+                          {item.esMayor && <span style={styles.badgeMayorLive}>Mayorista</span>}
                         </div>
-                        <span style={{ fontSize: '0.72rem', color: item.esMayor ? '#c2410c' : '#64748b', fontWeight: item.esMayor ? 'bold' : 'normal' }}>
-                          ${item.precioUSD.toFixed(2)} | Bs. {(item.precioUSD * tasaNum).toFixed(2)} c/u
+                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                          {item.esPesado ? (
+                            <span>{item.cantidad} Kg x ${item.precioUSD.toFixed(2)}/Kg</span>
+                          ) : (
+                            <span>${item.precioUSD.toFixed(2)} c/u</span>
+                          )}
                         </span>
                       </div>
+
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, justifyContent: 'center' }}>
                         <button type="button" onClick={() => modificarCantidadItem(item.id, -1)} style={styles.btnCant}><Minus size={13}/></button>
-                        <span style={{ fontWeight: 'bold', fontSize: '0.92rem' }}>{item.cantidad}</span>
+                        <span style={{ fontWeight: 'bold', fontSize: '0.88rem', minWidth: '40px', textAlign: 'center' }}>
+                          {item.esPesado ? `${item.cantidad}k` : item.cantidad}
+                        </span>
                         <button type="button" onClick={() => modificarCantidadItem(item.id, 1)} style={styles.btnCant}><Plus size={13}/></button>
                       </div>
+
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flex: 1 }}>
                         <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>${itemSubUSD.toFixed(2)}</strong>
                         <small style={{ color: '#64748b', fontSize: '0.72rem' }}>Bs. {itemSubBS.toFixed(2)}</small>
@@ -1305,7 +1361,7 @@ export default function App() {
             onScanCallback(cod);
           } else {
             const prod = productos.find(p => p.codigo === cod);
-            if (prod) agregarProductoAlCarrito(prod);
+            if (prod) procesarSeleccionProducto(prod);
             else alert('Código no encontrado: ' + cod);
           }
         }}
@@ -1349,6 +1405,7 @@ const styles = {
   inputBuscador: { width: '100%', boxSizing: 'border-box', padding: '8px 8px 8px 30px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.85rem', outline: 'none' },
   dropdownPredictivo: { position: 'absolute', top: '40px', left: 0, right: 0, backgroundColor: '#fff', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', zIndex: 100, border: '1px solid #e2e8f0', overflow: 'hidden' },
   itemPredictivo: { padding: '8px 12px', borderBottom: '1px solid #f1f3f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' },
+  badgePesadoMini: { backgroundColor: '#dcfce7', color: '#15803d', fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold', border: '1px solid #bbf7d0' },
   btnAgregar: { padding: '0 10px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.78rem', cursor: 'pointer' },
   btnCamara: { display: 'flex', alignItems: 'center', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '8px', padding: '0 9px', cursor: 'pointer' },
   seccionCarrito: { flex: 1, overflowY: 'auto', padding: '8px 12px' },
@@ -1380,19 +1437,17 @@ const styles = {
   itemEsperaCard: { backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0' },
   btnMini: { border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' },
 
-  /* PANTALLA BLOQUEO SUSPENDIDO */
   overlayBloqueo: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#090d16', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999999, padding: '20px' },
   cardBloqueo: { backgroundColor: '#fff', borderRadius: '20px', padding: '24px 20px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', fontFamily: 'system-ui, sans-serif' },
   iconoBloqueo: { width: '70px', height: '70px', borderRadius: '20px', backgroundColor: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px auto' },
   cajaAvisoContacto: { backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '12px', display: 'flex', alignItems: 'center', gap: '10px', margin: '18px 0' },
   btnReintentarLicencia: { width: '100%', padding: '12px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.86rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' },
 
-  /* MODAL PREMIUM FELICITACIONES ACTIVACIÓN / RENOVACIÓN */
   overlayFelicitacion: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(9, 13, 22, 0.85)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999999, padding: '20px' },
-  cardFelicitacionPro: { backgroundColor: '#fff', borderRadius: '24px', maxWidth: '360px', width: '100%', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', fontFamily: 'system-ui, sans-serif', animation: 'scaleUp 0.25s ease' },
+  cardFelicitacionPro: { backgroundColor: '#fff', borderRadius: '24px', maxWidth: '360px', width: '100%', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', fontFamily: 'system-ui, sans-serif' },
   bannerProTop: { height: '80px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   iconoGlowCirculo: { width: '60px', height: '60px', borderRadius: '50%', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 20px rgba(0,0,0,0.15)', position: 'absolute', bottom: '-26px' },
   pillStatusVerde: { display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '3px 10px', borderRadius: '20px', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '22px' },
   infoDiasBoxPro: { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 12px', margin: '14px 0 18px 0' },
-  btnContinuarPro: { width: '100%', padding: '13px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '0.92rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)', transition: 'background-color 0.2s' }
+  btnContinuarPro: { width: '100%', padding: '13px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '0.92rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)' }
 };

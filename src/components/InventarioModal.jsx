@@ -1,593 +1,657 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Plus, Search, Edit3, Trash2, Camera, Package, RefreshCw, X, Tag } from 'lucide-react';
+import { 
+  ArrowLeft, Plus, Search, Edit2, Trash2, Camera, X, 
+  Package, DollarSign, Tag, Scale, Percent, Image as ImageIcon, Check, Boxes, RefreshCw
+} from 'lucide-react';
 
-const CATEGORIAS_CONFIG = [
-  { nombre: 'Víveres', margen: 20, exento: true },
-  { nombre: 'Bebidas', margen: 30, exento: false },
-  { nombre: 'Snacks / Chucherías', margen: 35, exento: false },
-  { nombre: 'Charcutería / Lácteos', margen: 25, exento: true },
-  { nombre: 'Limpieza y Hogar', margen: 35, exento: false },
-  { nombre: 'Higiene Personal', margen: 35, exento: false },
-  { nombre: 'Licores', margen: 40, exento: false },
-  { nombre: 'Otros', margen: 30, exento: false }
-];
-
-export default function InventarioModal({ 
-  productos, 
-  esDueno = false, 
-  alGuardarProducto, 
-  alEliminarProducto, 
-  alVolver, 
-  alAbrirCamara 
-}) {
+export default function InventarioModal({ productos, tasaCambio = 1, esDueno, alGuardarProducto, alEliminarProducto, alVolver, alAbrirCamara }) {
   const [busqueda, setBusqueda] = useState('');
-  const [categoriaFiltro, setCategoriaFiltro] = useState('Todas');
-  const [modalFormAbierto, setModalFormAbierto] = useState(false);
-  const [prodEditando, setProdEditando] = useState(null);
+  const [modalFormularioAbierto, setModalFormularioAbierto] = useState(false);
+  const [productoEditar, setProductoEditar] = useState(null);
+  const [avisoExistente, setAvisoExistente] = useState('');
+  const [stockASumar, setStockASumar] = useState('');
 
-  // Campos del formulario
-  const [codigo, setCodigo] = useState('');
-  const [nombre, setNombre] = useState('');
-  const [categoria, setCategoria] = useState('Víveres');
-  const [modoCompra, setModoCompra] = useState('unidad');
-  
-  const [costoBulto, setCostoBulto] = useState('');
-  const [unidadesPorBulto, setUnidadesPorBulto] = useState('20');
-  const [cantidadBultosIngresados, setCantidadBultosIngresados] = useState('1');
+  const tasaNum = parseFloat(tasaCambio) || 1;
 
-  const [costoUnitario, setCostoUnitario] = useState('');
-  const [stockUnidades, setStockUnidades] = useState('10');
+  const [form, setForm] = useState({
+    id: null,
+    codigo: '',
+    nombre: '',
+    esPesado: false,
+    comproPorBulto: false,
+    costoBultoUSD: '',
+    unidadesPorBulto: '',
+    costoUSD: '',
+    margenGanancia: '30',
+    precioUSD: '',
+    aplicaIVA: false,
+    aplicaPrecioMayor: false,
+    margenMayor: '15',
+    precioMayorUSD: '',
+    cantMinimaMayor: '3',
+    stock: '',
+    categoria: 'Víveres',
+    imagen: ''
+  });
 
-  const [margenGanancia, setMargenGanancia] = useState('20');
-  const [precioVentaUSD, setPrecioVentaUSD] = useState('');
-  
-  // PRECIO AL MAYOR
-  const [aplicaPrecioMayor, setAplicaPrecioMayor] = useState(false);
-  const [precioMayorUSD, setPrecioMayorUSD] = useState('');
-  const [cantMinimaMayor, setCantMinimaMayor] = useState('3');
+  const abrirCrear = () => {
+    setProductoEditar(null);
+    setAvisoExistente('');
+    setStockASumar('');
+    setForm({
+      id: null,
+      codigo: '',
+      nombre: '',
+      esPesado: false,
+      comproPorBulto: false,
+      costoBultoUSD: '',
+      unidadesPorBulto: '',
+      costoUSD: '',
+      margenGanancia: '30',
+      precioUSD: '',
+      aplicaIVA: false,
+      aplicaPrecioMayor: false,
+      margenMayor: '15',
+      precioMayorUSD: '',
+      cantMinimaMayor: '3',
+      stock: '',
+      categoria: 'Víveres',
+      imagen: ''
+    });
+    setModalFormularioAbierto(true);
+  };
 
-  const [aplicaIVA, setAplicaIVA] = useState(false);
+  const cargarDatosProducto = (prod, esDetectadoPorScan = false) => {
+    setProductoEditar(prod);
+    const c = parseFloat(prod.costoUSD) || 0;
+    const p = parseFloat(prod.precioUSD) || 0;
+    let m = '30';
+    if (c > 0 && p >= c) {
+      m = (((p - c) / c) * 100).toFixed(0);
+    }
 
-  const productoExistente = productos.find(p => p.codigo && p.codigo === codigo.trim() && (!prodEditando || prodEditando.id !== p.id));
-
-  const abrirFormulario = (producto = null) => {
-    if (!esDueno) return;
-    if (producto) {
-      setProdEditando(producto);
-      setCodigo(producto.codigo || '');
-      setNombre(producto.nombre || '');
-      setCategoria(producto.categoria || 'Víveres');
-      setModoCompra('unidad');
-      setCostoUnitario(producto.costoUSD !== undefined ? producto.costoUSD.toString() : '');
-      setStockUnidades((producto.stock || 0).toString());
-      setMargenGanancia(producto.margenGanancia !== undefined ? producto.margenGanancia.toString() : '20');
-      setPrecioVentaUSD(producto.precioUSD.toString());
-      setAplicaIVA(Boolean(producto.aplicaIVA));
-      
-      setAplicaPrecioMayor(Boolean(producto.aplicaPrecioMayor));
-      setPrecioMayorUSD(producto.precioMayorUSD ? producto.precioMayorUSD.toString() : '');
-      setCantMinimaMayor(producto.cantMinimaMayor ? producto.cantMinimaMayor.toString() : '3');
-
-      setCostoBulto('');
-      setUnidadesPorBulto('20');
-      setCantidadBultosIngresados('1');
+    if (esDetectadoPorScan) {
+      setAvisoExistente(`¡Producto ya registrado! (Stock actual: ${prod.stock} ${prod.esPesado ? 'Kg' : 'und'})`);
     } else {
-      setProdEditando(null);
-      setCodigo('');
-      setNombre('');
-      setCategoria('Víveres');
-      setModoCompra('unidad');
-      setCostoBulto('');
-      setUnidadesPorBulto('20');
-      setCantidadBultosIngresados('1');
-      setCostoUnitario('');
-      setStockUnidades('10');
-      setMargenGanancia('20');
-      setPrecioVentaUSD('');
-      setAplicaPrecioMayor(false);
-      setPrecioMayorUSD('');
-      setCantMinimaMayor('3');
-      setAplicaIVA(false);
+      setAvisoExistente('');
     }
-    setModalFormAbierto(true);
+
+    setForm({
+      id: prod.id,
+      codigo: prod.codigo || '',
+      nombre: prod.nombre || '',
+      esPesado: Boolean(prod.esPesado),
+      comproPorBulto: Boolean(prod.comproPorBulto),
+      costoBultoUSD: prod.costoBultoUSD !== undefined && prod.costoBultoUSD !== null ? prod.costoBultoUSD.toString() : '',
+      unidadesPorBulto: prod.unidadesPorBulto !== undefined && prod.unidadesPorBulto !== null ? prod.unidadesPorBulto.toString() : '',
+      costoUSD: prod.costoUSD !== undefined && prod.costoUSD !== null ? prod.costoUSD.toString() : '',
+      margenGanancia: m,
+      precioUSD: prod.precioUSD ? prod.precioUSD.toString() : '',
+      aplicaIVA: Boolean(prod.aplicaIVA),
+      aplicaPrecioMayor: Boolean(prod.aplicaPrecioMayor),
+      margenMayor: prod.margenMayor ? prod.margenMayor.toString() : '15',
+      precioMayorUSD: prod.precioMayorUSD ? prod.precioMayorUSD.toString() : '',
+      cantMinimaMayor: prod.cantMinimaMayor ? prod.cantMinimaMayor.toString() : '3',
+      stock: prod.stock !== undefined && prod.stock !== null ? prod.stock.toString() : '',
+      categoria: prod.categoria || 'Víveres',
+      imagen: prod.imagen || ''
+    });
   };
 
-  const aplicarDatosProductoExistente = (prod) => {
-    setNombre(prod.nombre);
-    setCategoria(prod.categoria || 'Víveres');
-    if (prod.costoUSD) setCostoUnitario(prod.costoUSD.toString());
-    setMargenGanancia((prod.margenGanancia || 20).toString());
-    setPrecioVentaUSD(prod.precioUSD.toString());
-    setAplicaIVA(Boolean(prod.aplicaIVA));
-    setAplicaPrecioMayor(Boolean(prod.aplicaPrecioMayor));
-    if (prod.precioMayorUSD) setPrecioMayorUSD(prod.precioMayorUSD.toString());
-    if (prod.cantMinimaMayor) setCantMinimaMayor(prod.cantMinimaMayor.toString());
+  // Escaneo inteligente en formulario
+  const manejarEscanearEnForm = () => {
+    alAbrirCamara((codEscaneado) => {
+      const limpio = (codEscaneado || '').trim();
+      const existente = productos.find(p => p.codigo === limpio);
+
+      if (existente) {
+        cargarDatosProducto(existente, true);
+      } else {
+        setAvisoExistente('');
+        setForm(prev => ({ ...prev, codigo: limpio }));
+      }
+    });
   };
 
-  const manejarCambioCodigo = (nuevoCod) => {
-    setCodigo(nuevoCod);
-    const encontrado = productos.find(p => p.codigo === nuevoCod.trim() && (!prodEditando || prodEditando.id !== p.id));
-    if (encontrado) {
-      aplicarDatosProductoExistente(encontrado);
+  const recalcularDesdeBulto = (costoB, unidB, margenG = form.margenGanancia, margenM = form.margenMayor) => {
+    const cb = parseFloat(costoB) || 0;
+    const ub = parseFloat(unidB) || 0;
+    let costoUnit = 0;
+    if (cb > 0 && ub > 0) {
+      costoUnit = cb / ub;
+    }
+
+    const mg = parseFloat(margenG) || 0;
+    const mm = parseFloat(margenM) || 0;
+
+    const p = costoUnit > 0 ? (costoUnit * (1 + mg / 100)).toFixed(2) : form.precioUSD;
+    const pm = (costoUnit > 0 && form.aplicaPrecioMayor) ? (costoUnit * (1 + mm / 100)).toFixed(2) : form.precioMayorUSD;
+
+    setForm(prev => ({
+      ...prev,
+      costoBultoUSD: costoB,
+      unidadesPorBulto: unidB,
+      costoUSD: costoUnit > 0 ? costoUnit.toFixed(4) : prev.costoUSD,
+      precioUSD: p,
+      precioMayorUSD: pm
+    }));
+  };
+
+  const manejarCambioCostoDirecto = (val) => {
+    const c = parseFloat(val) || 0;
+    const m = parseFloat(form.margenGanancia) || 0;
+    const p = c > 0 ? (c * (1 + m / 100)).toFixed(2) : form.precioUSD;
+    let pm = form.precioMayorUSD;
+    if (form.aplicaPrecioMayor && c > 0) {
+      const mm = parseFloat(form.margenMayor) || 0;
+      pm = (c * (1 + mm / 100)).toFixed(2);
+    }
+    setForm(prev => ({ ...prev, costoUSD: val, precioUSD: p, precioMayorUSD: pm }));
+  };
+
+  const manejarCambioMargen = (val) => {
+    const m = parseFloat(val) || 0;
+    const c = parseFloat(form.costoUSD) || 0;
+    const p = c > 0 ? (c * (1 + m / 100)).toFixed(2) : form.precioUSD;
+    setForm(prev => ({ ...prev, margenGanancia: val, precioUSD: p }));
+  };
+
+  const manejarCambioPrecioManual = (val) => {
+    const p = parseFloat(val) || 0;
+    const c = parseFloat(form.costoUSD) || 0;
+    let m = form.margenGanancia;
+    if (c > 0 && p >= c) {
+      m = (((p - c) / c) * 100).toFixed(0);
+    }
+    setForm(prev => ({ ...prev, precioUSD: val, margenGanancia: m }));
+  };
+
+  const manejarCambioMargenMayor = (val) => {
+    const mm = parseFloat(val) || 0;
+    const c = parseFloat(form.costoUSD) || 0;
+    const pm = c > 0 ? (c * (1 + mm / 100)).toFixed(2) : form.precioMayorUSD;
+    setForm(prev => ({ ...prev, margenMayor: val, precioMayorUSD: pm }));
+  };
+
+  const manejarImagen = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setForm(prev => ({ ...prev, imagen: reader.result }));
+      };
+      reader.readAsDataURL(file);
     }
   };
-
-  const manejarCambioCategoria = (catNombre) => {
-    setCategoria(catNombre);
-    const catConf = CATEGORIAS_CONFIG.find(c => c.nombre === catNombre);
-    if (catConf) {
-      setMargenGanancia(catConf.margen.toString());
-      setAplicaIVA(!catConf.exento);
-      recalcularPrecioConMargen(costoUnitario, catConf.margen);
-    }
-  };
-
-  const recalcularCostoBulto = (cBulto, uBulto) => {
-    const c = parseFloat(cBulto) || 0;
-    const u = parseFloat(uBulto) || 1;
-    if (u > 0) {
-      const unit = (c / u).toFixed(4);
-      setCostoUnitario(unit);
-      recalcularPrecioConMargen(unit, margenGanancia);
-    }
-  };
-
-  const recalcularPrecioConMargen = (cUnit, mGan) => {
-    const c = parseFloat(cUnit) || 0;
-    const m = parseFloat(mGan) || 0;
-    if (c > 0 && m < 100) {
-      const p = (c / (1 - (m / 100))).toFixed(2);
-      setPrecioVentaUSD(p);
-    }
-  };
-
-  const unidadesCalculadasQueEntran = modoCompra === 'bulto'
-    ? (parseInt(cantidadBultosIngresados, 10) || 0) * (parseInt(unidadesPorBulto, 10) || 0)
-    : (parseInt(stockUnidades, 10) || 0);
-
-  const stockFinalResultante = productoExistente
-    ? (productoExistente.stock || 0) + unidadesCalculadasQueEntran
-    : (prodEditando ? (parseInt(stockUnidades, 10) || 0) : unidadesCalculadasQueEntran);
 
   const guardar = (e) => {
     e.preventDefault();
-    if (!esDueno) return;
-    if (!nombre.trim() || !precioVentaUSD) return alert('Nombre y precio de venta son requeridos.');
+    if (!form.nombre.trim()) return alert('El nombre del producto es obligatorio.');
+    if (!form.precioUSD || parseFloat(form.precioUSD) <= 0) return alert('El precio de venta debe ser mayor a 0.');
 
-    const cUnit = parseFloat(costoUnitario) || 0;
-    const pVenta = parseFloat(precioVentaUSD) || 0;
-    const targetId = productoExistente ? productoExistente.id : (prodEditando ? prodEditando.id : Date.now());
+    let stockFinal = parseFloat(form.stock) || 0;
+    const addStock = parseFloat(stockASumar) || 0;
+    if (addStock > 0) {
+      stockFinal += addStock;
+    }
 
-    const productoFinal = {
-      id: targetId,
-      codigo: codigo.trim() || Date.now().toString().slice(-8),
-      nombre: nombre.trim(),
-      categoria: categoria,
-      costoUSD: cUnit,
-      margenGanancia: parseFloat(margenGanancia) || 0,
-      precioUSD: pVenta,
-      stock: stockFinalResultante,
-      aplicaIVA: aplicaIVA,
-      aplicaPrecioMayor: aplicaPrecioMayor,
-      precioMayorUSD: aplicaPrecioMayor ? (parseFloat(precioMayorUSD) || pVenta) : 0,
-      cantMinimaMayor: aplicaPrecioMayor ? (parseInt(cantMinimaMayor, 10) || 3) : 0,
-      imagen: prodEditando ? prodEditando.imagen : (productoExistente ? productoExistente.imagen : '')
+    const prodFinal = {
+      ...form,
+      id: form.id || Date.now(),
+      codigo: form.codigo.trim() || 'PROD-' + Date.now().toString().slice(-6),
+      esPesado: Boolean(form.esPesado),
+      comproPorBulto: Boolean(form.comproPorBulto),
+      costoBultoUSD: parseFloat(form.costoBultoUSD) || 0,
+      unidadesPorBulto: parseFloat(form.unidadesPorBulto) || 0,
+      costoUSD: parseFloat(form.costoUSD) || 0,
+      margenGanancia: parseFloat(form.margenGanancia) || 0,
+      precioUSD: parseFloat(form.precioUSD),
+      aplicaIVA: Boolean(form.aplicaIVA),
+      aplicaPrecioMayor: Boolean(form.aplicaPrecioMayor),
+      precioMayorUSD: form.aplicaPrecioMayor ? (parseFloat(form.precioMayorUSD) || 0) : 0,
+      cantMinimaMayor: form.aplicaPrecioMayor ? (parseFloat(form.cantMinimaMayor) || 3) : 0,
+      stock: stockFinal
     };
 
-    alGuardarProducto(productoFinal);
-    setModalFormAbierto(false);
+    alGuardarProducto(prodFinal);
+    setModalFormularioAbierto(false);
   };
 
-  const listaFiltrada = productos.filter(p => {
-    const matchBusqueda = p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || p.codigo.includes(busqueda);
-    const matchCat = categoriaFiltro === 'Todas' || (p.categoria || 'Víveres') === categoriaFiltro;
-    return matchBusqueda && matchCat;
-  });
+  const prodsFiltrados = productos.filter(p => 
+    p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
+    p.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
+    (p.categoria && p.categoria.toLowerCase().includes(busqueda.toLowerCase()))
+  );
 
-  const cNum = parseFloat(costoUnitario) || 0;
-  const pNum = parseFloat(precioVentaUSD) || 0;
-  const gananciaNetaUSD = Math.max(0, pNum - cNum);
+  const costoNum = parseFloat(form.costoUSD) || 0;
+  const precioNum = parseFloat(form.precioUSD) || 0;
+  const gananciaNetaUSD = Math.max(0, precioNum - costoNum);
+  const precioBS = precioNum * tasaNum;
 
   return (
     <div style={styles.contenedor} translate="no">
       <header style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button type="button" onClick={alVolver} style={styles.btnBack}><ArrowLeft color="#333" size={20} /></button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button type="button" onClick={alVolver} style={styles.btnBack}>
+            <ArrowLeft color="#334155" size={20} />
+          </button>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#111' }}>Inventario de Productos</h2>
-            <small style={{ color: '#666', fontSize: '0.72rem' }}>
-              {productos.length} ítems en catálogo {esDueno ? '· Modo Dueño' : '· Consulta Cajero'}
-            </small>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a', fontWeight: '800' }}>Control de Inventario</h2>
+            <small style={{ color: '#64748b', fontSize: '0.72rem' }}>{productos.length} productos registrados</small>
           </div>
         </div>
-
-        {/* SOLO EL DUEÑO PUEDE CREAR PRODUCTOS */}
         {esDueno && (
-          <button type="button" onClick={() => abrirFormulario(null)} style={styles.btnNuevo}>
-            <Plus size={16} /> Nuevo
+          <button type="button" onClick={abrirCrear} style={styles.btnCrear}>
+            <Plus size={16} /> <span>Nuevo</span>
           </button>
         )}
       </header>
 
-      {/* FILTROS Y BÚSQUEDA */}
-      <div style={styles.seccionBusqueda}>
-        <div style={styles.inputWrapper}>
-          <Search size={16} color="#64748b" style={{ position: 'absolute', left: '10px', top: '10px' }} />
-          <input
-            type="text"
-            placeholder="Buscar por nombre o código..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            style={styles.inputBuscador}
-          />
-        </div>
-        <div style={styles.chipsCategorias}>
-          <button
-            type="button"
-            onClick={() => setCategoriaFiltro('Todas')}
-            style={{ ...styles.chip, ...(categoriaFiltro === 'Todas' ? styles.chipActivo : {}) }}
-          >
-            Todas
-          </button>
-          {CATEGORIAS_CONFIG.map(cat => (
-            <button
-              key={cat.nombre}
-              type="button"
-              onClick={() => setCategoriaFiltro(cat.nombre)}
-              style={{ ...styles.chip, ...(categoriaFiltro === cat.nombre ? styles.chipActivo : {}) }}
-            >
-              {cat.nombre}
-            </button>
-          ))}
-        </div>
+      <div style={styles.barraBusqueda}>
+        <Search size={16} color="#64748b" />
+        <input 
+          type="text" 
+          placeholder="Buscar producto o código..." 
+          value={busqueda} 
+          onChange={(e) => setBusqueda(e.target.value)} 
+          style={styles.inputSearch} 
+        />
       </div>
 
-      {/* LISTA DE PRODUCTOS */}
-      <div style={styles.lista}>
-        {listaFiltrada.length === 0 ? (
-          <div style={styles.vacio}>
-            <Package color="#cbd5e1" size={48} />
-            <p style={{ marginTop: '8px', fontSize: '0.88rem', color: '#64748b' }}>No se encontraron productos.</p>
-          </div>
+      <div style={styles.listaProductos}>
+        {prodsFiltrados.length === 0 ? (
+          <div style={styles.vacio}>No se encontraron productos en el inventario.</div>
         ) : (
-          listaFiltrada.map(p => {
-            const gan = (p.precioUSD - (p.costoUSD || 0)).toFixed(2);
-            return (
-              <div key={p.id} style={styles.cardItem}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                    <strong style={{ fontSize: '0.88rem', color: '#0f172a' }}>{p.nombre}</strong>
-                    <span style={styles.badgeCat}>{p.categoria || 'Víveres'}</span>
-                    {p.aplicaIVA ? (
-                      <span style={styles.badgeIVA}>IVA 16%</span>
-                    ) : (
-                      <span style={styles.badgeExento}>Exento</span>
-                    )}
-                    {p.aplicaPrecioMayor && (
-                      <span style={styles.badgeMayorTag}>
-                        Mayor: ${p.precioMayorUSD} (≥{p.cantMinimaMayor}u)
-                      </span>
-                    )}
+          prodsFiltrados.map(p => (
+            <div key={p.id} style={styles.cardProducto}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                {p.imagen ? (
+                  <img src={p.imagen} alt={p.nombre} style={styles.thumbProd} />
+                ) : (
+                  <div style={{ ...styles.iconoTipo, backgroundColor: p.esPesado ? '#ecfdf5' : '#eff6ff', color: p.esPesado ? '#059669' : '#0052cc' }}>
+                    {p.esPesado ? <Scale size={18} /> : <Package size={18} />}
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
-                    Cód: {p.codigo} · Stock: <strong style={{ color: p.stock <= 5 ? '#dc2626' : '#0f172a' }}>{p.stock}</strong> und.
+                )}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong style={{ fontSize: '0.88rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {p.nombre}
+                    </strong>
+                    {p.esPesado && <span style={styles.badgePesado}>Por Peso</span>}
+                    {p.aplicaIVA && <span style={styles.badgeIVA}>IVA</span>}
                   </div>
-
-                  {/* COSTOS Y GANANCIAS VISIBLES ÚNICAMENTE PARA EL DUEÑO */}
-                  {esDueno && p.costoUSD > 0 && (
-                    <div style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: '600', marginTop: '2px' }}>
-                      Costo: ${p.costoUSD.toFixed(2)} | Ganancia: +${gan}
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                  <div style={{ fontSize: '1.05rem', fontWeight: '900', color: '#0052cc' }}>${p.precioUSD.toFixed(2)}</div>
-                  
-                  {/* BOTONES DE EDICIÓN VISIBLES ÚNICAMENTE PARA EL DUEÑO */}
-                  {esDueno && (
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button type="button" onClick={() => abrirFormulario(p)} style={styles.btnAccionEdit} title="Editar"><Edit3 size={13} /></button>
-                      <button type="button" onClick={() => alEliminarProducto(p.id)} style={styles.btnAccionDel} title="Eliminar"><Trash2 size={13} /></button>
-                    </div>
-                  )}
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                    Cód: {p.codigo} · Stock: <strong style={{ color: p.stock <= 5 ? '#dc2626' : '#1e293b' }}>{p.stock} {p.esPesado ? 'Kg' : 'u'}</strong>
+                    {p.aplicaPrecioMayor && ` · Mayor: $${p.precioMayorUSD}`}
+                  </div>
                 </div>
               </div>
-            );
-          })
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontSize: '0.92rem', fontWeight: '900', color: '#16a34a' }}>
+                    ${parseFloat(p.precioUSD).toFixed(2)}
+                  </span>
+                  <small style={{ display: 'block', fontSize: '0.66rem', color: '#64748b' }}>
+                    {p.esPesado ? 'por Kilo' : 'por Unidad'}
+                  </small>
+                </div>
+
+                {esDueno && (
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button type="button" onClick={() => { cargarDatosProducto(p, false); setModalFormularioAbierto(true); }} style={styles.btnAccionEdit} title="Editar">
+                      <Edit2 size={14} color="#0052cc" />
+                    </button>
+                    <button type="button" onClick={() => alEliminarProducto(p.id)} style={styles.btnAccionDelete} title="Eliminar">
+                      <Trash2 size={14} color="#dc2626" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
         )}
       </div>
 
-      {/* FORMULARIO (SOLO ACCESIBLE SI ES DUEÑO) */}
-      {modalFormAbierto && esDueno && (
+      {modalFormularioAbierto && (
         <div style={styles.overlay} translate="no">
-          <div style={styles.modalBox}>
-            <div style={styles.modalHeader}>
-              <strong style={{ fontSize: '0.98rem', color: '#0f172a' }}>
-                {prodEditando ? 'Modificar Producto' : 'Ingresar / Reabastecer Mercancía'}
-              </strong>
-              <button type="button" onClick={() => setModalFormAbierto(false)} style={styles.btnCerrarModal}><X size={18} /></button>
+          <div style={styles.modalBoxPro}>
+            <div style={styles.headerModalPro}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1rem', color: '#0f172a', fontWeight: '800' }}>
+                  {productoEditar ? 'Actualizar Producto Existente' : 'Nuevo Producto'}
+                </h3>
+                <small style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                  {productoEditar ? 'Modifica precios, costos o suma nuevo stock' : 'Configuración de catálogo y balanza'}
+                </small>
+              </div>
+              <button type="button" onClick={() => setModalFormularioAbierto(false)} style={styles.btnCerrar}>
+                <X size={18} />
+              </button>
             </div>
 
-            <form onSubmit={guardar} style={styles.formScroll}>
-              
-              <div style={styles.campo}>
-                <label style={styles.label}>Código de Barras:</label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <input
-                    type="text"
-                    placeholder="Escanea o escribe código..."
-                    value={codigo}
-                    onChange={(e) => manejarCambioCodigo(e.target.value)}
-                    style={styles.input}
-                  />
+            <form onSubmit={guardar} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                
+                {/* AVISO SI FUE DETECTADO POR CÁMARA */}
+                {avisoExistente && (
+                  <div style={styles.bannerAvisoExistente}>
+                    <RefreshCw size={14} color="#0284c7" />
+                    <span>{avisoExistente}</span>
+                  </div>
+                )}
+
+                {/* 1. FOTO ARRIBA CENTRADA */}
+                <div style={styles.contenedorFotoTop}>
+                  <label style={styles.labelFotoAvatar}>
+                    {form.imagen ? (
+                      <img src={form.imagen} alt="Producto" style={styles.avatarPreview} />
+                    ) : (
+                      <div style={styles.avatarVacio}>
+                        <ImageIcon size={26} color="#94a3b8" />
+                        <span style={{ fontSize: '0.64rem', color: '#64748b', fontWeight: 'bold', marginTop: '3px' }}>Añadir Foto</span>
+                      </div>
+                    )}
+                    <input type="file" accept="image/*" onChange={manejarImagen} style={{ display: 'none' }} />
+                  </label>
+                  {form.imagen && (
+                    <button type="button" onClick={() => setForm(p => ({ ...p, imagen: '' }))} style={styles.btnQuitarFoto}>
+                      Quitar Foto
+                    </button>
+                  )}
+                </div>
+
+                {/* 2. MODALIDAD: UNIDAD O PESO */}
+                <div style={styles.selectorModoPro}>
                   <button
                     type="button"
-                    onClick={() => {
-                      alAbrirCamara((scanned) => manejarCambioCodigo(scanned));
-                    }}
-                    style={styles.btnCamaraForm}
-                    title="Escanear con cámara"
-                  >
-                    <Camera size={16} />
-                  </button>
-                </div>
-              </div>
-
-              {productoExistente && (
-                <div style={styles.alertaExistente}>
-                  <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <RefreshCw size={13} /> ¡Producto existente detectado!
-                  </div>
-                  <div style={{ fontSize: '0.72rem', marginTop: '2px' }}>
-                    Se sumará la nueva mercancía al stock actual de <strong>{productoExistente.stock} und.</strong>
-                  </div>
-                </div>
-              )}
-
-              <div style={styles.campo}>
-                <label style={styles.label}>Nombre del Producto:</label>
-                <input
-                  type="text"
-                  placeholder="Ej: Harina PAN Blanca 1kg"
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  style={styles.input}
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <div style={{ ...styles.campo, flex: 1.4 }}>
-                  <label style={styles.label}>Categoría:</label>
-                  <select
-                    value={categoria}
-                    onChange={(e) => manejarCambioCategoria(e.target.value)}
-                    style={styles.select}
-                  >
-                    {CATEGORIAS_CONFIG.map(c => (
-                      <option key={c.nombre} value={c.nombre}>{c.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ ...styles.campo, flex: 1 }}>
-                  <label style={styles.label}>Régimen IVA:</label>
-                  <button
-                    type="button"
-                    onClick={() => setAplicaIVA(!aplicaIVA)}
+                    onClick={() => setForm({ ...form, esPesado: false })}
                     style={{
-                      ...styles.btnIVA,
-                      backgroundColor: aplicaIVA ? '#fef3c7' : '#f0fdf4',
-                      borderColor: aplicaIVA ? '#fde047' : '#bbf7d0',
-                      color: aplicaIVA ? '#854d0e' : '#166534'
+                      ...styles.btnTipoPill,
+                      backgroundColor: !form.esPesado ? '#0052cc' : '#f8fafc',
+                      color: !form.esPesado ? '#fff' : '#64748b',
+                      borderColor: !form.esPesado ? '#0052cc' : '#cbd5e1'
                     }}
                   >
-                    {aplicaIVA ? 'Aplica 16%' : 'Exento (0%)'}
+                    <Package size={15} /> Por Unidad (Pza)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, esPesado: true })}
+                    style={{
+                      ...styles.btnTipoPill,
+                      backgroundColor: form.esPesado ? '#059669' : '#f8fafc',
+                      color: form.esPesado ? '#fff' : '#64748b',
+                      borderColor: form.esPesado ? '#059669' : '#cbd5e1'
+                    }}
+                  >
+                    <Scale size={15} /> Por Peso (Kg / Gramos)
                   </button>
                 </div>
-              </div>
 
-              <div style={styles.boxCalculadora}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 'bold', color: '#1e293b' }}>
-                    {prodEditando ? 'Ajustar Inventario:' : '¿Cómo ingresas la mercancía?:'}
-                  </span>
-                  <div style={styles.tabsCompra}>
-                    <button
-                      type="button"
-                      onClick={() => setModoCompra('unidad')}
-                      style={{ ...styles.tabBtn, backgroundColor: modoCompra === 'unidad' ? '#0052cc' : 'transparent', color: modoCompra === 'unidad' ? '#fff' : '#64748b' }}
-                    >
-                      Por Unidad
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModoCompra('bulto')}
-                      style={{ ...styles.tabBtn, backgroundColor: modoCompra === 'bulto' ? '#0052cc' : 'transparent', color: modoCompra === 'bulto' ? '#fff' : '#64748b' }}
-                    >
-                      Por Bulto/Caja
-                    </button>
-                  </div>
-                </div>
-
-                {modoCompra === 'bulto' ? (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginBottom: '8px' }}>
-                      <div>
-                        <label style={styles.labelMini}>Cant. Bultos:</label>
-                        <input
-                          type="number"
-                          min="1"
-                          placeholder="1"
-                          value={cantidadBultosIngresados}
-                          onChange={(e) => setCantidadBultosIngresados(e.target.value)}
-                          style={{ ...styles.inputMini, fontWeight: 'bold', textAlign: 'center' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={styles.labelMini}>Unid. x Bulto:</label>
-                        <input
-                          type="number"
-                          placeholder="20"
-                          value={unidadesPorBulto}
-                          onChange={(e) => {
-                            setUnidadesPorBulto(e.target.value);
-                            recalcularCostoBulto(costoBulto, e.target.value);
-                          }}
-                          style={{ ...styles.inputMini, textAlign: 'center' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={styles.labelMini}>Costo Bulto ($):</label>
-                        <input
-                          type="number"
-                          step="any"
-                          placeholder="20.00"
-                          value={costoBulto}
-                          onChange={(e) => {
-                            setCostoBulto(e.target.value);
-                            recalcularCostoBulto(e.target.value, unidadesPorBulto);
-                          }}
-                          style={styles.inputMini}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={styles.resumenBultoBox}>
-                      <span>Unidades a ingresar: <strong>{unidadesCalculadasQueEntran} und.</strong></span>
-                      <span>Costo unitario calculado: <strong>${costoUnitario || '0.00'}</strong></span>
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={styles.labelMini}>Costo Unitario ($):</label>
-                      <input
-                        type="number"
-                        step="any"
-                        placeholder="0.00"
-                        value={costoUnitario}
-                        onChange={(e) => {
-                          setCostoUnitario(e.target.value);
-                          recalcularPrecioConMargen(e.target.value, margenGanancia);
-                        }}
-                        style={{ ...styles.input, fontWeight: 'bold' }}
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={styles.labelMini}>
-                        {productoExistente ? 'Unidades a Añadir:' : 'Stock Inicial (und):'}
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="10"
-                        value={stockUnidades}
-                        onChange={(e) => setStockUnidades(e.target.value)}
-                        style={{ ...styles.input, fontWeight: 'bold', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div style={{ marginTop: '8px' }}>
-                  <label style={styles.labelMini}>Margen Ganancia Deseado (%):</label>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="25"
-                    value={margenGanancia}
-                    onChange={(e) => {
-                      setMargenGanancia(e.target.value);
-                      recalcularPrecioConMargen(costoUnitario, e.target.value);
-                    }}
-                    style={{ ...styles.input, fontWeight: 'bold' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                <div style={{ ...styles.campo, flex: 1.2 }}>
-                  <label style={{ ...styles.label, color: '#0052cc' }}>Precio Venta al Detal ($):</label>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="0.00"
-                    value={precioVentaUSD}
-                    onChange={(e) => setPrecioVentaUSD(e.target.value)}
-                    style={{ ...styles.input, fontSize: '1.05rem', fontWeight: '900', color: '#0052cc' }}
-                    required
+                {/* 3. DESCRIPCIÓN */}
+                <div style={styles.campo}>
+                  <label style={styles.lbl}>Nombre del Producto *</label>
+                  <input 
+                    type="text" 
+                    value={form.nombre} 
+                    onChange={(e) => setForm({ ...form, nombre: e.target.value })} 
+                    placeholder="Ej: Harina PAN, Queso Paisa, Carne Molida..." 
+                    style={styles.inputGrande} 
+                    required 
                   />
                 </div>
 
-                <div style={{ ...styles.campo, flex: 0.9 }}>
-                  <label style={styles.label}>Stock Final en Tienda:</label>
-                  <div style={styles.cajaStockFinal}>
-                    <strong style={{ fontSize: '1rem', color: '#0f172a' }}>{stockFinalResultante}</strong>
-                    <span style={{ fontSize: '0.68rem', color: '#64748b' }}>und.</span>
-                  </div>
-                </div>
-              </div>
+                {/* 4. COMPRA POR BULTO */}
+                <div style={styles.seccionBultoBox}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', fontWeight: 'bold', color: '#b45309', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={form.comproPorBulto} 
+                      onChange={(e) => setForm({ ...form, comproPorBulto: e.target.checked })} 
+                    />
+                    <Boxes size={14} color="#b45309" />
+                    <span>¿Compraste por Bulto / Fardo / Saco?</span>
+                  </label>
 
-              <div style={styles.boxMayorista}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Tag size={15} color="#ea580c" />
-                    <span style={{ fontSize: '0.76rem', fontWeight: 'bold', color: '#9a3412' }}>
-                      ¿Ofrecer Precio al Mayor?
+                  {form.comproPorBulto && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                      <div style={styles.campo}>
+                        <label style={{ ...styles.lbl, color: '#92400e' }}>Costo Total del Bulto ($)</label>
+                        <input 
+                          type="number" 
+                          step="any" 
+                          value={form.costoBultoUSD} 
+                          onChange={(e) => recalcularDesdeBulto(e.target.value, form.unidadesPorBulto)} 
+                          placeholder="Ej: 21.85" 
+                          style={{ ...styles.input, borderColor: '#fde68a' }} 
+                        />
+                      </div>
+                      <div style={styles.campo}>
+                        <label style={{ ...styles.lbl, color: '#92400e' }}>{form.esPesado ? 'Kilos que trae el bulto' : 'Unidades que trae el bulto'}</label>
+                        <input 
+                          type="number" 
+                          step="any" 
+                          value={form.unidadesPorBulto} 
+                          onChange={(e) => recalcularDesdeBulto(form.costoBultoUSD, e.target.value)} 
+                          placeholder="Ej: 20" 
+                          style={{ ...styles.input, borderColor: '#fde68a' }} 
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. CÁLCULO DE RENTABILIDAD & PRECIO */}
+                <div style={styles.seccionCostosPro}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: '800', color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Cálculo de Rentabilidad
                     </span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.72rem', fontWeight: 'bold', color: '#0052cc', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={form.aplicaIVA} 
+                        onChange={(e) => setForm({ ...form, aplicaIVA: e.target.checked })} 
+                      />
+                      <span>Grava IVA (16%)</span>
+                    </label>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={aplicaPrecioMayor}
-                    onChange={(e) => setAplicaPrecioMayor(e.target.checked)}
-                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                  />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div style={styles.campo}>
+                      <label style={styles.lbl}>
+                        {form.comproPorBulto ? 'Costo Unitario ($)' : (form.esPesado ? 'Costo x Kg ($)' : 'Costo Compra ($)')}
+                      </label>
+                      <input 
+                        type="number" 
+                        step="any" 
+                        value={form.costoUSD} 
+                        onChange={(e) => manejarCambioCostoDirecto(e.target.value)} 
+                        placeholder="0.00" 
+                        style={styles.input} 
+                      />
+                    </div>
+                    <div style={styles.campo}>
+                      <label style={styles.lbl}>Margen Ganancia (%)</label>
+                      <div style={{ position: 'relative' }}>
+                        <input 
+                          type="number" 
+                          step="any" 
+                          value={form.margenGanancia} 
+                          onChange={(e) => manejarCambioMargen(e.target.value)} 
+                          placeholder="30" 
+                          style={styles.input} 
+                        />
+                        <Percent size={11} color="#64748b" style={{ position: 'absolute', right: '8px', top: '10px' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={styles.displayPrecioVenta}>
+                    <div>
+                      <span style={{ fontSize: '0.68rem', color: '#065f46', fontWeight: 'bold', display: 'block' }}>
+                        {form.esPesado ? 'PRECIO DE VENTA X KILO' : 'PRECIO DE VENTA DETAL'}
+                      </span>
+                      <small style={{ fontSize: '0.64rem', color: '#047857' }}>
+                        Ganancia limpia: +${gananciaNetaUSD.toFixed(2)}
+                      </small>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                        <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#047857' }}>$</span>
+                        <input 
+                          type="number" 
+                          step="any" 
+                          value={form.precioUSD} 
+                          onChange={(e) => manejarCambioPrecioManual(e.target.value)} 
+                          placeholder="0.00" 
+                          style={styles.inputPrecioDestacado} 
+                          required 
+                        />
+                      </div>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 'bold', color: '#0052cc', marginTop: '1px' }}>
+                        Bs. {precioBS.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {aplicaPrecioMayor && (
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                    <div style={{ flex: 1.2 }}>
-                      <label style={styles.labelMini}>Precio al Mayor ($):</label>
-                      <input
-                        type="number"
-                        step="any"
-                        placeholder="Ej: 0.95"
-                        value={precioMayorUSD}
-                        onChange={(e) => setPrecioMayorUSD(e.target.value)}
-                        style={{ ...styles.inputMini, fontWeight: 'bold', color: '#ea580c' }}
-                        required={aplicaPrecioMayor}
+                {/* 6. CÓDIGO Y CATEGORÍA CON DETECCIÓN */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8px' }}>
+                  <div style={styles.campo}>
+                    <label style={styles.lbl}>Código de Barras / SKU</label>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <input 
+                        type="text" 
+                        value={form.codigo} 
+                        onChange={(e) => setForm({ ...form, codigo: e.target.value })} 
+                        placeholder="Autogenerado" 
+                        style={styles.input} 
                       />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={styles.labelMini}>A partir de (und):</label>
-                      <input
-                        type="number"
-                        min="2"
-                        placeholder="3"
-                        value={cantMinimaMayor}
-                        onChange={(e) => setCantMinimaMayor(e.target.value)}
-                        style={{ ...styles.inputMini, textAlign: 'center', fontWeight: 'bold' }}
-                        required={aplicaPrecioMayor}
-                      />
+                      <button 
+                        type="button" 
+                        onClick={manejarEscanearEnForm} 
+                        style={styles.btnCamaraIcon}
+                        title="Escanear Código (Detecta si ya existe)"
+                      >
+                        <Camera size={14} />
+                      </button>
                     </div>
                   </div>
-                )}
+
+                  <div style={styles.campo}>
+                    <label style={styles.lbl}>Categoría</label>
+                    <select 
+                      value={form.categoria} 
+                      onChange={(e) => setForm({ ...form, categoria: e.target.value })} 
+                      style={styles.select}
+                    >
+                      <option value="Víveres">Víveres</option>
+                      <option value="Charcutería">Charcutería</option>
+                      <option value="Carnicería">Carnicería</option>
+                      <option value="Verduras y Frutas">Verduras y Frutas</option>
+                      <option value="Panadería">Panadería</option>
+                      <option value="Bebidas">Bebidas</option>
+                      <option value="Lácteos">Lácteos</option>
+                      <option value="Higiene Personal">Higiene Personal</option>
+                      <option value="Limpieza">Limpieza</option>
+                      <option value="Otros">Otros</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 7. CONTROL DE STOCK (DIRECTO O SUMAR) */}
+                <div style={{ display: 'grid', gridTemplateColumns: productoEditar ? '1fr 1fr' : '1fr', gap: '8px' }}>
+                  <div style={styles.campo}>
+                    <label style={styles.lbl}>
+                      {productoEditar ? 'Stock Actual' : (form.esPesado ? 'Stock Inicial (Kilos)' : 'Stock Inicial (Unidades)')}
+                    </label>
+                    <input 
+                      type="number" 
+                      step="any" 
+                      value={form.stock} 
+                      onChange={(e) => setForm({ ...form, stock: e.target.value })} 
+                      placeholder="0" 
+                      style={styles.input} 
+                    />
+                  </div>
+
+                  {productoEditar && (
+                    <div style={styles.campo}>
+                      <label style={{ ...styles.lbl, color: '#059669' }}>+ Sumar Entrada Stock</label>
+                      <input 
+                        type="number" 
+                        step="any" 
+                        value={stockASumar} 
+                        onChange={(e) => setStockASumar(e.target.value)} 
+                        placeholder="Ej: +10 o +20" 
+                        style={{ ...styles.input, borderColor: '#10b981', backgroundColor: '#f0fdf4' }} 
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* 8. TARIFA AL MAYOR */}
+                <div style={styles.seccionMayorista}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', fontWeight: 'bold', color: '#1e293b', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={form.aplicaPrecioMayor} 
+                      onChange={(e) => setForm({ ...form, aplicaPrecioMayor: e.target.checked })} 
+                    />
+                    <span>Habilitar Tarifa al Mayor</span>
+                  </label>
+
+                  {form.aplicaPrecioMayor && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginTop: '6px' }}>
+                      <div style={styles.campo}>
+                        <label style={styles.lbl}>Margen (%)</label>
+                        <input 
+                          type="number" 
+                          step="any" 
+                          value={form.margenMayor} 
+                          onChange={(e) => manejarCambioMargenMayor(e.target.value)} 
+                          placeholder="15" 
+                          style={styles.input} 
+                        />
+                      </div>
+                      <div style={styles.campo}>
+                        <label style={styles.lbl}>Precio Mayor ($)</label>
+                        <input 
+                          type="number" 
+                          step="any" 
+                          value={form.precioMayorUSD} 
+                          onChange={(e) => setForm({ ...form, precioMayorUSD: e.target.value })} 
+                          placeholder="0.00" 
+                          style={styles.input} 
+                        />
+                      </div>
+                      <div style={styles.campo}>
+                        <label style={styles.lbl}>{form.esPesado ? 'Desde (Kg)' : 'Cant. Mín'}</label>
+                        <input 
+                          type="number" 
+                          step="any" 
+                          value={form.cantMinimaMayor} 
+                          onChange={(e) => setForm({ ...form, cantMinimaMayor: e.target.value })} 
+                          placeholder="3" 
+                          style={styles.input} 
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
               </div>
 
-              {pNum > 0 && cNum > 0 && (
-                <div style={styles.bannerGanancia}>
-                  <span>Ganancia Neta por Unidad:</span>
-                  <strong style={{ color: '#16a34a' }}>+${gananciaNetaUSD.toFixed(2)}</strong>
-                </div>
-              )}
-
-              <div style={{ marginTop: '14px', paddingBottom: '70px' }}>
-                <button type="submit" style={styles.btnGuardarForm}>
-                  {productoExistente ? `Reabastecer (+${unidadesCalculadasQueEntran} und.)` : (prodEditando ? 'Guardar Cambios' : 'Registrar Producto')}
+              <div style={styles.footerModalPro}>
+                <button type="button" onClick={() => setModalFormularioAbierto(false)} style={styles.btnCancelarPro}>
+                  Cancelar
+                </button>
+                <button type="submit" style={styles.btnGuardarPro}>
+                  <Check size={16} /> {productoEditar ? 'Actualizar Producto' : 'Guardar Producto'}
                 </button>
               </div>
-
             </form>
           </div>
         </div>
@@ -600,42 +664,50 @@ const styles = {
   contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f8fafc', fontFamily: 'system-ui, -apple-system, sans-serif' },
   header: { padding: '10px 14px', backgroundColor: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   btnBack: { background: '#f1f5f9', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  btnNuevo: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 12px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' },
-  seccionBusqueda: { padding: '8px 14px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
-  inputWrapper: { position: 'relative', marginBottom: '8px' },
-  inputBuscador: { width: '100%', boxSizing: 'border-box', padding: '8px 8px 8px 32px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' },
-  chipsCategorias: { display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' },
-  chip: { border: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', padding: '4px 10px', borderRadius: '16px', fontSize: '0.7rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' },
-  chipActivo: { backgroundColor: '#0052cc', color: '#fff', borderColor: '#0052cc' },
-  lista: { flex: 1, overflowY: 'auto', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '6px' },
-  vacio: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%' },
-  cardItem: { backgroundColor: '#fff', padding: '10px 12px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #f1f5f9', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' },
-  badgeCat: { backgroundColor: '#f1f5f9', color: '#475569', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold' },
-  badgeIVA: { backgroundColor: '#fef3c7', color: '#854d0e', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold' },
-  badgeExento: { backgroundColor: '#f0fdf4', color: '#166534', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold' },
-  badgeMayorTag: { backgroundColor: '#ffedd5', color: '#c2410c', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold', border: '1px solid #fed7aa' },
-  btnAccionEdit: { background: '#f1f5f9', border: 'none', borderRadius: '6px', padding: '5px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#0052cc' },
-  btnAccionDel: { background: '#fee2e2', border: 'none', borderRadius: '6px', padding: '5px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#dc2626' },
-  overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '12px' },
-  modalBox: { backgroundColor: '#fff', borderRadius: '16px', width: '100%', maxWidth: '370px', maxHeight: '95vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', overflow: 'hidden' },
-  modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', borderBottom: '1px solid #f1f5f9' },
-  btnCerrarModal: { background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' },
-  formScroll: { flex: 1, overflowY: 'auto', padding: '12px 14px' },
-  campo: { display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: '8px' },
-  label: { fontSize: '0.72rem', fontWeight: 'bold', color: '#475569' },
-  labelMini: { fontSize: '0.66rem', fontWeight: 'bold', color: '#64748b' },
-  input: { width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' },
-  inputMini: { width: '100%', boxSizing: 'border-box', padding: '6px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' },
-  select: { width: '100%', boxSizing: 'border-box', padding: '7px 9px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', outline: 'none', backgroundColor: '#fff' },
-  btnIVA: { width: '100%', padding: '7px 6px', borderRadius: '8px', border: '1px solid', fontSize: '0.78rem', fontWeight: 'bold', cursor: 'pointer' },
-  btnCamaraForm: { backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '8px', padding: '0 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  alertaExistente: { backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', padding: '8px 10px', borderRadius: '8px', fontSize: '0.75rem', marginBottom: '8px' },
-  boxCalculadora: { backgroundColor: '#f8fafc', padding: '10px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '8px' },
-  tabsCompra: { display: 'flex', background: '#f1f5f9', padding: '2px', borderRadius: '6px' },
-  tabBtn: { border: 'none', padding: '3px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 'bold', cursor: 'pointer' },
-  resumenBultoBox: { display: 'flex', justifyContent: 'space-between', backgroundColor: '#fff', padding: '6px 8px', borderRadius: '6px', border: '1px dashed #cbd5e1', fontSize: '0.72rem', color: '#334155', marginTop: '6px' },
-  cajaStockFinal: { backgroundColor: '#f1f5f9', borderRadius: '8px', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #e2e8f0' },
-  boxMayorista: { backgroundColor: '#fff7ed', padding: '10px', borderRadius: '10px', border: '1px solid #fed7aa', marginTop: '8px', marginBottom: '8px' },
-  bannerGanancia: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#dcfce7', padding: '8px 10px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 'bold', color: '#16a34a', marginTop: '6px' },
-  btnGuardarForm: { width: '100%', padding: '12px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.88rem', fontWeight: 'bold', cursor: 'pointer' }
+  btnCrear: { backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 12px', fontSize: '0.78rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' },
+  barraBusqueda: { padding: '8px 14px', backgroundColor: '#fff', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
+  inputSearch: { flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '0.82rem', color: '#1e293b' },
+  listaProductos: { flex: 1, overflowY: 'auto', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' },
+  vacio: { textAlign: 'center', color: '#94a3b8', fontSize: '0.84rem', padding: '40px 0' },
+  cardProducto: { backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' },
+  thumbProd: { width: '36px', height: '36px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' },
+  iconoTipo: { width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  badgePesado: { backgroundColor: '#dcfce7', color: '#15803d', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', border: '1px solid #bbf7d0' },
+  badgeIVA: { backgroundColor: '#fef3c7', color: '#b45309', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', border: '1px solid #fde68a' },
+  btnAccionEdit: { background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  btnAccionDelete: { background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '6px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  
+  overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(2px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '14px' },
+  modalBoxPro: { background: '#fff', borderRadius: '18px', width: '100%', maxWidth: '390px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden' },
+  headerModalPro: { padding: '12px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  btnCerrar: { background: '#f1f5f9', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' },
+  
+  bannerAvisoExistente: { backgroundColor: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: '8px', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#0369a1', fontWeight: 'bold' },
+
+  contenedorFotoTop: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', margin: '2px 0 4px 0' },
+  labelFotoAvatar: { width: '80px', height: '80px', borderRadius: '16px', border: '2px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', backgroundColor: '#f8fafc', overflow: 'hidden' },
+  avatarPreview: { width: '100%', height: '100%', objectFit: 'cover' },
+  avatarVacio: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
+  btnQuitarFoto: { background: 'none', border: 'none', color: '#dc2626', fontSize: '0.68rem', fontWeight: 'bold', cursor: 'pointer', padding: 0 },
+
+  selectorModoPro: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' },
+  btnTipoPill: { border: '1px solid', borderRadius: '10px', padding: '8px', fontSize: '0.74rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' },
+
+  seccionBultoBox: { backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '10px 12px' },
+  seccionCostosPro: { backgroundColor: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '12px', padding: '10px 12px' },
+  displayPrecioVenta: { marginTop: '8px', backgroundColor: '#fff', border: '1px solid #a7f3d0', borderRadius: '10px', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  inputPrecioDestacado: { width: '85px', border: 'none', background: 'transparent', textAlign: 'right', fontSize: '1.2rem', fontWeight: '900', color: '#047857', outline: 'none' },
+
+  seccionMayorista: { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px' },
+
+  campo: { display: 'flex', flexDirection: 'column', gap: '3px' },
+  lbl: { fontSize: '0.7rem', fontWeight: 'bold', color: '#475569' },
+  input: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.84rem', outline: 'none', background: '#fff' },
+  inputGrande: { width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', fontWeight: '600', outline: 'none', background: '#fff' },
+  select: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.84rem', outline: 'none', background: '#fff' },
+  btnCamaraIcon: { background: '#059669', color: '#fff', border: 'none', borderRadius: '8px', width: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
+
+  footerModalPro: { padding: '12px 14px', borderTop: '1px solid #e2e8f0', backgroundColor: '#fff', display: 'flex', gap: '8px' },
+  btnCancelarPro: { flex: 1, padding: '10px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '10px', fontSize: '0.84rem', fontWeight: 'bold', color: '#475569', cursor: 'pointer' },
+  btnGuardarPro: { flex: 2, padding: '10px', backgroundColor: '#0052cc', border: 'none', borderRadius: '10px', fontSize: '0.86rem', fontWeight: 'bold', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }
 };
