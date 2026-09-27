@@ -1,359 +1,176 @@
 const express = require('express');
 const cors = require('cors');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const db = require('./database');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 4000;
-const JWT_SECRET = process.env.JWT_SECRET || 'clave_secreta_super_pos_venezuela_2026';
-const SUPERADMIN_KEY = process.env.SUPERADMIN_KEY || 'master_saas_admin_key_2026';
+const PORT = 4000;
+const DB_PATH = path.join(__dirname, 'pos_database.json');
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '15mb' }));
 
-function calcularVencimientoDias(dias = 30) {
-  const f = new Date();
-  f.setDate(f.getDate() + dias);
-  return f.toISOString();
-}
+const DB_INICIAL = {
+  negocios: [],
+  usuarios: [],
+  cajeros: [],
+  configuracion: {},
+  productos: [],
+  clientes: [],
+  ventas: []
+};
 
-function verificarSuperAdmin(req, res, next) {
-  const key = req.headers['x-admin-key'];
-  if (!key || key !== SUPERADMIN_KEY) {
-    return res.status(403).json({ error: 'Acceso denegado: Clave maestra de SuperAdmin inválida o ausente.' });
+function leerDB() {
+  try {
+    if (!fs.existsSync(DB_PATH)) {
+      fs.writeFileSync(DB_PATH, JSON.stringify(DB_INICIAL, null, 2));
+      return DB_INICIAL;
+    }
+    const data = fs.readFileSync(DB_PATH, 'utf-8');
+    return JSON.parse(data);
+  } catch (e) {
+    return DB_INICIAL;
   }
-  next();
 }
 
-// 1. REGISTRO Y LOGIN DE CLIENTES (POS)
-app.post('/api/auth/registro-negocio', async (req, res) => {
+function guardarDB(db) {
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+  } catch (e) {
+    console.error('[SERVER] Error guardando base de datos:', e);
+  }
+}
+
+// 1. Registro de Dueño
+app.post('/api/auth/registro-dueno', (req, res) => {
   try {
     const { nombreNegocio, nombreDueno, correo, password } = req.body;
-    if (!nombreNegocio || !nombreDueno || !correo || !password) {
-      return res.status(400).json({ error: 'Todos los campos son requeridos.' });
-    }
-
+    const db = leerDB();
     const negocioId = 'neg_' + Date.now().toString(36);
-    const usuarioId = 'usr_' + Date.now().toString(36);
-    const fechaCreacion = new Date().toISOString();
-    const licenciaHasta = calcularVencimientoDias(30);
-    const passwordHash = await bcrypt.hash(password, 10);
+    const ahora = new Date();
+    const licenciaHasta = new Date(ahora.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString();
 
-    db.run(
-      `INSERT INTO negocios (id, nombre, licencia_valida_hasta, estado, fecha_creacion) VALUES (?, ?, ?, 'activo', ?)`,
-      [negocioId, nombreNegocio.trim(), licenciaHasta, fechaCreacion],
-      function (err) {
-        if (err) return res.status(500).json({ error: 'Error al crear negocio: ' + err.message });
+    const nuevoNegocio = { id: negocioId, nombre: nombreNegocio, licenciaHasta, activa: true };
+    const nuevoUsuario = { id: Date.now(), negocioId, nombre: nombreDueno, correo: correo.toLowerCase().trim(), password, rol: 'dueno' };
 
-        db.run(
-          `INSERT INTO usuarios (id, negocio_id, nombre, correo, password_hash, rol, fecha_creacion) VALUES (?, ?, ?, ?, ?, 'dueno', ?)`,
-          [usuarioId, negocioId, nombreDueno.trim(), correo.trim().toLowerCase(), passwordHash, fechaCreacion],
-          function (errUsr) {
-            if (errUsr) return res.status(500).json({ error: 'Error al crear usuario dueño: ' + errUsr.message });
+    db.negocios.push(nuevoNegocio);
+    db.usuarios.push(nuevoUsuario);
+    db.configuracion = { nombre: nombreNegocio, rif: 'J-50000000-0', direccion: 'Caracas, Venezuela', telefono: '' };
+    guardarDB(db);
 
-            const token = jwt.sign({ usuarioId, negocioId, rol: 'dueno' }, JWT_SECRET, { expiresIn: '60d' });
-
-            return res.json({
-              mensaje: 'Negocio y cuenta de dueño creados exitosamente.',
-              token,
-              negocio: { id: negocioId, nombre: nombreNegocio, licenciaHasta },
-              usuario: { id: usuarioId, nombre: nombreDueno, rol: 'dueno', correo }
-            });
-          }
-        );
-      }
-    );
+    res.json({ token: 'tok_' + Date.now(), negocio: nuevoNegocio, usuario: { nombre: nombreDueno, correo } });
   } catch (error) {
-    res.status(500).json({ error: 'Error interno en servidor: ' + error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
+// 2. Login Dueño
 app.post('/api/auth/login-dueno', (req, res) => {
-  const { correo, password } = req.body;
-  if (!correo || !password) return res.status(400).json({ error: 'Correo y clave requeridos.' });
+  try {
+    const { correo, password } = req.body;
+    const db = leerDB();
+    const user = db.usuarios.find(u => u.correo === correo.toLowerCase().trim() && u.password === password);
+    if (!user) return res.status(401).json({ error: 'Credenciales inválidas' });
 
-  const query = `
-    SELECT u.*, n.nombre as nombre_negocio, n.licencia_valida_hasta, n.estado as estado_negocio
-    FROM usuarios u
-    JOIN negocios n ON u.negocio_id = n.id
-    WHERE u.correo = ? AND u.rol = 'dueno'
-  `;
+    let negocio = db.negocios.find(n => n.id === user.negocioId) || { id: user.negocioId, nombre: 'Mi Bodega POS', licenciaHasta: new Date(Date.now() + 15*86400000).toISOString(), activa: true };
 
-  db.get(query, [correo.trim().toLowerCase()], async (err, user) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!user) return res.status(401).json({ error: 'Correo no registrado o no autorizado.' });
-
-    const passwordValido = await bcrypt.compare(password, user.password_hash);
-    if (!passwordValido) return res.status(401).json({ error: 'Contraseña incorrecta.' });
-
-    const fechaVence = new Date(user.licencia_valida_hasta);
-    const hoy = new Date();
-    const suscripcionVencida = hoy > fechaVence || user.estado_negocio !== 'activo';
-
-    const token = jwt.sign(
-      { usuarioId: user.id, negocioId: user.negocio_id, rol: 'dueno' }, 
-      JWT_SECRET, 
-      { expiresIn: '30d' }
-    );
-
-    return res.json({
-      token,
-      usuario: { id: user.id, nombre: user.nombre, correo: user.correo, rol: 'dueno' },
-      negocio: { 
-        id: user.negocio_id, 
-        nombre: user.nombre_negocio, 
-        licenciaHasta: user.licencia_valida_hasta,
-        suscripcionVencida 
-      }
-    });
-  });
+    res.json({ token: 'tok_' + Date.now(), usuario: { nombre: user.nombre, correo: user.correo }, negocio });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// 2. GESTIÓN DE CAJEROS
-app.post('/api/cajeros', async (req, res) => {
+// 3. Crear / Actualizar Cajero
+app.post('/api/cajeros', (req, res) => {
   try {
     const { negocioId, nombre, pin } = req.body;
-    if (!negocioId || !nombre || !pin || pin.length !== 6) {
-      return res.status(400).json({ error: 'Se requiere nombre y un PIN de exactamente 6 dígitos.' });
+    const db = leerDB();
+    const idx = db.cajeros.findIndex(c => c.nombre.toLowerCase().trim() === nombre.toLowerCase().trim());
+    if (idx >= 0) {
+      db.cajeros[idx].pin = pin;
+    } else {
+      db.cajeros.push({ id: Date.now(), negocioId: negocioId || 'neg_local', nombre: nombre.trim(), pin: pin.trim(), creadoEn: new Date().toLocaleDateString('es-VE') });
     }
-
-    const pinHash = await bcrypt.hash(pin, 10);
-    const cajeroId = 'caj_' + Date.now().toString(36);
-    const fecha = new Date().toISOString();
-
-    db.run(
-      `INSERT INTO usuarios (id, negocio_id, nombre, pin_hash, rol, fecha_creacion) VALUES (?, ?, ?, ?, 'cajero', ?)`,
-      [cajeroId, negocioId, nombre.trim(), pinHash, fecha],
-      function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ mensaje: 'Cajero registrado con éxito.', cajero: { id: cajeroId, nombre, rol: 'cajero', fecha } });
-      }
-    );
+    guardarDB(db);
+    res.json({ ok: true, cajeros: db.cajeros });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// 4. Obtener Cajeros
 app.get('/api/cajeros/:negocioId', (req, res) => {
-  const { negocioId } = req.params;
-  db.all(
-    `SELECT id, nombre, rol, fecha_creacion FROM usuarios WHERE negocio_id = ? AND rol = 'cajero'`,
-    [negocioId],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    }
-  );
-});
-
-app.post('/api/auth/login-cajero', (req, res) => {
-  const { cajeroId, pin } = req.body;
-  if (!cajeroId || !pin) return res.status(400).json({ error: 'Cajero y PIN requeridos.' });
-
-  db.get(`SELECT * FROM usuarios WHERE id = ? AND rol = 'cajero'`, [cajeroId], async (err, cajero) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!cajero) return res.status(404).json({ error: 'Cajero no encontrado.' });
-
-    const pinValido = await bcrypt.compare(pin, cajero.pin_hash);
-    if (!pinValido) return res.status(401).json({ error: 'PIN de 6 dígitos incorrecto.' });
-
-    const token = jwt.sign(
-      { usuarioId: cajero.id, negocioId: cajero.negocio_id, rol: 'cajero' },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    res.json({
-      token,
-      usuario: { id: cajero.id, nombre: cajero.nombre, rol: 'cajero', negocioId: cajero.negocio_id }
-    });
-  });
-});
-
-// 3. SINCRONIZACIÓN OFFLINE DE VENTAS
-app.post('/api/sync/ventas', (req, res) => {
-  const { negocioId, ventas = [] } = req.body;
-  if (!negocioId || !Array.isArray(ventas)) {
-    return res.status(400).json({ error: 'Datos de sincronización inválidos.' });
-  }
-
-  if (ventas.length === 0) return res.json({ sincronizadas: 0 });
-
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO ventas (
-      id, negocio_id, ticket_id, cajero_nombre, total_usd, total_bs,
-      tasa_cambio, items_json, es_credito, cliente_doc, cliente_nombre,
-      descuento_usd, fecha, anulada
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  db.serialize(() => {
-    ventas.forEach(v => {
-      stmt.run(
-        v.id.toString(),
-        negocioId,
-        v.ticket_id || v.id.toString(),
-        v.cajeroCobrador || 'Caja',
-        parseFloat(v.totalUSD) || 0,
-        parseFloat(v.totalBS) || 0,
-        parseFloat(v.tasa) || 1,
-        JSON.stringify(v.items || []),
-        v.esCredito ? 1 : 0,
-        v.cliente?.doc || '',
-        v.cliente?.nombre || '',
-        parseFloat(v.descuentoUSD) || 0,
-        v.fecha || new Date().toISOString(),
-        v.anulada ? 1 : 0
-      );
-    });
-    stmt.finalize();
-    res.json({ mensaje: 'Lote sincronizado con éxito.', sincronizadas: ventas.length });
-  });
-});
-
-// 4. CONSULTA DE ESTADO DE LICENCIA
-app.get('/api/licencia/estado/:negocioId', (req, res) => {
-  const { negocioId } = req.params;
-  db.get(`SELECT id, nombre, licencia_valida_hasta, estado FROM negocios WHERE id = ?`, [negocioId], (err, row) => {
-    if (err || !row) return res.status(404).json({ error: 'Negocio no encontrado.' });
-
-    const hoy = new Date();
-    const vence = new Date(row.licencia_valida_hasta);
-    const diasRestantes = Math.ceil((vence - hoy) / (1000 * 60 * 60 * 24));
-    const activa = diasRestantes >= 0 && row.estado === 'activo';
-
-    res.json({
-      negocio: row.nombre,
-      activa,
-      diasRestantes,
-      licenciaHasta: row.licencia_valida_hasta,
-      requiereRenovacion: diasRestantes <= 3
-    });
-  });
-});
-
-// 5. RECUPERACIÓN DE CONTRASEÑA (OTP)
-const codigosRescateMemoria = {};
-
-app.post('/api/auth/solicitar-recuperacion', (req, res) => {
-  const { correo } = req.body;
-  if (!correo) return res.status(400).json({ error: 'El correo es requerido.' });
-
-  db.get(`SELECT * FROM usuarios WHERE correo = ? AND rol = 'dueno'`, [correo.trim().toLowerCase()], (err, user) => {
-    if (err || !user) {
-      return res.json({ mensaje: 'Si el correo está registrado, se ha generado un código de recuperación.' });
-    }
-
-    const codigoOTP = Math.floor(100000 + Math.random() * 900000).toString();
-    const expira = Date.now() + 10 * 60 * 1000;
-
-    codigosRescateMemoria[user.correo] = { codigo: codigoOTP, expira };
-    console.log(`🔑 [CÓDIGO DE RESCATE para ${user.correo}]: ${codigoOTP}`);
-
-    res.json({ mensaje: 'Código de recuperación generado.', debugCodigoLocal: codigoOTP });
-  });
-});
-
-app.post('/api/auth/restablecer-password', async (req, res) => {
   try {
-    const { correo, codigo, nuevoPassword } = req.body;
-    if (!correo || !codigo || !nuevoPassword || nuevoPassword.length < 6) {
-      return res.status(400).json({ error: 'Datos incompletos o contraseña muy corta.' });
-    }
-
-    const registro = codigosRescateMemoria[correo.trim().toLowerCase()];
-    if (!registro || registro.codigo !== codigo.trim() || Date.now() > registro.expira) {
-      return res.status(400).json({ error: 'El código es inválido o ha expirado.' });
-    }
-
-    const nuevoHash = await bcrypt.hash(nuevoPassword.trim(), 10);
-
-    db.run(
-      `UPDATE usuarios SET password_hash = ? WHERE correo = ? AND rol = 'dueno'`,
-      [nuevoHash, correo.trim().toLowerCase()],
-      function (err) {
-        if (err) return res.status(500).json({ error: 'Error al actualizar la contraseña.' });
-        delete codigosRescateMemoria[correo.trim().toLowerCase()];
-        res.json({ mensaje: 'Contraseña actualizada exitosamente con seguridad.' });
-      }
-    );
+    const db = leerDB();
+    res.json(db.cajeros || []);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 6. ENDPOINTS SUPERADMIN
-app.get('/api/admin/negocios', verificarSuperAdmin, (req, res) => {
-  const query = `
-    SELECT 
-      n.*, 
-      (SELECT COUNT(*) FROM usuarios u WHERE u.negocio_id = n.id AND u.rol = 'cajero') as total_cajeros,
-      (SELECT COUNT(*) FROM ventas v WHERE v.negocio_id = n.id AND v.anulada = 0) as total_ventas,
-      (SELECT COALESCE(SUM(v.total_usd), 0) FROM ventas v WHERE v.negocio_id = n.id AND v.anulada = 0) as ingresos_totales_usd,
-      (SELECT u.correo FROM usuarios u WHERE u.negocio_id = n.id AND u.rol = 'dueno' LIMIT 1) as correo_dueno,
-      (SELECT u.nombre FROM usuarios u WHERE u.negocio_id = n.id AND u.rol = 'dueno' LIMIT 1) as nombre_dueno
-    FROM negocios n
-    ORDER BY n.fecha_creacion DESC
-  `;
-
-  db.all(query, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+// 5. Consulta de Licencia
+app.get('/api/licencia/:negocioId', (req, res) => {
+  try {
+    const db = leerDB();
+    const negocio = db.negocios[0] || { id: 'neg_local', nombre: 'Mi Bodega POS', licenciaHasta: new Date(Date.now() + 15*86400000).toISOString(), activa: true };
+    const diff = Math.ceil((new Date(negocio.licenciaHasta) - new Date()) / (1000 * 60 * 60 * 24));
+    res.json({ activa: negocio.activa !== false && diff > 0, diasRestantes: Math.max(0, diff), licenciaHasta: negocio.licenciaHasta });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-app.post('/api/admin/extender-licencia', verificarSuperAdmin, (req, res) => {
-  const { negocioId, dias = 30 } = req.body;
-  if (!negocioId) return res.status(400).json({ error: 'ID de negocio requerido.' });
-
-  db.get(`SELECT licencia_valida_hasta FROM negocios WHERE id = ?`, [negocioId], (err, row) => {
-    if (err || !row) return res.status(404).json({ error: 'Negocio no encontrado.' });
-
-    const baseFecha = new Date(row.licencia_valida_hasta > new Date().toISOString() ? row.licencia_valida_hasta : new Date());
-    baseFecha.setDate(baseFecha.getDate() + parseInt(dias, 10));
-    const nuevaFecha = baseFecha.toISOString();
-
-    db.run(
-      `UPDATE negocios SET licencia_valida_hasta = ?, estado = 'activo' WHERE id = ?`,
-      [nuevaFecha, negocioId],
-      function (errUpdate) {
-        if (errUpdate) return res.status(500).json({ error: errUpdate.message });
-        res.json({ mensaje: 'Licencia extendida con éxito.', nuevaLicenciaHasta: nuevaFecha });
+// 6. Sincronizar Ventas (Guardar ventas nuevas)
+app.post('/api/ventas/sync', (req, res) => {
+  try {
+    const { negocioId, ventas } = req.body;
+    const db = leerDB();
+    for (const v of (ventas || [])) {
+      const idx = db.ventas.findIndex(item => String(item.id) === String(v.id));
+      if (idx >= 0) {
+        db.ventas[idx] = { ...v, negocioId };
+      } else {
+        db.ventas.unshift({ ...v, negocioId });
       }
-    );
-  });
-});
-
-// NUEVO: Fijar días exactos directamente desde hoy
-app.post('/api/admin/fijar-dias', verificarSuperAdmin, (req, res) => {
-  const { negocioId, dias } = req.body;
-  if (!negocioId || dias === undefined) return res.status(400).json({ error: 'Datos incompletos.' });
-
-  const f = new Date();
-  f.setDate(f.getDate() + parseInt(dias, 10));
-  const nuevaFecha = f.toISOString();
-
-  db.run(
-    `UPDATE negocios SET licencia_valida_hasta = ?, estado = 'activo' WHERE id = ?`,
-    [nuevaFecha, negocioId],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ mensaje: `Licencia fijada en ${dias} días a partir de hoy.`, nuevaLicenciaHasta: nuevaFecha });
     }
-  );
+    guardarDB(db);
+    res.json({ ok: true, totalVentas: db.ventas.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-app.post('/api/admin/cambiar-estado', verificarSuperAdmin, (req, res) => {
-  const { negocioId, estado } = req.body;
-  if (!negocioId || !estado) return res.status(400).json({ error: 'Datos incompletos.' });
+// 7. Descargar todas las ventas (Para que el Dueño vea las de la Caja 02)
+app.get('/api/ventas/:negocioId', (req, res) => {
+  try {
+    const db = leerDB();
+    res.json(db.ventas || []);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-  db.run(`UPDATE negocios SET estado = ? WHERE id = ?`, [estado, negocioId], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ mensaje: `Negocio ${estado} correctamente.` });
-  });
+// 8. Sincronizar Configuración del Negocio (MiniMarket JJJP, Logo, etc.)
+app.post('/api/configuracion', (req, res) => {
+  try {
+    const db = leerDB();
+    db.configuracion = { ...db.configuracion, ...req.body };
+    guardarDB(db);
+    res.json({ ok: true, configuracion: db.configuracion });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/configuracion', (req, res) => {
+  try {
+    const db = leerDB();
+    res.json(db.configuracion || {});
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor POS Backend corriendo en http://0.0.0.0:${PORT}`);
+  console.log(`[SERVER] 🚀 Servidor POS Backend corriendo en http://0.0.0.0:${PORT}`);
 });

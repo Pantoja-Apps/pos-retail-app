@@ -1,0 +1,22 @@
+{
+  "negocios": [
+    {
+      "id": "neg_mujdy7os",
+      "nombre": "Mi Bodega POS",
+      "licenciaHasta": "2026-10-12T05:36:08.812Z",
+      "activa": true
+    }
+  ],
+  "usuarios": [
+    {
+      "id": 1790487368812,
+      "negocioId": "neg_mujdy7os",
+      "nombre": "Dueño",
+      "correo": "angelpantoja241@gmail.com",
+      "password": "123456",
+      "rol": "dueno"
+    }
+  ],
+  "cajeros": [],
+  "ventas": []
+}
