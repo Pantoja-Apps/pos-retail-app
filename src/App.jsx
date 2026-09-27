@@ -127,6 +127,15 @@ export default function App() {
     return [];
   });
 
+  // Gastos de caja chica
+  const [gastosCaja, setGastosCaja] = useState(() => {
+    try {
+      const g = localStorage.getItem('pos_gastos_caja');
+      if (g) return JSON.parse(g);
+    } catch (e) {}
+    return [];
+  });
+
   const [historicoVentasGlobal, setHistoricoVentasGlobal] = useState(() => {
     try {
       const g = localStorage.getItem('pos_historico_ventas_global');
@@ -171,6 +180,7 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem('pos_prods_final', JSON.stringify(productos)); } catch (e) {} }, [productos]);
   useEffect(() => { try { localStorage.setItem('pos_clis_final', JSON.stringify(clientes)); } catch (e) {} }, [clientes]);
   useEffect(() => { try { localStorage.setItem('pos_txs_final', JSON.stringify(transacciones)); } catch (e) {} }, [transacciones]);
+  useEffect(() => { try { localStorage.setItem('pos_gastos_caja', JSON.stringify(gastosCaja)); } catch (e) {} }, [gastosCaja]);
   useEffect(() => { try { localStorage.setItem('pos_historico_ventas_global', JSON.stringify(historicoVentasGlobal)); } catch (e) {} }, [historicoVentasGlobal]);
   useEffect(() => { try { localStorage.setItem('pos_espera_final', JSON.stringify(cuentasEnEspera)); } catch (e) {} }, [cuentasEnEspera]);
 
@@ -282,7 +292,7 @@ export default function App() {
 
   const exportarBackupCompleto = () => {
     const backupData = {
-      version: '1.8.0',
+      version: '1.9.0',
       fechaExportacion: new Date().toISOString(),
       cuentaMaster,
       cajeros,
@@ -290,6 +300,7 @@ export default function App() {
       productos,
       clientes,
       transacciones,
+      gastosCaja,
       historicoVentasGlobal
     };
 
@@ -312,6 +323,7 @@ export default function App() {
     if (Array.isArray(datos.productos)) setProductos(datos.productos);
     if (Array.isArray(datos.clientes)) setClientes(datos.clientes);
     if (Array.isArray(datos.transacciones)) setTransacciones(datos.transacciones);
+    if (Array.isArray(datos.gastosCaja)) setGastosCaja(datos.gastosCaja);
     if (Array.isArray(datos.historicoVentasGlobal)) setHistoricoVentasGlobal(datos.historicoVentasGlobal);
   };
 
@@ -819,11 +831,23 @@ export default function App() {
       {vistaActual === 'caja' && (
         <CajaModal 
           transacciones={transacciones}
+          gastos={gastosCaja}
           tasaCambio={tasaCambio}
           configEmpresa={configEmpresa}
+          usuarioActivo={usuarioActivo}
+          alRegistrarGasto={(gasto) => setGastosCaja(prev => [gasto, ...prev])}
+          alEliminarGasto={(id) => {
+            if (confirm('¿Deseas eliminar este registro de gasto?')) {
+              setGastosCaja(prev => prev.filter(g => g.id !== id));
+            }
+          }}
           alCerrarTurno={() => { 
             setTransacciones([]); 
-            try { localStorage.removeItem('pos_txs_final'); } catch (e) {} 
+            setGastosCaja([]);
+            try { 
+              localStorage.removeItem('pos_txs_final'); 
+              localStorage.removeItem('pos_gastos_caja');
+            } catch (e) {} 
           }}
           alVolver={() => setVistaActual('pos')}
         />
