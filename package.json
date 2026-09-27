@@ -12,7 +12,7 @@
     "dev:all": "concurrently -k -n \"SERVER,CLIENT\" -c \"yellow,cyan\" \"node server/index.js\" \"vite --host --port 5176\""
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.117.1",
+    "@supabase/supabase-js": "^2.117.2",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "express": "^5.2.1",
