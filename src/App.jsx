@@ -20,6 +20,7 @@ import UsuariosModal from './components/UsuariosModal';
 import TerminalesModal from './components/TerminalesModal';
 import ModalPeso from './components/ModalPeso';
 import { apiService } from './services/api';
+import { dbService } from './services/dbService';
 
 const PRODUCTOS_INICIALES = [
   { id: 1, codigo: '7591001000123', nombre: 'Harina PAN Blanca 1kg', costoUSD: 0.92, precioUSD: 1.10, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 0.98, cantMinimaMayor: 3, stock: 50, categoria: 'Víveres', imagen: '' },
@@ -60,9 +61,6 @@ export default function App() {
   const [licenciaBloqueada, setLicenciaBloqueada] = useState(false);
   const [modalReactivado, setModalReactivado] = useState(false);
   const [infoLicencia, setInfoLicencia] = useState(null);
-
-  const prevBloqueadaRef = useRef(false);
-  const prevVenceRef = useRef(null);
 
   const [cuentaMaster, setCuentaMaster] = useState(() => {
     try {
@@ -206,11 +204,52 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem('pos_historico_ventas_global', JSON.stringify(historicoVentasGlobal)); } catch (e) {} }, [historicoVentasGlobal]);
   useEffect(() => { try { localStorage.setItem('pos_espera_final', JSON.stringify(cuentasEnEspera)); } catch (e) {} }, [cuentasEnEspera]);
 
-  // SINCRONIZACIÓN AUTOMÁTICA SILENCIOSA
+  // CARGAR PRODUCTOS DESDE SUPABASE AL INICIAR
+  const cargarCatalogoSupabase = async () => {
+    try {
+      const data = await dbService.getProductos();
+      if (Array.isArray(data) && data.length > 0) {
+        setProductos(data.map(p => ({
+          id: p.id,
+          codigo: p.codigo_barras || '',
+          nombre: p.nombre,
+          precioUSD: Number(p.precio_usd || 0),
+          costoUSD: Number(p.costo_usd || 0),
+          stock: Number(p.stock || 0),
+          categoria: p.departamento || 'General',
+          esPesado: Boolean(p.es_pesado),
+          aplicaPrecioMayor: Boolean(p.aplica_precio_mayor),
+          precioMayorUSD: Number(p.precio_mayor_usd || 0),
+          cantMinimaMayor: Number(p.cant_minima_mayor || 3)
+        })));
+      } else {
+        // Inicializar Supabase con el catálogo inicial si la tabla está vacía
+        for (const item of PRODUCTOS_INICIALES) {
+          await dbService.upsertProducto({
+            id: String(item.id),
+            nombre: item.nombre,
+            codigo_barras: item.codigo,
+            precio_usd: item.precioUSD,
+            costo_usd: item.costoUSD,
+            stock: item.stock,
+            departamento: item.categoria
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Error inicializando catálogo con Supabase:', err);
+    }
+  };
+
+  // SINCRONIZACIÓN AUTOMÁTICA SILENCIOSA (SUPABASE + BACKEND)
   const sincronizarSilenciosamente = async () => {
     const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
 
-    // 1. Si soy Dueño, mantengo la configuración actualizada en el servidor
+    // Verificar conexión activa a Supabase
+    const conectadoSupabase = await dbService.checkConnection();
+    setOnlineBackend(conectadoSupabase);
+
+    // Si soy Dueño, mantengo la configuración sincronizada
     if (usuarioActivo?.rol === 'dueno') {
       if (configEmpresa.nombre && configEmpresa.nombre !== 'Mi Bodega POS') {
         apiService.guardarConfiguracion(configEmpresa);
@@ -219,41 +258,30 @@ export default function App() {
         cajeros.forEach(c => apiService.crearCajero(negId, c.nombre, c.pin));
       }
     } else {
-      // 2. Si soy Terminal Secundaria (Cajero), recibo la identidad real (MiniMarket JJJP y Logo)
       const conf = await apiService.obtenerConfiguracion();
       if (conf && conf.nombre && (conf.nombre !== configEmpresa.nombre || conf.logo !== configEmpresa.logo)) {
         setConfigEmpresa(prev => ({ ...prev, ...conf }));
       }
     }
 
-    // 3. Descargar transacciones de la red
+    // Descargar transacciones del servidor
     const ventasServidor = await apiService.obtenerVentasServidor(negId);
     if (Array.isArray(ventasServidor) && ventasServidor.length > 0) {
       setTransacciones(actuales => {
         const idsExistentes = new Set(actuales.map(v => String(v.id)));
         const nuevas = ventasServidor.filter(v => !idsExistentes.has(String(v.id)));
-        if (nuevas.length > 0) {
-          return [...nuevas, ...actuales];
-        }
-        return actuales;
+        return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
       });
       setHistoricoVentasGlobal(actuales => {
         const idsExistentes = new Set(actuales.map(v => String(v.id)));
         const nuevas = ventasServidor.filter(v => !idsExistentes.has(String(v.id)));
-        if (nuevas.length > 0) {
-          return [...nuevas, ...actuales];
-        }
-        return actuales;
+        return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
       });
     }
 
-    // 4. Conectividad
     const lic = await apiService.consultarLicencia(negId);
     if (lic) {
-      setOnlineBackend(true);
       setInfoLicencia(lic);
-    } else {
-      setOnlineBackend(false);
     }
   };
 
@@ -269,6 +297,7 @@ export default function App() {
 
   useEffect(() => {
     obtenerTasaBCV();
+    cargarCatalogoSupabase();
     sincronizarSilenciosamente();
     const intervalo = setInterval(sincronizarSilenciosamente, 4000);
     function handleClickAfuera(e) {
@@ -520,13 +549,13 @@ export default function App() {
     const limpio = busquedaInput.trim().toLowerCase();
     if (!limpio) return;
 
-    const coincidenciaExactaCodigo = productos.find(p => p.codigo === busquedaInput.trim());
+    const coincidenciaExactaCodigo = productos.find(p => String(p.codigo).trim() === busquedaInput.trim());
     if (coincidenciaExactaCodigo) {
       procesarSeleccionProducto(coincidenciaExactaCodigo);
       return;
     }
 
-    const coincidenciaNombre = productos.find(p => p.nombre.toLowerCase().includes(limpio) || p.codigo.includes(limpio));
+    const coincidenciaNombre = productos.find(p => p.nombre.toLowerCase().includes(limpio) || String(p.codigo).includes(limpio));
     if (coincidenciaNombre) {
       procesarSeleccionProducto(coincidenciaNombre);
     } else {
@@ -656,7 +685,23 @@ export default function App() {
     setTransacciones(prev => [ventaCompleta, ...prev]);
     setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
 
-    // Enviar de inmediato al servidor central para que el Dueño la audite
+    // Sincronizar venta en Supabase en segundo plano
+    dbService.registrarVenta({
+      id: String(idTicket),
+      fecha: new Date().toISOString(),
+      cajero_id: String(usuarioActivo.id || 'usr_01'),
+      cajero_nombre: usuarioActivo.nombre,
+      terminal_id: String(cajaActiva?.id || 'caja_01'),
+      terminal_nombre: cajaActiva?.nombre || 'Caja 01',
+      cliente: datos.cliente,
+      items: carrito,
+      total_usd: parseFloat(totalUSD.toFixed(2)),
+      total_bs: parseFloat(totalBS.toFixed(2)),
+      tasa_bcv: tasaNum,
+      metodos_pago: datos.metodosPago || []
+    }).catch(console.error);
+
+    // Enviar al backend legacy si está activo
     const negocioTarget = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
     apiService.sincronizarVentas(negocioTarget, [ventaCompleta]);
 
@@ -696,12 +741,25 @@ export default function App() {
       });
     }
 
+    // Actualizar inventario local y en Supabase
     setProductos(prods => prods.map(p => {
-      const itemsVendidos = carrito.filter(it => it.id === p.id);
+      const itemsVendidos = carrito.filter(it => String(it.id) === String(p.id));
       if (itemsVendidos.length > 0) {
         const totalRestar = itemsVendidos.reduce((acc, it) => acc + it.cantidad, 0);
         const nuevoStock = Math.max(0, (p.stock || 0) - totalRestar);
-        return { ...p, stock: Math.round(nuevoStock * 1000) / 1000 };
+        const prodActualizado = { ...p, stock: Math.round(nuevoStock * 1000) / 1000 };
+
+        dbService.upsertProducto({
+          id: String(p.id),
+          nombre: p.nombre,
+          codigo_barras: p.codigo,
+          precio_usd: p.precioUSD,
+          costo_usd: p.costoUSD || 0,
+          stock: prodActualizado.stock,
+          departamento: p.categoria || 'General'
+        }).catch(console.error);
+
+        return prodActualizado;
       }
       return p;
     }));
@@ -717,10 +775,23 @@ export default function App() {
     if (!confirm(`¿Confirmas anular la factura #${venta.id}? Se repondrá la mercancía al inventario.`)) return;
 
     setProductos(prods => prods.map(p => {
-      const dev = (venta.items || []).filter(it => it.id === p.id);
+      const dev = (venta.items || []).filter(it => String(it.id) === String(p.id));
       if (dev.length > 0) {
         const totalDev = dev.reduce((acc, it) => acc + it.cantidad, 0);
-        return { ...p, stock: Math.round(((p.stock || 0) + totalDev) * 1000) / 1000 };
+        const nuevoStock = Math.round(((p.stock || 0) + totalDev) * 1000) / 1000;
+        const prodActualizado = { ...p, stock: nuevoStock };
+
+        dbService.upsertProducto({
+          id: String(p.id),
+          nombre: p.nombre,
+          codigo_barras: p.codigo,
+          precio_usd: p.precioUSD,
+          costo_usd: p.costoUSD || 0,
+          stock: nuevoStock,
+          departamento: p.categoria || 'General'
+        }).catch(console.error);
+
+        return prodActualizado;
       }
       return p;
     }));
@@ -747,7 +818,7 @@ export default function App() {
   const clientesMorosos = clientes.filter(c => (parseFloat(c.saldoPendienteUSD) || 0) > 0.01).length;
   
   const productosSugeridos = busquedaInput.trim().length > 0 
-    ? productos.filter(p => p.nombre.toLowerCase().includes(busquedaInput.trim().toLowerCase()) || p.codigo.includes(busquedaInput.trim())).slice(0, 5) 
+    ? productos.filter(p => p.nombre.toLowerCase().includes(busquedaInput.trim().toLowerCase()) || String(p.codigo).includes(busquedaInput.trim())).slice(0, 5) 
     : [];
 
   const clienteEncontrado = clientes.find(c => {
@@ -907,13 +978,24 @@ export default function App() {
           productos={productos}
           tasaCambio={tasaCambio}
           esDueno={esDueno}
-          alGuardarProducto={(p) => setProductos(prev => {
-            const idx = prev.findIndex(item => item.id === p.id);
-            if (idx >= 0) { const cp = [...prev]; cp[idx] = p; return cp; }
-            return [...prev, p];
-          })}
+          alGuardarProducto={(p) => {
+            setProductos(prev => {
+              const idx = prev.findIndex(item => String(item.id) === String(p.id));
+              if (idx >= 0) { const cp = [...prev]; cp[idx] = p; return cp; }
+              return [...prev, p];
+            });
+            dbService.upsertProducto({
+              id: String(p.id || Date.now()),
+              nombre: p.nombre,
+              codigo_barras: p.codigo,
+              precio_usd: p.precioUSD,
+              costo_usd: p.costoUSD || 0,
+              stock: p.stock || 0,
+              departamento: p.categoria || 'General'
+            }).catch(console.error);
+          }}
           alEliminarProducto={(id) => {
-            if (confirm('¿Eliminar producto?')) setProductos(prev => prev.filter(p => p.id !== id));
+            if (confirm('¿Eliminar producto?')) setProductos(prev => prev.filter(p => String(p.id) !== String(id)));
           }}
           alVolver={() => setVistaActual('pos')}
           alAbrirCamara={(cb) => { setOnScanCallback(() => cb); setCamaraAbierta(true); }}
@@ -1031,7 +1113,7 @@ export default function App() {
                 </div>
               </>
             ) : (
-              /* CABECERA CAJERO / TERMINALES SECUNDARIAS (DISEÑO 100% RESPONSIVE) */
+              /* CABECERA CAJERO / TERMINALES SECUNDARIAS */
               <>
                 <div style={styles.headerFila1}>
                   <div style={styles.marcaContainer}>
@@ -1443,7 +1525,7 @@ export default function App() {
           if (onScanCallback) {
             onScanCallback(cod);
           } else {
-            const prod = productos.find(p => p.codigo === cod);
+            const prod = productos.find(p => String(p.codigo).trim() === String(cod).trim());
             if (prod) procesarSeleccionProducto(prod);
             else alert('Código no encontrado: ' + cod);
           }
