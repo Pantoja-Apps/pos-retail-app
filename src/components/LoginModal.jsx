@@ -1,26 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Store, ShieldCheck, UserCheck, KeyRound, Mail, ArrowRight, 
-  UserPlus, LogIn, Lock, QrCode, Monitor, Camera, X, RefreshCw
+  UserPlus, LogIn, Lock, QrCode, Monitor, Camera, X, RefreshCw, Smartphone
 } from 'lucide-react';
 import ScannerModal from './ScannerModal';
-import { apiService } from '../services/api';
+import { dbService } from '../services/dbService';
 
-export default function LoginModal({ 
-  cuentaMaster, 
-  cajeros = [], 
+export default function LoginModal({
+  cuentaMaster,
+  cajeros = [],
   cajaActiva,
-  alRegistrarDueno, 
-  alIniciarSesionDueno, 
+  alRegistrarDueno,
+  alIniciarSesionDueno,
   alIniciarSesionCajero,
   alVincularTerminalPorQR,
   alVincularTerminalPorCodigo,
   alDesvincularTerminal,
   alActualizarCajerosLista
 }) {
-  const esTerminalSecundaria = Boolean(cajaActiva && cajaActiva.id !== 'caja_01');
-  const [modo, setModo] = useState('login');
-  const [rolLogin, setRolLogin] = useState(esTerminalSecundaria ? 'cajero' : 'dueno');
+  const [modo, setModo] = useState('login'); // 'login' | 'registro' | 'vincular'
+  const [rolLogin, setRolLogin] = useState('dueno');
 
   const [formRegistro, setFormRegistro] = useState({
     nombreNegocio: '',
@@ -32,7 +31,7 @@ export default function LoginModal({
   const [correoLogin, setCorreoLogin] = useState('');
   const [passwordLogin, setPasswordLogin] = useState('');
 
-  const [cajeroSeleccionadoId, setCajeroSeleccionadoId] = useState(cajeros[0]?.id ? String(cajeros[0].id) : '');
+  const [cajeroSeleccionadoId, setCajeroSeleccionadoId] = useState('');
   const [pinCajero, setPinCajero] = useState('');
   const [cargando, setCargando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
@@ -41,18 +40,22 @@ export default function LoginModal({
   const [modalCodigoPC, setModalCodigoPC] = useState(false);
   const [inputCodigo6, setInputCodigo6] = useState('');
 
-  const cargarCajerosServidor = async () => {
+  // Cargar cajeros desde Supabase si se conoce el negocio o caja activa
+  const sincronizarCajerosSupabase = async () => {
     setSincronizando(true);
     try {
-      const lista = await apiService.obtenerCajeros('neg_local');
-      if (Array.isArray(lista) && lista.length > 0) {
-        if (typeof alActualizarCajerosLista === 'function') {
-          alActualizarCajerosLista(lista);
+      const negId = cajaActiva?.negocioId || cuentaMaster?.negocioId;
+      if (negId) {
+        const lista = await dbService.getCajeros(negId);
+        if (Array.isArray(lista) && lista.length > 0) {
+          if (typeof alActualizarCajerosLista === 'function') {
+            alActualizarCajerosLista(lista);
+          }
+          setCajeroSeleccionadoId(String(lista[0].id));
         }
-        setCajeroSeleccionadoId(String(lista[0].id));
       }
     } catch (e) {
-      console.error('Error al sincronizar cajeros:', e);
+      console.error('Error sincronizando cajeros:', e);
     } finally {
       setSincronizando(false);
     }
@@ -67,7 +70,7 @@ export default function LoginModal({
   const manejarRegistro = async (e) => {
     e.preventDefault();
     if (!formRegistro.nombreNegocio.trim() || !formRegistro.nombreDueno.trim()) {
-      return alert('Por favor llena los datos del negocio y del dueño.');
+      return alert('Por favor llena el nombre de tu negocio y el nombre del dueño.');
     }
     if (!formRegistro.correo.includes('@')) return alert('Introduce un correo válido.');
     if (formRegistro.password.length < 6) return alert('La contraseña debe tener al menos 6 caracteres.');
@@ -75,6 +78,9 @@ export default function LoginModal({
     setCargando(true);
     try {
       await alRegistrarDueno(formRegistro);
+    } catch (err) {
+      console.error(err);
+      alert('Error creando cuenta. Revisa tu conexión.');
     } finally {
       setCargando(false);
     }
@@ -88,9 +94,10 @@ export default function LoginModal({
     setCargando(true);
     try {
       const ok = await alIniciarSesionDueno(correoLogin.trim(), passwordLogin.trim());
-      if (!ok) {
-        alert('Credenciales incorrectas.');
-      }
+      if (!ok) alert('Credenciales incorrectas o negocio no registrado.');
+    } catch (err) {
+      console.error(err);
+      alert('Error al conectar con el servidor.');
     } finally {
       setCargando(false);
     }
@@ -98,15 +105,13 @@ export default function LoginModal({
 
   const manejarLoginCajero = (e) => {
     e.preventDefault();
-    if (!cajeroSeleccionadoId) return alert('Selecciona tu usuario de cajero.');
-    if (!pinCajero.trim()) return alert('Introduce tu PIN de seguridad.');
+    if (!cajeroSeleccionadoId) return alert('Selecciona tu nombre de empleado.');
+    if (!pinCajero.trim()) return alert('Introduce tu PIN.');
 
-    // Comparar tanto por string como por número para evitar discrepancias
-    const ok = alIniciarSesionCajero(Number(cajeroSeleccionadoId), pinCajero.trim()) ||
-               alIniciarSesionCajero(String(cajeroSeleccionadoId), pinCajero.trim());
+    const ok = alIniciarSesionCajero(String(cajeroSeleccionadoId), pinCajero.trim()) ||
+               alIniciarSesionCajero(Number(cajeroSeleccionadoId), pinCajero.trim());
 
     if (!ok) {
-      // Verificación directa en la lista actual por si acaso
       const cajeroObj = cajeros.find(c => String(c.id) === String(cajeroSeleccionadoId));
       if (cajeroObj && String(cajeroObj.pin) === String(pinCajero.trim())) {
         window.location.reload();
@@ -126,21 +131,23 @@ export default function LoginModal({
           cajaId: p[1],
           cajaNombre: p[2],
           tipoGaveta: p[3] || 'centralizada',
-          codigoEnlace: p[4]
+          codigoEnlace: p[4],
+          negocioId: p[5] || 'neg_local'
         };
       } else {
         data = JSON.parse(texto);
       }
 
-      if (data && data.cajaId) {
+      if (data && (data.cajaId || data.id)) {
         setModalEscanearQR(false);
         alVincularTerminalPorQR(data);
+        setModo('login');
         setRolLogin('cajero');
-        alert(`¡Terminal vinculada con éxito como ${data.cajaNombre}!`);
-        await cargarCajerosServidor();
+        alert(`¡Dispositivo vinculado con éxito como ${data.cajaNombre || data.nombre}!`);
+        await sincronizarCajerosSupabase();
       }
-    } catch (err) {
-      alert('Código QR no reconocido.');
+    } catch {
+      alert('Código QR no válido para vinculación.');
     }
   };
 
@@ -153,11 +160,12 @@ export default function LoginModal({
     if (ok) {
       setModalCodigoPC(false);
       setInputCodigo6('');
+      setModo('login');
       setRolLogin('cajero');
-      alert('¡PC vinculada con éxito a la caja!');
-      await cargarCajerosServidor();
+      alert('¡Dispositivo vinculado con éxito a la caja!');
+      await sincronizarCajerosSupabase();
     } else {
-      alert('Código no encontrado o incorrecto.');
+      alert('Código no encontrado. Asegúrate de haber creado la terminal en el teléfono del Dueño.');
     }
   };
 
@@ -170,101 +178,106 @@ export default function LoginModal({
           <div style={styles.avatarIcon}>
             <Store size={32} color="#0052cc" />
           </div>
-          <h2 style={styles.titulo}>Mi Bodega POS</h2>
+          <h2 style={styles.titulo}>Facilito POS</h2>
           
-          {cajaActiva ? (
+          {cajaActiva && (
             <div style={styles.badgeTerminalConectada}>
               <Monitor size={12} color="#16a34a" />
-              <span>Terminal Activa: <strong>{cajaActiva.nombre}</strong></span>
+              <span>Terminal: <strong>{cajaActiva.nombre}</strong></span>
               <button 
                 type="button" 
                 onClick={alDesvincularTerminal}
                 style={styles.btnDesvincularMini}
-                title="Desvincular este dispositivo"
+                title="Cambiar caja"
               >
                 (Cambiar)
               </button>
             </div>
-          ) : (
-            <p style={styles.subtitulo}>Sistema de Punto de Venta y Gestión</p>
           )}
         </div>
 
-        {/* NAVEGACIÓN SUPERIOR */}
-        {!esTerminalSecundaria && (
-          <div style={styles.barraPillsNav}>
-            <button
-              type="button"
-              onClick={() => setModo('login')}
-              style={{
-                ...styles.btnPillNav,
-                backgroundColor: modo === 'login' ? '#0052cc' : 'transparent',
-                color: modo === 'login' ? '#fff' : '#64748b'
-              }}
-            >
-              <LogIn size={15} /> Iniciar Sesión
-            </button>
+        {/* SELECTOR DE ACCIÓN: LOGIN | REGISTRO | VINCULAR */}
+        <div style={styles.barraPillsNav}>
+          <button 
+            type="button" 
+            onClick={() => setModo('login')} 
+            style={{ 
+              ...styles.btnPillNav, 
+              backgroundColor: modo === 'login' ? '#0052cc' : 'transparent',
+              color: modo === 'login' ? '#fff' : '#64748b' 
+            }}
+          >
+            <LogIn size={14} /> Entrar
+          </button>
+          
+          <button 
+            type="button" 
+            onClick={() => setModo('registro')} 
+            style={{ 
+              ...styles.btnPillNav, 
+              backgroundColor: modo === 'registro' ? '#0052cc' : 'transparent',
+              color: modo === 'registro' ? '#fff' : '#64748b' 
+            }}
+          >
+            <UserPlus size={14} /> Nuevo Negocio
+          </button>
 
-            <button
-              type="button"
-              onClick={() => setModo('registro')}
-              style={{
-                ...styles.btnPillNav,
-                backgroundColor: modo === 'registro' ? '#0052cc' : 'transparent',
-                color: modo === 'registro' ? '#fff' : '#64748b'
-              }}
-            >
-              <UserPlus size={15} /> Registrar Negocio
-            </button>
-          </div>
-        )}
+          <button 
+            type="button" 
+            onClick={() => setModo('vincular')} 
+            style={{ 
+              ...styles.btnPillNav, 
+              backgroundColor: modo === 'vincular' ? '#0052cc' : 'transparent',
+              color: modo === 'vincular' ? '#fff' : '#64748b' 
+            }}
+          >
+            <Smartphone size={14} /> Vincular
+          </button>
+        </div>
 
-        {/* MODO INICIAR SESIÓN */}
+        {/* 1. MODO: INICIAR SESIÓN */}
         {modo === 'login' && (
-          <div style={{ marginTop: esTerminalSecundaria ? '6px' : '14px' }}>
-            
-            {!esTerminalSecundaria && (
-              <div style={styles.selectorRol}>
-                <button
-                  type="button"
-                  onClick={() => setRolLogin('dueno')}
-                  style={{
-                    ...styles.btnRol,
-                    backgroundColor: rolLogin === 'dueno' ? '#fff' : 'transparent',
-                    color: rolLogin === 'dueno' ? '#0f172a' : '#64748b',
-                    boxShadow: rolLogin === 'dueno' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-                  }}
-                >
-                  <ShieldCheck size={14} color={rolLogin === 'dueno' ? '#16a34a' : '#64748b'} />
-                  <span>Dueño / Master</span>
-                </button>
+          <div style={{ marginTop: '14px' }}>
+            <div style={styles.selectorRol}>
+              <button 
+                type="button" 
+                onClick={() => setRolLogin('dueno')}
+                style={{ 
+                  ...styles.btnRol,
+                  backgroundColor: rolLogin === 'dueno' ? '#fff' : 'transparent',
+                  color: rolLogin === 'dueno' ? '#0f172a' : '#64748b',
+                  boxShadow: rolLogin === 'dueno' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                }}
+              >
+                <ShieldCheck size={14} color={rolLogin === 'dueno' ? '#16a34a' : '#64748b'} />
+                <span>Dueño / Master</span>
+              </button>
 
-                <button
-                  type="button"
-                  onClick={() => setRolLogin('cajero')}
-                  style={{
-                    ...styles.btnRol,
-                    backgroundColor: rolLogin === 'cajero' ? '#fff' : 'transparent',
-                    color: rolLogin === 'cajero' ? '#0f172a' : '#64748b',
-                    boxShadow: rolLogin === 'cajero' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-                  }}
-                >
-                  <UserCheck size={14} color={rolLogin === 'cajero' ? '#0052cc' : '#64748b'} />
-                  <span>Cajero</span>
-                </button>
-              </div>
-            )}
+              <button 
+                type="button" 
+                onClick={() => setRolLogin('cajero')}
+                style={{ 
+                  ...styles.btnRol,
+                  backgroundColor: rolLogin === 'cajero' ? '#fff' : 'transparent',
+                  color: rolLogin === 'cajero' ? '#0f172a' : '#64748b',
+                  boxShadow: rolLogin === 'cajero' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                }}
+              >
+                <UserCheck size={14} color={rolLogin === 'cajero' ? '#0052cc' : '#64748b'} />
+                <span>Cajero</span>
+              </button>
+            </div>
 
-            {/* LOGIN DUEÑO */}
-            {rolLogin === 'dueno' && !esTerminalSecundaria && (
+            {/* Login Dueño */}
+            {rolLogin === 'dueno' && (
               <form onSubmit={manejarLoginDueno} style={styles.form}>
                 <div style={styles.campo}>
                   <label style={styles.lbl}>Correo Electrónico Maestro</label>
                   <div style={styles.inputWrapper}>
                     <Mail size={16} color="#64748b" style={styles.inputIcon} />
-                    <input
-                      type="email"
-                      placeholder="dueno@gmail.com"
+                    <input 
+                      type="email" 
+                      placeholder="dueno@negocio.com"
                       value={correoLogin}
                       onChange={(e) => setCorreoLogin(e.target.value)}
                       style={styles.inputWithIcon}
@@ -278,8 +291,8 @@ export default function LoginModal({
                   <label style={styles.lbl}>Clave Maestra</label>
                   <div style={styles.inputWrapper}>
                     <Lock size={16} color="#64748b" style={styles.inputIcon} />
-                    <input
-                      type="password"
+                    <input 
+                      type="password" 
                       placeholder="••••••"
                       value={passwordLogin}
                       onChange={(e) => setPasswordLogin(e.target.value)}
@@ -295,47 +308,46 @@ export default function LoginModal({
               </form>
             )}
 
-            {/* LOGIN CAJERO */}
+            {/* Login Cajero */}
             {rolLogin === 'cajero' && (
               <form onSubmit={manejarLoginCajero} style={styles.form}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={styles.lbl}>Selecciona tu Nombre de Empleado</label>
+                  <label style={styles.lbl}>Empleado / Cajero</label>
                   <button 
                     type="button" 
-                    onClick={cargarCajerosServidor}
+                    onClick={sincronizarCajerosSupabase}
                     disabled={sincronizando}
                     style={styles.btnSincronizarCajeros}
-                    title="Actualizar lista desde el servidor"
                   >
-                    <RefreshCw size={11} className={sincronizando ? 'animate-spin' : ''} /> 
-                    <span>{sincronizando ? 'Conectando...' : 'Sincronizar'}</span>
+                    <RefreshCw size={11} className={sincronizando ? 'animate-spin' : ''} />
+                    <span>{sincronizando ? 'Cargando...' : 'Actualizar'}</span>
                   </button>
                 </div>
 
                 {cajeros.length === 0 ? (
                   <div style={styles.avisoSinCajeros}>
-                    No hay cajeros creados. Abre el POS como <strong>Dueño</strong> en el teléfono principal para enviar la información al servidor, y luego toca <strong>"Sincronizar"</strong> aquí.
+                    No hay cajeros en esta terminal. Primero crea los cajeros desde la cuenta del <strong>Dueño</strong> (Módulo Cajeros) o vincula esta caja en la pestaña <strong>"Vincular"</strong> arriba.
                   </div>
                 ) : (
                   <>
-                    <select
+                    <select 
                       value={cajeroSeleccionadoId}
                       onChange={(e) => setCajeroSeleccionadoId(e.target.value)}
                       style={styles.selectCajeroVisible}
                     >
                       {cajeros.map(c => (
-                        <option key={c.id} value={String(c.id)} style={{ color: '#0f172a', backgroundColor: '#fff' }}>
+                        <option key={c.id} value={String(c.id)}>
                           {c.nombre}
                         </option>
                       ))}
                     </select>
 
                     <div style={styles.campo}>
-                      <label style={styles.lbl}>PIN de Seguridad</label>
+                      <label style={styles.lbl}>PIN de Seguridad (4 Dígitos)</label>
                       <div style={styles.inputWrapper}>
                         <KeyRound size={16} color="#0052cc" style={styles.inputIcon} />
-                        <input
-                          type="password"
+                        <input 
+                          type="password" 
                           inputMode="numeric"
                           pattern="[0-9]*"
                           maxLength={6}
@@ -350,7 +362,7 @@ export default function LoginModal({
                     </div>
 
                     <button type="submit" style={styles.btnPrincipal}>
-                      Abrir Turno de Caja <ArrowRight size={16} />
+                      Abrir Turno de Cobro <ArrowRight size={16} />
                     </button>
                   </>
                 )}
@@ -359,14 +371,14 @@ export default function LoginModal({
           </div>
         )}
 
-        {/* REGISTRO NEGOCIO */}
-        {modo === 'registro' && !esTerminalSecundaria && (
+        {/* 2. MODO: REGISTRO DE NUEVO NEGOCIO */}
+        {modo === 'registro' && (
           <form onSubmit={manejarRegistro} style={{ ...styles.form, marginTop: '14px' }}>
             <div style={styles.campo}>
-              <label style={styles.lbl}>Nombre de tu Negocio / Bodega *</label>
-              <input
-                type="text"
-                placeholder="Ej: Inversiones Los Socios C.A."
+              <label style={styles.lbl}>Nombre del Negocio / Establecimiento *</label>
+              <input 
+                type="text" 
+                placeholder="Ej: Bodega Don José"
                 value={formRegistro.nombreNegocio}
                 onChange={(e) => setFormRegistro({ ...formRegistro, nombreNegocio: e.target.value })}
                 style={styles.input}
@@ -377,9 +389,9 @@ export default function LoginModal({
 
             <div style={styles.campo}>
               <label style={styles.lbl}>Nombre del Propietario *</label>
-              <input
-                type="text"
-                placeholder="Ej: Ángel Pantoja"
+              <input 
+                type="text" 
+                placeholder="Ej: José Pérez"
                 value={formRegistro.nombreDueno}
                 onChange={(e) => setFormRegistro({ ...formRegistro, nombreDueno: e.target.value })}
                 style={styles.input}
@@ -389,9 +401,9 @@ export default function LoginModal({
 
             <div style={styles.campo}>
               <label style={styles.lbl}>Correo Electrónico Maestro *</label>
-              <input
-                type="email"
-                placeholder="dueno@gmail.com"
+              <input 
+                type="email" 
+                placeholder="jose@ejemplo.com"
                 value={formRegistro.correo}
                 onChange={(e) => setFormRegistro({ ...formRegistro, correo: e.target.value })}
                 style={styles.input}
@@ -400,9 +412,9 @@ export default function LoginModal({
             </div>
 
             <div style={styles.campo}>
-              <label style={styles.lbl}>Clave Maestra (Mín. 6 caracteres) *</label>
-              <input
-                type="password"
+              <label style={styles.lbl}>Clave Maestra (Mínimo 6 caracteres) *</label>
+              <input 
+                type="password" 
                 placeholder="••••••"
                 value={formRegistro.password}
                 onChange={(e) => setFormRegistro({ ...formRegistro, password: e.target.value })}
@@ -412,65 +424,71 @@ export default function LoginModal({
             </div>
 
             <button type="submit" disabled={cargando} style={styles.btnPrincipal}>
-              {cargando ? 'Configurando Negocio...' : 'Crear Cuenta y Comenzar'} <ArrowRight size={16} />
+              {cargando ? 'Configurando Espacio...' : 'Crear Cuenta y Comenzar'} <ArrowRight size={16} />
             </button>
           </form>
         )}
 
-        {/* VINCULACIÓN DUAL */}
-        {!cajaActiva && (
-          <div style={styles.seccionPieVinculacion}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '6px' }}>
-              ¿Es este un dispositivo secundario para un empleado?
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => setModalEscanearQR(true)}
-                style={styles.btnVinculacionSecundaria}
-              >
-                <QrCode size={14} color="#0052cc" />
-                <span>Escanear QR</span>
-              </button>
+        {/* 3. MODO: VINCULAR DISPOSITIVO SECUNDARIO */}
+        {modo === 'vincular' && (
+          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b', textAlign: 'center', lineHeight: 1.4 }}>
+              Vincula este teléfono, tablet o PC para usarlo como punto de cobro secundario en tu negocio.
+            </p>
 
-              <button
-                type="button"
-                onClick={() => setModalCodigoPC(true)}
-                style={styles.btnVinculacionSecundaria}
-              >
-                <Monitor size={14} color="#16a34a" />
-                <span>Código PC (6 Díg)</span>
-              </button>
-            </div>
+            <button 
+              type="button" 
+              onClick={() => setModalEscanearQR(true)}
+              style={styles.btnOpcionVinculacion}
+            >
+              <QrCode size={20} color="#0052cc" />
+              <div style={{ textAlign: 'left' }}>
+                <strong style={{ display: 'block', fontSize: '0.84rem', color: '#0f172a' }}>Escanear Código QR</strong>
+                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Apunta a la pantalla del Dueño (Ajustes &gt; Terminales)</span>
+              </div>
+            </button>
+
+            <button 
+              type="button" 
+              onClick={() => setModalCodigoPC(true)}
+              style={styles.btnOpcionVinculacion}
+            >
+              <Monitor size={20} color="#16a34a" />
+              <div style={{ textAlign: 'left' }}>
+                <strong style={{ display: 'block', fontSize: '0.84rem', color: '#0f172a' }}>Ingresar Código de 6 Dígitos</strong>
+                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Ideal para computadoras o equipos sin cámara</span>
+              </div>
+            </button>
           </div>
         )}
 
       </div>
 
-      <ScannerModal
+      {/* MODAL SCANNER QR */}
+      <ScannerModal 
         abierto={modalEscanearQR}
         alDetectar={procesarDeteccionQR}
         alCerrar={() => setModalEscanearQR(false)}
       />
 
+      {/* MODAL CÓDIGO 6 DÍGITOS */}
       {modalCodigoPC && (
         <div style={styles.overlay} translate="no">
           <div style={styles.modalBoxCard}>
             <div style={styles.headerModal}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1rem', color: '#0f172a', fontWeight: '800' }}>Vincular Terminal por Código</h3>
-                <small style={{ color: '#64748b', fontSize: '0.7rem' }}>Para PC Windows o dispositivos sin cámara</small>
+                <h3 style={{ margin: 0, fontSize: '0.98rem', color: '#0f172a', fontWeight: '800' }}>Vincular Terminal por Código</h3>
+                <small style={{ color: '#64748b', fontSize: '0.7rem' }}>Ingresa el código generado en la pantalla del Dueño</small>
               </div>
               <button type="button" onClick={() => setModalCodigoPC(false)} style={styles.btnCerrarX}><X size={18} /></button>
             </div>
 
             <form onSubmit={procesarVinculacionPC} style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={styles.campo}>
-                <label style={styles.lbl}>Escribe el Código de 6 Dígitos generado en la pantalla del dueño:</label>
-                <input
-                  type="text"
+                <input 
+                  type="text" 
                   maxLength={6}
-                  placeholder="Ej: 956390"
+                  placeholder="Ej: 100001"
                   value={inputCodigo6}
                   onChange={(e) => setInputCodigo6(e.target.value.replace(/[^0-9]/g, ''))}
                   style={styles.inputCodigo6}
@@ -495,14 +513,15 @@ const styles = {
   contenedorFondo: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' },
   cardLogin: { backgroundColor: '#fff', borderRadius: '24px', padding: '24px 20px', maxWidth: '380px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' },
   header: { textAlign: 'center', marginBottom: '14px' },
-  avatarIcon: { width: '60px', height: '60px', borderRadius: '18px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px auto', boxShadow: '0 4px 12px rgba(0, 82, 204, 0.12)' },
-  titulo: { margin: 0, fontSize: '1.3rem', fontWeight: '900', color: '#0f172a' },
-  subtitulo: { margin: '2px 0 0 0', fontSize: '0.74rem', color: '#64748b' },
+  avatarIcon: { width: '56px', height: '56px', borderRadius: '16px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px auto' },
+  titulo: { margin: 0, fontSize: '1.25rem', fontWeight: '900', color: '#0f172a' },
+  
   badgeTerminalConectada: { display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '4px 10px', borderRadius: '8px', fontSize: '0.72rem', marginTop: '6px' },
   btnDesvincularMini: { background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.66rem', fontWeight: 'bold', padding: 0 },
-
-  barraPillsNav: { display: 'grid', gridTemplateColumns: '1fr 1fr', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '12px' },
-  btnPillNav: { border: 'none', borderRadius: '9px', padding: '8px 4px', fontSize: '0.76rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer', transition: 'all 0.2s' },
+  
+  barraPillsNav: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '12px', gap: '2px' },
+  btnPillNav: { border: 'none', borderRadius: '9px', padding: '8px 2px', fontSize: '0.72rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', transition: 'all 0.2s' },
+  
   selectorRol: { display: 'grid', gridTemplateColumns: '1fr 1fr', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '3px', borderRadius: '10px', marginBottom: '10px' },
   btnRol: { border: 'none', borderRadius: '8px', padding: '7px 4px', fontSize: '0.72rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' },
   
@@ -510,48 +529,20 @@ const styles = {
   campo: { display: 'flex', flexDirection: 'column', gap: '4px' },
   lbl: { fontSize: '0.72rem', fontWeight: 'bold', color: '#334155' },
   btnSincronizarCajeros: { background: 'none', border: 'none', color: '#0052cc', fontSize: '0.68rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer' },
+  
   input: { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.86rem', outline: 'none', backgroundColor: '#f8fafc', color: '#0f172a' },
   inputWrapper: { position: 'relative', display: 'flex', alignItems: 'center' },
   inputIcon: { position: 'absolute', left: '12px' },
   inputWithIcon: { width: '100%', boxSizing: 'border-box', padding: '10px 12px 10px 36px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '0.86rem', outline: 'none', backgroundColor: '#f8fafc', color: '#0f172a' },
   
-  // ESTILOS DE MÁXIMO CONTRASTE Y VISIBILIDAD PARA EL TELÉFONO SECUNDARIO
-  selectCajeroVisible: { 
-    width: '100%', 
-    boxSizing: 'border-box', 
-    padding: '11px 12px', 
-    borderRadius: '10px', 
-    border: '2px solid #0052cc', 
-    fontSize: '0.94rem', 
-    fontWeight: '700', 
-    outline: 'none', 
-    backgroundColor: '#ffffff', 
-    color: '#0f172a',
-    display: 'block',
-    appearance: 'auto',
-    cursor: 'pointer'
-  },
-  inputPinVisible: { 
-    width: '100%', 
-    boxSizing: 'border-box', 
-    padding: '10px 12px 10px 38px', 
-    borderRadius: '10px', 
-    border: '1.5px solid #cbd5e1', 
-    fontSize: '1.3rem', 
-    fontWeight: '900', 
-    letterSpacing: '8px', 
-    textAlign: 'center', 
-    outline: 'none', 
-    backgroundColor: '#ffffff', 
-    color: '#0f172a' 
-  },
-
-  btnPrincipal: { marginTop: '6px', width: '100%', padding: '12px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '0.88rem', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', boxShadow: '0 4px 12px rgba(0, 82, 204, 0.25)' },
-  avisoSinCajeros: { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', fontSize: '0.76rem', padding: '12px', borderRadius: '10px', lineHeight: 1.4, textAlign: 'center' },
-
-  seccionPieVinculacion: { marginTop: '16px', paddingTop: '12px', borderTop: '1px dashed #e2e8f0', textAlign: 'center' },
-  btnVinculacionSecundaria: { backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 4px', fontSize: '0.72rem', fontWeight: 'bold', color: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' },
-
+  selectCajeroVisible: { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '2px solid #0052cc', fontSize: '0.92rem', fontWeight: '700', outline: 'none', backgroundColor: '#ffffff', color: '#0f172a', display: 'block' },
+  inputPinVisible: { width: '100%', boxSizing: 'border-box', padding: '10px 12px 10px 38px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '1.25rem', fontWeight: '900', letterSpacing: '8px', textAlign: 'center', outline: 'none', backgroundColor: '#ffffff', color: '#0f172a' },
+  
+  btnPrincipal: { marginTop: '4px', width: '100%', padding: '12px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '0.88rem', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', boxShadow: '0 4px 12px rgba(0, 82, 204, 0.25)' },
+  avisoSinCajeros: { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', fontSize: '0.74rem', padding: '10px', borderRadius: '10px', lineHeight: 1.4, textAlign: 'center' },
+  
+  btnOpcionVinculacion: { display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', cursor: 'pointer', textAlign: 'left' },
+  
   overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(2px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '14px' },
   modalBoxCard: { background: '#fff', borderRadius: '18px', width: '100%', maxWidth: '340px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden' },
   headerModal: { padding: '12px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
