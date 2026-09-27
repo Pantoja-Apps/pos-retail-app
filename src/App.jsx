@@ -19,7 +19,6 @@ import LoginModal from './components/LoginModal';
 import UsuariosModal from './components/UsuariosModal';
 import TerminalesModal from './components/TerminalesModal';
 import ModalPeso from './components/ModalPeso';
-import { apiService } from './services/api';
 import { dbService } from './services/dbService';
 
 const PRODUCTOS_INICIALES = [
@@ -206,7 +205,7 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(`pos_historico_${currentNegocioId}`, JSON.stringify(historicoVentasGlobal)); } catch (e) {} }, [historicoVentasGlobal, currentNegocioId]);
   useEffect(() => { try { localStorage.setItem('pos_espera_final', JSON.stringify(cuentasEnEspera)); } catch (e) {} }, [cuentasEnEspera]);
 
-  // CARGAR PRODUCTOS FILTRADOS POR NEGOCIO
+  // CARGAR PRODUCTOS DEL NEGOCIO DESDE SUPABASE
   const cargarCatalogoSupabase = async () => {
     try {
       const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
@@ -226,19 +225,22 @@ export default function App() {
           cantMinimaMayor: Number(p.cant_minima_mayor || 3)
         })));
       } else {
-        // Inicializar este negocio con catálogo base
-        for (const item of PRODUCTOS_INICIALES) {
-          await dbService.upsertProducto({
-            id: `${negId}_${item.id}`,
-            negocio_id: negId,
-            nombre: item.nombre,
-            codigo_barras: item.codigo,
-            precio_usd: item.precioUSD,
-            costo_usd: item.costoUSD,
-            stock: item.stock,
-            departamento: item.categoria
-          });
+        // Cargar víveres iniciales para el negocio nuevo
+        const productosACrear = PRODUCTOS_INICIALES.map(item => ({
+          id: `${negId}_${item.id}`,
+          negocio_id: negId,
+          nombre: item.nombre,
+          codigo_barras: item.codigo,
+          precio_usd: item.precioUSD,
+          costo_usd: item.costoUSD,
+          stock: item.stock,
+          departamento: item.categoria
+        }));
+
+        for (const item of productosACrear) {
+          await dbService.upsertProducto(item);
         }
+
         const dataRecargada = await dbService.getProductos(negId);
         if (dataRecargada?.length) {
           setProductos(dataRecargada.map(p => ({
@@ -257,42 +259,26 @@ export default function App() {
     }
   };
 
-  // SINCRONIZACIÓN AUTOMÁTICA SILENCIOSA
   const sincronizarSilenciosamente = async () => {
-    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
     const conectadoSupabase = await dbService.checkConnection();
     setOnlineBackend(conectadoSupabase);
 
-    if (usuarioActivo?.rol === 'dueno') {
-      if (configEmpresa.nombre && configEmpresa.nombre !== 'Mi Bodega POS') {
-        apiService.guardarConfiguracion(configEmpresa);
-      }
-      if (cajeros.length > 0) {
-        cajeros.forEach(c => apiService.crearCajero(negId, c.nombre, c.pin));
-      }
-    } else {
-      const conf = await apiService.obtenerConfiguracion();
-      if (conf && conf.nombre && (conf.nombre !== configEmpresa.nombre || conf.logo !== configEmpresa.logo)) {
-        setConfigEmpresa(prev => ({ ...prev, ...conf }));
+    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId;
+    if (negId) {
+      const ventasSupabase = await dbService.getVentas(negId);
+      if (Array.isArray(ventasSupabase) && ventasSupabase.length > 0) {
+        setTransacciones(actuales => {
+          const idsExistentes = new Set(actuales.map(v => String(v.id)));
+          const nuevas = ventasSupabase.filter(v => !idsExistentes.has(String(v.id)));
+          return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
+        });
+        setHistoricoVentasGlobal(actuales => {
+          const idsExistentes = new Set(actuales.map(v => String(v.id)));
+          const nuevas = ventasSupabase.filter(v => !idsExistentes.has(String(v.id)));
+          return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
+        });
       }
     }
-
-    const ventasServidor = await apiService.obtenerVentasServidor(negId);
-    if (Array.isArray(ventasServidor) && ventasServidor.length > 0) {
-      setTransacciones(actuales => {
-        const idsExistentes = new Set(actuales.map(v => String(v.id)));
-        const nuevas = ventasServidor.filter(v => !idsExistentes.has(String(v.id)));
-        return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
-      });
-      setHistoricoVentasGlobal(actuales => {
-        const idsExistentes = new Set(actuales.map(v => String(v.id)));
-        const nuevas = ventasServidor.filter(v => !idsExistentes.has(String(v.id)));
-        return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
-      });
-    }
-
-    const lic = await apiService.consultarLicencia(negId);
-    if (lic) setInfoLicencia(lic);
   };
 
   const obtenerTasaBCV = async () => {
@@ -322,49 +308,40 @@ export default function App() {
     };
   }, [cuentaMaster, usuarioActivo, configEmpresa]);
 
+  // REGISTRO 100% DIRECTO EN SUPABASE
   const registrarDueno = async (datos) => {
-    const resBackend = await apiService.registrarDueno(datos);
-    const negocioId = resBackend?.negocio?.id || 'neg_' + Date.now().toString(36);
-    const token = resBackend?.token || '';
+    const negocioId = 'neg_' + Date.now().toString(36);
+    const duenoId = 'usr_' + Date.now();
 
     const cuentaFinal = {
       ...datos,
       negocioId,
-      token,
-      licenciaHasta: resBackend?.negocio?.licenciaHasta || null
+      duenoId
     };
 
-    // Registrar en Supabase tabla negocios y usuarios
-    await dbService.registrarNegocio(
+    // 1. Guardar negocio y dueño en Supabase
+    const res = await dbService.registrarNegocio(
       { id: negocioId, nombre: datos.nombreNegocio },
-      { id: 'usr_' + Date.now(), nombre: datos.nombreDueno, correo: datos.correo }
+      { id: duenoId, nombre: datos.nombreDueno, correo: datos.correo }
     );
 
+    if (!res.success) {
+      console.warn('Advertencia Supabase:', res.error);
+    }
+
+    // 2. Establecer sesión local inmediata
     setCuentaMaster(cuentaFinal);
     setConfigEmpresa(prev => ({ ...prev, nombre: datos.nombreNegocio }));
     setUsuarioActivo({ rol: 'dueno', nombre: datos.nombreDueno, negocioId });
     setCajaActiva(CAJAS_DEFAULT[0]);
     setOnlineBackend(true);
+    return true;
   };
 
   const iniciarSesionDueno = async (correo, password) => {
     const correoLimpio = correo.toLowerCase().trim();
-    const res = await apiService.loginDueno(correoLimpio, password);
-    if (res && res.usuario) {
-      setUsuarioActivo({ rol: 'dueno', nombre: res.usuario.nombre, negocioId: res.negocio.id });
-      setCuentaMaster(prev => ({
-        ...prev,
-        token: res.token,
-        negocioId: res.negocio.id,
-        licenciaHasta: res.negocio.licenciaHasta,
-        correo: correoLimpio,
-        password: password
-      }));
-      if (!cajaActiva) setCajaActiva(CAJAS_DEFAULT[0]);
-      setOnlineBackend(true);
-      return true;
-    }
 
+    // 1. Si coincide con la cuenta dueña guardada localmente
     if (cuentaMaster && (cuentaMaster.correo?.toLowerCase() === correoLimpio)) {
       if (cuentaMaster.password === password) {
         setUsuarioActivo({ rol: 'dueno', nombre: cuentaMaster.nombreDueno || 'Dueño', negocioId: cuentaMaster.negocioId || 'neg_local' });
@@ -373,15 +350,14 @@ export default function App() {
       }
     }
 
-    if (!cuentaMaster && password.length >= 6) {
-      const autoCuenta = {
-        nombreNegocio: configEmpresa.nombre || 'Mi Bodega POS',
+    // 2. Si no hay cuenta previa o es un equipo nuevo, registrar negocio automáticamente
+    if (password.length >= 6) {
+      await registrarDueno({
+        nombreNegocio: 'Mi Bodega POS',
         nombreDueno: 'Dueño',
         correo: correoLimpio,
-        password: password,
-        negocioId: 'neg_' + Date.now().toString(36)
-      };
-      await registrarDueno(autoCuenta);
+        password: password
+      });
       return true;
     }
 
@@ -391,7 +367,7 @@ export default function App() {
   const iniciarSesionCajero = (cajeroId, pin) => {
     const c = cajeros.find(item => String(item.id) === String(cajeroId));
     if (c && String(c.pin).trim() === String(pin).trim()) {
-      setUsuarioActivo({ rol: 'cajero', nombre: c.nombre, id: c.id, negocioId: cuentaMaster?.negocioId || 'neg_local' });
+      setUsuarioActivo({ rol: 'cajero', nombre: c.nombre, id: c.id, negocioId: cuentaMaster?.negocioId || cajaActiva?.negocioId || 'neg_local' });
       return true;
     }
     return false;
@@ -715,8 +691,6 @@ export default function App() {
       metodos_pago: datos.metodosPago || []
     }).catch(console.error);
 
-    apiService.sincronizarVentas(negId, [ventaCompleta]);
-
     if (datos.esCredito && parseFloat(datos.saldoDeudaUSD) > 0) {
       setClientes(actuales => {
         const nTarget = normalizarDoc(datos.cliente.doc);
@@ -927,7 +901,6 @@ export default function App() {
           infoLicencia={infoLicencia}
           alGuardarConfig={(nuevaConfig) => {
             setConfigEmpresa(nuevaConfig);
-            apiService.guardarConfiguracion(nuevaConfig);
           }}
           alExportarBackup={exportarBackupCompleto}
           alImportarBackup={importarBackupCompleto}
@@ -971,7 +944,6 @@ export default function App() {
               return [...prev, cajero];
             });
             const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
-            apiService.crearCajero(negId, cajero.nombre, cajero.pin);
             dbService.upsertCajero({
               id: String(cajero.id || Date.now()),
               negocio_id: negId,
