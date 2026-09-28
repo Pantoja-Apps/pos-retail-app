@@ -3,9 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-export const supabase = (SUPABASE_URL && SUPABASE_KEY) 
-  ? createClient(SUPABASE_URL, SUPABASE_KEY)
-  : null;
+let supabaseInstance = null;
+try {
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    supabaseInstance = createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+} catch (err) {
+  console.warn('Supabase no inicializado:', err);
+}
+
+export const supabase = supabaseInstance;
 
 export const dbService = {
   async checkConnection() {
@@ -26,7 +33,7 @@ export const dbService = {
         id: dueno.id,
         negocio_id: negocio.id,
         nombre: dueno.nombre,
-        correo: dueno.correo.toLowerCase().trim(),
+        correo: (dueno.correo || '').toLowerCase().trim(),
         password: dueno.password,
         rol: 'dueno'
       }]);
@@ -40,9 +47,8 @@ export const dbService = {
   async loginDueno(correo, password) {
     if (!supabase) return null;
     try {
-      const correoLimpio = correo.toLowerCase().trim();
+      const correoLimpio = (correo || '').toLowerCase().trim();
       
-      // Consulta directa sin JOIN foráneo para evitar fallos de schema
       const { data: usuario, error: errUser } = await supabase
         .from('usuarios')
         .select('*')
@@ -53,7 +59,6 @@ export const dbService = {
 
       if (errUser || !usuario) return null;
 
-      // Obtener negocio asociado
       let negocio = { id: usuario.negocio_id || 'neg_local', nombre: 'Mi Negocio' };
       if (usuario.negocio_id) {
         const { data: negData } = await supabase
@@ -100,8 +105,7 @@ export const dbService = {
         .eq('negocio_id', negocioId)
         .eq('rol', 'cajero');
 
-      if (error) return [];
-      return data || [];
+      return Array.isArray(data) ? data : [];
     } catch (e) {
       return [];
     }
@@ -146,8 +150,8 @@ export const dbService = {
         .select('*')
         .eq('negocio_id', negocioId);
 
-      if (error) return [];
-      return (data || []).map(p => ({
+      if (error || !data) return [];
+      return data.map(p => ({
         id: String(p.id),
         codigo: p.codigo,
         nombre: p.nombre,
@@ -225,8 +229,7 @@ export const dbService = {
         .eq('negocio_id', negocioId)
         .order('fecha', { ascending: false });
 
-      if (error) return [];
-      return data || [];
+      return Array.isArray(data) ? data : [];
     } catch (e) {
       return [];
     }
