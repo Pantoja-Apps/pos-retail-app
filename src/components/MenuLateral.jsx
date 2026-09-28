@@ -1,7 +1,8 @@
 import React from 'react';
 import { 
-  Store, ShoppingCart, Package, CreditCard, Receipt, 
-  TrendingUp, Settings, HelpCircle, LogOut, X, Wifi, WifiOff, ChevronRight
+  Store, ShoppingCart, Package, Users, Receipt, Clock, 
+  BarChart3, Settings, HelpCircle, LogOut, X, Wifi, WifiOff,
+  Truck
 } from 'lucide-react';
 
 export default function MenuLateral({
@@ -20,85 +21,85 @@ export default function MenuLateral({
   const esDueno = usuarioActivo?.rol === 'dueno';
 
   const items = [
-    { id: 'pos', nombre: 'Punto de Venta (Caja)', icono: ShoppingCart, color: '#0052cc', visible: true },
-    { id: 'inventario', nombre: 'Inventario de Productos', icono: Package, color: '#0284c7', visible: true },
-    { id: 'creditos', nombre: 'Créditos y Deudores', icono: CreditCard, color: '#d97706', badge: clientesMorosos > 0 ? `${clientesMorosos} pendientes` : null, visible: true },
-    { id: 'caja', nombre: 'Cierre de Caja (Z)', icono: Receipt, color: '#00b050', visible: true },
-    { id: 'historial', nombre: 'Historial de Ventas', icono: Receipt, color: '#8b5cf6', visible: true },
-    { id: 'metricas', nombre: 'Ganancias y Rendimiento', icono: TrendingUp, color: '#10b981', visible: esDueno },
-    { id: 'configuracion', nombre: 'Ajustes y Configuración', icono: Settings, color: '#475569', visible: esDueno },
-    { id: 'soporte', nombre: 'Centro de Ayuda y Soporte', icono: HelpCircle, color: '#059669', visible: true }
+    { id: 'pos', label: 'Caja Mostrador (Ventas)', icon: ShoppingCart },
+    { id: 'caja', label: 'Arqueo y Cierre de Caja (Z)', icon: Clock },
+    { id: 'inventario', label: 'Inventario y Catálogo', icon: Package },
+    { id: 'creditos', label: `Créditos y Clientes ${clientesMorosos > 0 ? `(${clientesMorosos})` : ''}`, icon: Users, badge: clientesMorosos > 0 },
+    { id: 'proveedores', label: 'Proveedores y Compras', icon: Truck, soloDueno: true },
+    { id: 'historial', label: 'Historial de Ventas', icon: Receipt },
+    { id: 'metricas', label: 'Rendimiento y Finanzas', icon: BarChart3, soloDueno: true },
+    { id: 'configuracion', label: 'Configuración del Negocio', icon: Settings, soloDueno: true },
+    { id: 'soporte', label: 'Soporte y Asistencia', icon: HelpCircle }
   ];
 
   return (
     <div style={styles.overlay} onClick={alCerrar} translate="no">
-      <div style={styles.menuBox} onClick={(e) => e.stopPropagation()}>
-        {/* Cabecera del Menú con Diseño Corporativo */}
-        <div style={styles.headerMenu}>
-          <div style={styles.brandRow}>
-            <div style={styles.logoContainer}>
-              {configEmpresa?.logo ? (
-                <img src={configEmpresa.logo} alt="Logo" style={styles.logoComercio} />
-              ) : (
-                <img src="/isotipo_login.png" alt="Facilito" style={styles.logoComercio} />
-              )}
+      <div style={styles.drawer} onClick={(e) => e.stopPropagation()}>
+        {/* Cabecera */}
+        <div style={styles.header}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {configEmpresa?.logo ? (
+              <img src={configEmpresa.logo} alt="Logo" style={styles.logoImg} />
+            ) : (
+              <div style={styles.avatarBox}><Store size={20} color="#0f2a4a" /></div>
+            )}
+            <div style={{ minWidth: 0 }}>
+              <h3 style={styles.nombreNegocio}>{configEmpresa?.nombre || 'Mi Bodega POS'}</h3>
+              <span style={styles.usuarioTag}>
+                {usuarioActivo?.nombre} ({esDueno ? 'Dueño' : cajaActiva?.nombre || 'Cajero'})
+              </span>
             </div>
-
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <h3 style={styles.tituloComercio}>{configEmpresa?.nombre || 'Facilito POS'}</h3>
-              <div style={styles.subInfoRow}>
-                <span style={styles.badgeRol}>
-                  {esDueno ? '✓ Dueño' : 'Cajero'} · {usuarioActivo?.nombre || 'Usuario'}
-                </span>
-                <span style={styles.badgeCaja}>{cajaActiva?.nombre || 'Caja 01'}</span>
-              </div>
-            </div>
-
-            <button type="button" onClick={alCerrar} style={styles.btnCerrar}>
-              <X size={18} />
-            </button>
           </div>
+          <button type="button" onClick={alCerrar} style={styles.btnCerrar}>
+            <X size={18} />
+          </button>
         </div>
 
-        {/* Lista de Navegación */}
-        <div style={styles.cuerpoNav}>
-          {items.filter(it => it.visible).map((it) => {
-            const Icono = it.icono;
+        {/* Estado de Red */}
+        <div style={styles.badgeConexion}>
+          {onlineBackend ? (
+            <>
+              <Wifi size={13} color="#00b050" />
+              <span style={{ color: '#00b050', fontWeight: 'bold' }}>Sincronizado en la Nube</span>
+            </>
+          ) : (
+            <>
+              <WifiOff size={13} color="#f59e0b" />
+              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>Modo Local (Offline)</span>
+            </>
+          )}
+        </div>
+
+        {/* Lista de Opciones */}
+        <nav style={styles.listaNav}>
+          {items.map(it => {
+            if (it.soloDueno && !esDueno) return null;
+            const Icon = it.icon;
             return (
               <button
                 key={it.id}
                 type="button"
-                onClick={() => { alNavegar(it.id); alCerrar(); }}
+                onClick={() => {
+                  alNavegar(it.id);
+                  alCerrar();
+                }}
                 style={styles.itemBtn}
               >
-                <div style={{ ...styles.iconoWrapper, backgroundColor: `${it.color}15` }}>
-                  <Icono size={17} color={it.color} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Icon size={18} color="#0f2a4a" />
+                  <span style={styles.itemTexto}>{it.label}</span>
                 </div>
-                <span style={styles.textoItem}>{it.nombre}</span>
-
-                {it.badge && <span style={styles.badgeAlerta}>{it.badge}</span>}
-                <ChevronRight size={15} color="#cbd5e1" />
               </button>
             );
           })}
-        </div>
+        </nav>
 
-        {/* Pie con Estado del Servidor y Salir */}
-        <div style={styles.footerMenu}>
-          <button type="button" onClick={alCerrarSesion} style={styles.btnSalir}>
+        {/* Pie: Cerrar Sesión */}
+        <div style={styles.footer}>
+          <button type="button" onClick={() => { alCerrarSesion(); alCerrar(); }} style={styles.btnSalir}>
             <LogOut size={16} />
-            <span>Cerrar Turno / Salir</span>
+            <span>Cerrar Sesión</span>
           </button>
-
-          <div style={styles.servidorFila}>
-            <div style={styles.indicadorOnline}>
-              <div style={{ ...styles.puntoOnline, backgroundColor: onlineBackend ? '#00b050' : '#d97706' }} />
-              <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 'bold' }}>
-                {onlineBackend ? 'Servidor Online (Supabase)' : 'Modo Offline (Copia Local)'}
-              </span>
-            </div>
-            <span style={{ fontSize: '0.66rem', color: '#94a3b8' }}>Facilito POS Pro</span>
-          </div>
         </div>
       </div>
     </div>
@@ -111,72 +112,53 @@ const styles = {
     inset: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.6)',
     backdropFilter: 'blur(3px)',
-    zIndex: 99999999,
+    zIndex: 999999999,
     display: 'flex'
   },
-  menuBox: {
-    width: '84%',
-    maxWidth: '320px',
+  drawer: {
+    width: '280px',
     height: '100%',
     backgroundColor: '#ffffff',
     display: 'flex',
     flexDirection: 'column',
-    boxShadow: '10px 0 30px rgba(0,0,0,0.2)'
+    boxShadow: '4px 0 25px rgba(0,0,0,0.15)'
   },
-  headerMenu: {
-    padding: '16px 14px 14px 14px',
+  header: {
+    padding: '14px',
     borderBottom: '1px solid #f1f5f9',
-    backgroundColor: '#f8fafc'
-  },
-  brandRow: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '10px'
+    justifyContent: 'space-between',
+    alignItems: 'center'
   },
-  logoContainer: {
-    width: '42px',
-    height: '42px',
-    borderRadius: '12px',
-    backgroundColor: '#fff',
-    border: '1px solid #cbd5e1',
+  logoImg: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '8px',
+    objectFit: 'contain',
+    border: '1px solid #cbd5e1'
+  },
+  avatarBox: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '8px',
+    backgroundColor: '#eff6ff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-    flexShrink: 0
+    border: '1px solid #bfdbfe'
   },
-  logoComercio: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'contain'
-  },
-  tituloComercio: {
+  nombreNegocio: {
     margin: 0,
-    fontSize: '0.94rem',
-    fontWeight: '900',
+    fontSize: '0.88rem',
+    fontWeight: '800',
     color: '#0f2a4a',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis'
   },
-  subInfoRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    marginTop: '3px'
-  },
-  badgeRol: {
-    fontSize: '0.66rem',
-    fontWeight: 'bold',
-    color: '#00b050'
-  },
-  badgeCaja: {
-    fontSize: '0.62rem',
-    backgroundColor: '#eff6ff',
-    color: '#0052cc',
-    padding: '1px 5px',
-    borderRadius: '4px',
-    fontWeight: 'bold'
+  usuarioTag: {
+    fontSize: '0.68rem',
+    color: '#64748b'
   },
   btnCerrar: {
     background: '#f1f5f9',
@@ -190,10 +172,19 @@ const styles = {
     cursor: 'pointer',
     color: '#64748b'
   },
-  cuerpoNav: {
+  badgeConexion: {
+    padding: '6px 14px',
+    backgroundColor: '#f8fafc',
+    borderBottom: '1px solid #e2e8f0',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '0.66rem'
+  },
+  listaNav: {
     flex: 1,
     overflowY: 'auto',
-    padding: '10px 12px',
+    padding: '10px 8px',
     display: 'flex',
     flexDirection: 'column',
     gap: '4px'
@@ -201,76 +192,37 @@ const styles = {
   itemBtn: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
-    padding: '10px 10px',
-    borderRadius: '12px',
+    justifyContent: 'space-between',
+    padding: '10px 12px',
+    borderRadius: '10px',
     border: 'none',
     backgroundColor: 'transparent',
     cursor: 'pointer',
     textAlign: 'left',
-    transition: 'background-color 0.15s ease'
+    transition: 'background 0.15s'
   },
-  iconoWrapper: {
-    width: '34px',
-    height: '34px',
-    borderRadius: '10px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0
-  },
-  textoItem: {
-    flex: 1,
-    fontSize: '0.84rem',
+  itemTexto: {
+    fontSize: '0.8rem',
     fontWeight: '700',
-    color: '#1e293b'
+    color: '#334155'
   },
-  badgeAlerta: {
-    backgroundColor: '#fef3c7',
-    color: '#b45309',
-    fontSize: '0.65rem',
-    fontWeight: 'bold',
-    padding: '2px 6px',
-    borderRadius: '6px',
-    marginRight: '4px'
-  },
-  footerMenu: {
+  footer: {
     padding: '12px 14px',
-    borderTop: '1px solid #f1f5f9',
-    backgroundColor: '#f8fafc',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px'
+    borderTop: '1px solid #f1f5f9'
   },
   btnSalir: {
     width: '100%',
     padding: '10px',
     backgroundColor: '#fee2e2',
     color: '#dc2626',
-    border: '1px solid #fecaca',
+    border: 'none',
     borderRadius: '10px',
-    fontSize: '0.82rem',
+    fontSize: '0.78rem',
     fontWeight: 'bold',
-    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '6px'
-  },
-  servidorFila: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: '4px'
-  },
-  indicadorOnline: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '5px'
-  },
-  puntoOnline: {
-    width: '7px',
-    height: '7px',
-    borderRadius: '50%'
+    gap: '6px',
+    cursor: 'pointer'
   }
 };

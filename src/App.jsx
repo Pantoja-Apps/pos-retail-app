@@ -18,12 +18,18 @@ import UsuariosModal from './components/UsuariosModal';
 import TerminalesModal from './components/TerminalesModal';
 import ModalPeso from './components/ModalPeso';
 import SoporteModal from './components/SoporteModal';
+import ProveedoresModal from './components/ProveedoresModal';
 import MenuLateral from './components/MenuLateral';
 import { dbService } from './services/dbService';
 
 const PRODUCTOS_INICIALES = [
   { id: 'prod_1', codigo: '7591001000123', nombre: 'Harina PAN Blanca 1kg', costoUSD: 0.92, precioUSD: 1.10, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 0.98, cantMinimaMayor: 3, stock: 50, categoria: 'Víveres', imagen: '' },
   { id: 'prod_2', codigo: '7591002000456', nombre: 'Arroz Blanco Primor 1kg', costoUSD: 1.05, precioUSD: 1.35, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 1.20, cantMinimaMayor: 3, stock: 40, categoria: 'Víveres', imagen: '' }
+];
+
+const PROVEEDORES_INICIALES = [
+  { id: 'prv_1', rif: 'J-00006543-0', nombre: 'Empresas Polar C.A.', vendedor: 'Carlos Preventista', telefono: '04141234567', diasCredito: 15 },
+  { id: 'prv_2', rif: 'J-30495821-2', nombre: 'Distribuidora Alimentos Mary', vendedor: 'Rosa Distribución', telefono: '04247654321', diasCredito: 7 }
 ];
 
 const CLIENTES_INICIALES = [
@@ -106,6 +112,22 @@ export default function App() {
     return PRODUCTOS_INICIALES;
   });
 
+  const [proveedores, setProveedores] = useState(() => {
+    try {
+      const g = localStorage.getItem(`pos_provs_${currentNegocioId}`);
+      if (g) return JSON.parse(g);
+    } catch (e) {}
+    return PROVEEDORES_INICIALES;
+  });
+
+  const [compras, setCompras] = useState(() => {
+    try {
+      const g = localStorage.getItem(`pos_cmps_${currentNegocioId}`);
+      if (g) return JSON.parse(g);
+    } catch (e) {}
+    return [];
+  });
+
   const [clientes, setClientes] = useState(() => {
     try {
       const g = localStorage.getItem('pos_clis_final');
@@ -168,6 +190,8 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem('pos_cajeros_lista', JSON.stringify(cajeros)); } catch (e) {} }, [cajeros]);
   useEffect(() => { try { localStorage.setItem('pos_config_empresa', JSON.stringify(configEmpresa)); } catch (e) {} }, [configEmpresa]);
   useEffect(() => { try { localStorage.setItem(`pos_prods_${currentNegocioId}`, JSON.stringify(productos)); } catch (e) {} }, [productos, currentNegocioId]);
+  useEffect(() => { try { localStorage.setItem(`pos_provs_${currentNegocioId}`, JSON.stringify(proveedores)); } catch (e) {} }, [proveedores, currentNegocioId]);
+  useEffect(() => { try { localStorage.setItem(`pos_cmps_${currentNegocioId}`, JSON.stringify(compras)); } catch (e) {} }, [compras, currentNegocioId]);
   useEffect(() => { try { localStorage.setItem('pos_clis_final', JSON.stringify(clientes)); } catch (e) {} }, [clientes]);
   useEffect(() => { try { localStorage.setItem(`pos_txs_${currentNegocioId}`, JSON.stringify(transacciones)); } catch (e) {} }, [transacciones, currentNegocioId]);
   useEffect(() => { try { localStorage.setItem('pos_gastos_caja', JSON.stringify(gastosCaja)); } catch (e) {} }, [gastosCaja]);
@@ -464,6 +488,7 @@ export default function App() {
     setTransacciones(prev => [ventaCompleta, ...prev]);
     setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
 
+    // Descontar inventario
     setProductos(prevProds => {
       const copia = [...prevProds];
       ventaCompleta.items.forEach(itemVendido => {
@@ -544,6 +569,53 @@ export default function App() {
     setTransacciones(prev => prev.map(t => ({ ...t, cerradoEnTurno: true })));
     setGastosCaja([]);
     alert('Turno cerrado exitosamente.');
+  };
+
+  // GESTIÓN DE COMPRAS Y CARGA AUTOMÁTICA DE STOCK
+  const registrarCompraYActualizarStock = (nuevaCompra) => {
+    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+    setCompras(prev => [nuevaCompra, ...prev]);
+
+    // Incrementar automáticamente el stock y actualizar costo
+    setProductos(prevProds => {
+      const copia = [...prevProds];
+      nuevaCompra.items.forEach(it => {
+        const idx = copia.findIndex(p => String(p.id) === String(it.id));
+        if (idx >= 0) {
+          const stockActual = parseFloat(copia[idx].stock) || 0;
+          const cantIngresada = parseFloat(it.cantidad) || 0;
+          const nuevoStock = stockActual + cantIngresada;
+          copia[idx] = {
+            ...copia[idx],
+            stock: parseFloat(nuevoStock.toFixed(3)),
+            costoUSD: parseFloat(Number(it.costoUSD || copia[idx].costoUSD).toFixed(2))
+          };
+          dbService.upsertProducto(copia[idx], negId);
+        }
+      });
+      return copia;
+    });
+
+    alert(`Factura #${nuevaCompra.facturaNro} registrada con éxito. Inventario actualizado.`);
+  };
+
+  const abonarFacturaCompra = (compraId, montoAbonado) => {
+    setCompras(prev => prev.map(c => {
+      if (String(c.id) === String(compraId)) {
+        const saldoAct = Number(c.saldoPendienteUSD || 0);
+        const nuevoSaldo = Math.max(0, saldoAct - montoAbonado);
+        return {
+          ...c,
+          saldoPendienteUSD: parseFloat(nuevoSaldo.toFixed(2)),
+          abonos: [
+            { id: 'abn_' + Date.now(), fecha: new Date().toLocaleString(), montoUSD: montoAbonado },
+            ...(c.abonos || [])
+          ]
+        };
+      }
+      return c;
+    }));
+    alert('Abono a proveedor registrado correctamente.');
   };
 
   const registrarDueno = async (datos) => {
@@ -720,6 +792,21 @@ export default function App() {
         />
       )}
 
+      {/* MÓDULO DE PROVEEDORES Y COMPRAS */}
+      {vistaActual === 'proveedores' && esDueno && (
+        <ProveedoresModal 
+          proveedores={proveedores}
+          compras={compras}
+          productos={productos}
+          tasaCambio={tasaCambio}
+          alGuardarProveedor={(p) => setProveedores(prev => [p, ...prev])}
+          alEliminarProveedor={(id) => setProveedores(prev => prev.filter(x => x.id !== id))}
+          alRegistrarCompra={registrarCompraYActualizarStock}
+          alAbonarCompra={abonarFacturaCompra}
+          alVolver={() => setVistaActual('pos')}
+        />
+      )}
+
       {vistaActual === 'usuarios' && esDueno && (
         <UsuariosModal 
           cajeros={cajeros}
@@ -819,7 +906,7 @@ export default function App() {
         />
       )}
 
-      {/* RENDIMIENTO Y FINANZAS EJECUTIVO */}
+      {/* RENDIMIENTO Y FINANZAS */}
       {vistaActual === 'metricas' && esDueno && (
         <MetricasModal 
           transaccionesTurno={transacciones}
