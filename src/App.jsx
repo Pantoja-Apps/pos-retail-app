@@ -124,19 +124,7 @@ export default function App() {
   const [clientes, setClientes] = useState(() => {
     try {
       const g = localStorage.getItem('pos_clis_final');
-      if (g) {
-        const parseados = JSON.parse(g);
-        const unicos = [];
-        const docsVistos = new Set();
-        for (const c of parseados) {
-          const docNorm = normalizarDoc(c.doc);
-          if (!docsVistos.has(docNorm)) {
-            docsVistos.add(docNorm);
-            unicos.push(c);
-          }
-        }
-        return unicos;
-      }
+      if (g) return JSON.parse(g);
     } catch (e) {}
     return CLIENTES_INICIALES;
   });
@@ -188,7 +176,6 @@ export default function App() {
   const [modalEsperaAbierto, setModalEsperaAbierto] = useState(false);
   const [camaraAbierta, setCamaraAbierta] = useState(false);
   const [onScanCallback, setOnScanCallback] = useState(null);
-
   const [productoParaPesar, setProductoParaPesar] = useState(null);
 
   const inputRef = useRef(null);
@@ -221,56 +208,26 @@ export default function App() {
     cantMinimaMayor: Number(p.cantMinimaMayor ?? p.cant_minima_mayor ?? 3)
   });
 
-  const cargarCatalogoSupabase = async () => {
-    try {
-      const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
-      const data = await dbService.getProductos(negId);
-      if (Array.isArray(data) && data.length > 0) {
-        setProductos(data.map(formatearProducto));
-      } else {
-        const productosACrear = PRODUCTOS_INICIALES.map(item => ({
-          id: `${negId}_${item.id}`,
-          negocio_id: negId,
-          nombre: item.nombre,
-          codigo_barras: item.codigo,
-          precio_usd: item.precioUSD,
-          costo_usd: item.costoUSD,
-          stock: item.stock,
-          departamento: item.categoria,
-          es_pesado: Boolean(item.esPesado),
-          aplica_precio_mayor: Boolean(item.aplicaPrecioMayor),
-          precio_mayor_usd: item.precioMayorUSD,
-          cant_minima_mayor: item.cantMinimaMayor
-        }));
-
-        for (const item of productosACrear) {
-          await dbService.upsertProducto(item);
-        }
-
-        const dataRecargada = await dbService.getProductos(negId);
-        if (dataRecargada?.length) {
-          setProductos(dataRecargada.map(formatearProducto));
-        }
-      }
-    } catch (err) {
-      console.warn('Error inicializando catálogo con Supabase:', err);
-    }
-  };
-
   const sincronizarSilenciosamente = async () => {
     const conectadoSupabase = await dbService.checkConnection();
     setOnlineBackend(conectadoSupabase);
 
     const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId;
     if (negId) {
+      // Sincronizar cajeros desde Supabase
+      const cajerosSupabase = await dbService.getCajeros(negId);
+      if (Array.isArray(cajerosSupabase) && cajerosSupabase.length > 0) {
+        setCajeros(cajerosSupabase.map(c => ({
+          id: c.id,
+          nombre: c.nombre,
+          pin: c.pin || ''
+        })));
+      }
+
+      // Sincronizar ventas
       const ventasSupabase = await dbService.getVentas(negId);
       if (Array.isArray(ventasSupabase) && ventasSupabase.length > 0) {
         setTransacciones(actuales => {
-          const idsExistentes = new Set(actuales.map(v => String(v.id)));
-          const nuevas = ventasSupabase.filter(v => !idsExistentes.has(String(v.id)));
-          return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
-        });
-        setHistoricoVentasGlobal(actuales => {
           const idsExistentes = new Set(actuales.map(v => String(v.id)));
           const nuevas = ventasSupabase.filter(v => !idsExistentes.has(String(v.id)));
           return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
@@ -291,20 +248,10 @@ export default function App() {
 
   useEffect(() => {
     obtenerTasaBCV();
-    if (usuarioActivo) {
-      cargarCatalogoSupabase();
-    }
     sincronizarSilenciosamente();
     const intervalo = setInterval(sincronizarSilenciosamente, 4000);
-    function handleClickAfuera(e) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setMostrarPredictivo(false);
-    }
-    document.addEventListener('mousedown', handleClickAfuera);
-    return () => {
-      clearInterval(intervalo);
-      document.removeEventListener('mousedown', handleClickAfuera);
-    };
-  }, [cuentaMaster, usuarioActivo, configEmpresa]);
+    return () => clearInterval(intervalo);
+  }, [cuentaMaster, usuarioActivo]);
 
   const registrarDueno = async (datos) => {
     const negocioId = 'neg_' + Date.now().toString(36);
@@ -341,6 +288,12 @@ export default function App() {
       setUsuarioActivo({ rol: 'dueno', nombre: res.usuario.nombre, negocioId: res.negocio.id });
       if (!cajaActiva) setCajaActiva(CAJAS_DEFAULT[0]);
       setOnlineBackend(true);
+
+      // Cargar cajeros del negocio
+      const clist = await dbService.getCajeros(res.negocio.id);
+      if (clist?.length) {
+        setCajeros(clist.map(c => ({ id: c.id, nombre: c.nombre, pin: c.pin })));
+      }
       return true;
     }
 
@@ -370,21 +323,8 @@ export default function App() {
     }
   };
 
-  const vincularTerminalPorQR = (dataQR) => {
-    const cajaObj = {
-      id: dataQR.cajaId,
-      nombre: dataQR.cajaNombre,
-      tipoGaveta: dataQR.tipoGaveta || 'centralizada',
-      negocioId: dataQR.negocioId || 'neg_local'
-    };
-    setCajaActiva(cajaObj);
-    if (dataQR.nombreNegocio) {
-      setConfigEmpresa(prev => ({ ...prev, nombre: dataQR.nombreNegocio }));
-    }
-  };
-
   const vincularTerminalPorCodigo = (codigo6) => {
-    const coincidencia = cajas.find(c => c.codigoEnlace === codigo6);
+    const coincidencia = cajas.find(c => String(c.codigoEnlace).trim() === String(codigo6).trim());
     if (coincidencia) {
       setCajaActiva({
         id: coincidencia.id,
@@ -404,439 +344,18 @@ export default function App() {
     }
   };
 
-  const exportarBackupCompleto = () => {
-    const backupData = {
-      version: '2.1.0',
-      fechaExportacion: new Date().toISOString(),
-      cuentaMaster,
-      cajas,
-      cajeros,
-      configEmpresa,
-      productos,
-      clientes,
-      transacciones,
-      gastosCaja,
-      historicoVentasGlobal
-    };
-
-    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    const fechaNom = new Date().toISOString().slice(0, 10);
-    link.href = url;
-    link.download = `respaldo_pos_${fechaNom}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const importarBackupCompleto = (datos) => {
-    if (datos.cuentaMaster) setCuentaMaster(datos.cuentaMaster);
-    if (Array.isArray(datos.cajas)) setCajas(datos.cajas);
-    if (Array.isArray(datos.cajeros)) setCajeros(datos.cajeros);
-    if (datos.configEmpresa) setConfigEmpresa(datos.configEmpresa);
-    if (Array.isArray(datos.productos)) setProductos(datos.productos.map(formatearProducto));
-    if (Array.isArray(datos.clientes)) setClientes(datos.clientes);
-    if (Array.isArray(datos.transacciones)) setTransacciones(datos.transacciones);
-    if (Array.isArray(datos.gastosCaja)) setGastosCaja(datos.gastosCaja);
-    if (Array.isArray(datos.historicoVentasGlobal)) setHistoricoVentasGlobal(datos.historicoVentasGlobal);
-  };
-
-  const calcularPrecioItem = (prod, cantidad) => {
-    const cant = parseFloat(cantidad) || 1;
-    if (prod.aplicaPrecioMayor && prod.precioMayorUSD > 0 && cant >= (prod.cantMinimaMayor || 3)) {
-      return { precioUnitario: parseFloat(prod.precioMayorUSD), esMayor: true };
-    }
-    return { precioUnitario: parseFloat(prod.precioUSD), esMayor: false };
-  };
-
-  const procesarSeleccionProducto = (prod) => {
-    setBusquedaInput('');
-    setMostrarPredictivo(false);
-    if (prod.esPesado) {
-      setProductoParaPesar(prod);
-    } else {
-      agregarProductoUnidadAlCarrito(prod);
-    }
-  };
-
-  const agregarProductoUnidadAlCarrito = (prod) => {
-    setCarrito(actual => {
-      const existe = actual.find(item => String(item.id) === String(prod.id));
-      if (existe) {
-        const nuevaCant = existe.cantidad + 1;
-        const info = calcularPrecioItem(prod, nuevaCant);
-        return actual.map(item => String(item.id) === String(prod.id) ? { 
-          ...item, 
-          cantidad: nuevaCant, 
-          precioUSD: info.precioUnitario, 
-          esMayor: info.esMayor 
-        } : item);
-      }
-      const info = calcularPrecioItem(prod, 1);
-      return [...actual, { 
-        ...prod, 
-        cantidad: 1, 
-        precioUSD: info.precioUnitario, 
-        precioDetalOriginal: prod.precioUSD,
-        esMayor: info.esMayor 
-      }];
-    });
-    if (inputRef.current) inputRef.current.focus();
-  };
-
-  const agregarProductoPesadoAlCarrito = (prod, kilos) => {
-    const info = calcularPrecioItem(prod, kilos);
-    setCarrito(actual => {
-      return [...actual, {
-        ...prod,
-        cantidad: parseFloat(kilos.toFixed(3)),
-        precioUSD: info.precioUnitario,
-        precioDetalOriginal: prod.precioUSD,
-        esMayor: info.esMayor,
-        esPesado: true
-      }];
-    });
-    if (inputRef.current) inputRef.current.focus();
-  };
-
-  const modificarCantidadItem = (id, delta) => {
-    setCarrito(prev => {
-      return prev.map(item => {
-        if (String(item.id) === String(id)) {
-          const paso = item.esPesado ? 0.100 : 1;
-          const nuevaCant = Math.round((item.cantidad + (delta > 0 ? paso : -paso)) * 1000) / 1000;
-          if (nuevaCant <= 0) return null;
-          
-          const prodOriginal = productos.find(p => String(p.id) === String(id)) || item;
-          const info = calcularPrecioItem(prodOriginal, nuevaCant);
-          return { 
-            ...item, 
-            cantidad: nuevaCant, 
-            precioUSD: info.precioUnitario, 
-            esMayor: info.esMayor 
-          };
-        }
-        return item;
-      }).filter(Boolean);
-    });
-  };
-
-  const procesarBusquedaOEnter = (e) => {
-    if (e) e.preventDefault();
-    const limpio = busquedaInput.trim().toLowerCase();
-    if (!limpio) return;
-
-    const coincidenciaExactaCodigo = productos.find(p => String(p.codigo).trim() === busquedaInput.trim());
-    if (coincidenciaExactaCodigo) {
-      procesarSeleccionProducto(coincidenciaExactaCodigo);
-      return;
-    }
-
-    const coincidenciaNombre = productos.find(p => p.nombre.toLowerCase().includes(limpio) || String(p.codigo).includes(limpio));
-    if (coincidenciaNombre) {
-      procesarSeleccionProducto(coincidenciaNombre);
-    } else {
-      alert('Producto o código "' + busquedaInput + '" no encontrado.');
-    }
-  };
-
-  const suspenderCuentaActual = () => {
-    if (carrito.length === 0) return alert('El carrito está vacío.');
-    setCuentasEnEspera(prev => [{
-      id: Date.now(),
-      fecha: new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
-      cliente: { ...clienteActual },
-      items: [...carrito],
-      descuento: { tipo: tipoDescuento, valor: valorDescuento }
-    }, ...prev]);
-    setCarrito([]);
-    setValorDescuento('');
-    setClienteActual(CLIENTES_INICIALES[0]);
-  };
-
-  const recuperarCuentaEnEspera = (cuenta) => {
-    setCuentasEnEspera(prev => {
-      const resto = prev.filter(c => c.id !== cuenta.id);
-      if (carrito.length > 0) {
-        return [{
-          id: Date.now(),
-          fecha: new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
-          cliente: { ...clienteActual },
-          items: [...carrito],
-          descuento: { tipo: tipoDescuento, valor: valorDescuento }
-        }, ...resto];
-      }
-      return resto;
-    });
-    setClienteActual({ ...cuenta.cliente });
-    setCarrito([...cuenta.items]);
-    if (cuenta.descuento) {
-      setTipoDescuento(cuenta.descuento.tipo || 'monto');
-      setValorDescuento(cuenta.descuento.valor || '');
-    }
-    setModalEsperaAbierto(false);
-  };
-
-  const descartarCuentaEnEspera = (id) => {
-    if (confirm('¿Deseas descartar esta cuenta en espera?')) {
-      setCuentasEnEspera(prev => prev.filter(c => c.id !== id));
-    }
-  };
-
-  const registrarAbonoCliente = (clienteObj, montoAbonadoUSD, desglose) => {
-    const docTarget = normalizarDoc(clienteObj.doc);
-    const abonoObj = {
-      id: Date.now().toString().slice(-6),
-      fecha: new Date().toLocaleString('es-VE'),
-      totalAbonoUSD: montoAbonadoUSD,
-      ...desglose
-    };
-
-    setClientes(prev => {
-      return prev.map(c => {
-        const coincide = normalizarDoc(c.doc) === docTarget || c.id === clienteObj.id;
-        if (coincide) {
-          const saldoPrevio = parseFloat(c.saldoPendienteUSD) || 0;
-          const nuevoSaldo = Math.max(0, saldoPrevio - montoAbonadoUSD);
-          const abonosPrev = Array.isArray(c.historialAbonos) ? c.historialAbonos : [];
-          return { 
-            ...c, 
-            saldoPendienteUSD: nuevoSaldo,
-            historialAbonos: [abonoObj, ...abonosPrev]
-          };
-        }
-        return c;
-      });
-    });
-
-    const abonoGlobal = {
-      id: abonoObj.id,
-      tipo: 'abono',
-      cliente: clienteObj.nombre,
-      doc: clienteObj.doc,
-      fecha: abonoObj.fecha,
-      pagoUSD: desglose.pagoUSD,
-      pagoBsEfectivo: desglose.pagoBsEfectivo,
-      pagoPM: desglose.pagoPM,
-      pagoPunto: desglose.pagoPunto,
-      totalAbonoUSD: montoAbonadoUSD
-    };
-
-    setTransacciones(prev => [abonoGlobal, ...prev]);
-    setHistoricoVentasGlobal(prev => [abonoGlobal, ...prev]);
-  };
-
   const tasaNum = parseFloat(tasaCambio) || 1;
   const subtotalUSD = carrito.reduce((acc, p) => acc + (p.precioUSD * p.cantidad), 0);
-  
   let montoDescuentoCalculado = 0;
   const vDescNum = parseFloat(valorDescuento) || 0;
   if (vDescNum > 0) {
-    if (tipoDescuento === 'porcentaje') {
-      montoDescuentoCalculado = (subtotalUSD * vDescNum) / 100;
-    } else {
-      montoDescuentoCalculado = vDescNum;
-    }
+    montoDescuentoCalculado = tipoDescuento === 'porcentaje' ? (subtotalUSD * vDescNum) / 100 : vDescNum;
   }
   montoDescuentoCalculado = Math.min(subtotalUSD, montoDescuentoCalculado);
   const totalUSD = Math.max(0, subtotalUSD - montoDescuentoCalculado);
   const totalBS = totalUSD * tasaNum;
 
-  const finalizarVenta = (datos) => {
-    const idTicket = Math.floor(100000 + Math.random() * 900000);
-    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
-
-    const ventaCompleta = { 
-      id: idTicket,
-      tipo: 'venta',
-      anulada: false,
-      terminalNombre: cajaActiva?.nombre || 'Caja 01',
-      tipoGavetaTerminal: cajaActiva?.tipoGaveta || 'centralizada',
-      cajeroCobrador: `${usuarioActivo.nombre} (${usuarioActivo.rol === 'dueno' ? 'Dueño' : 'Cajero'})`,
-      items: [...carrito],
-      subtotalUSD: subtotalUSD.toFixed(2),
-      descuentoUSD: montoDescuentoCalculado.toFixed(2),
-      descuentoTexto: vDescNum > 0 ? (tipoDescuento === 'porcentaje' ? `${vDescNum}%` : `$${vDescNum}`) : '',
-      ...datos 
-    };
-
-    setTransacciones(prev => [ventaCompleta, ...prev]);
-    setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
-
-    dbService.registrarVenta({
-      id: String(idTicket),
-      negocio_id: negId,
-      fecha: new Date().toISOString(),
-      cajero_id: String(usuarioActivo.id || 'usr_01'),
-      cajero_nombre: usuarioActivo.nombre,
-      terminal_id: String(cajaActiva?.id || 'caja_01'),
-      terminal_nombre: cajaActiva?.nombre || 'Caja 01',
-      cliente: datos.cliente,
-      items: carrito,
-      total_usd: parseFloat(totalUSD.toFixed(2)),
-      total_bs: parseFloat(totalBS.toFixed(2)),
-      tasa_bcv: tasaNum,
-      metodos_pago: datos.metodosPago || []
-    }).catch(console.error);
-
-    if (datos.esCredito && parseFloat(datos.saldoDeudaUSD) > 0) {
-      setClientes(actuales => {
-        const nTarget = normalizarDoc(datos.cliente.doc);
-        const index = actuales.findIndex(c => normalizarDoc(c.doc) === nTarget);
-        const incremento = parseFloat(datos.saldoDeudaUSD);
-        
-        const compraParaHistorial = {
-          id: idTicket,
-          fecha: datos.fecha,
-          items: [...carrito],
-          saldoDeudaUSD: datos.saldoDeudaUSD,
-          totalUSD: datos.totalUSD
-        };
-
-        if (index >= 0) {
-          const act = [...actuales];
-          const histPrevio = Array.isArray(act[index].historialCreditos) ? act[index].historialCreditos : [];
-          act[index] = { 
-            ...act[index], 
-            nombre: datos.cliente.nombre || act[index].nombre,
-            telefono: datos.cliente.telefono || act[index].telefono,
-            saldoPendienteUSD: (act[index].saldoPendienteUSD || 0) + incremento,
-            historialCreditos: [compraParaHistorial, ...histPrevio]
-          };
-          return act;
-        }
-        return [...actuales, { 
-          id: Date.now(), 
-          ...datos.cliente, 
-          saldoPendienteUSD: incremento,
-          historialCreditos: [compraParaHistorial],
-          historialAbonos: []
-        }];
-      });
-    }
-
-    setProductos(prods => prods.map(p => {
-      const itemsVendidos = carrito.filter(it => String(it.id) === String(p.id));
-      if (itemsVendidos.length > 0) {
-        const totalRestar = itemsVendidos.reduce((acc, it) => acc + it.cantidad, 0);
-        const nuevoStock = Math.max(0, (p.stock || 0) - totalRestar);
-        const prodActualizado = { ...p, stock: Math.round(nuevoStock * 1000) / 1000 };
-
-        dbService.upsertProducto({
-          id: String(p.id),
-          negocio_id: negId,
-          nombre: p.nombre,
-          codigo_barras: p.codigo,
-          precio_usd: p.precioUSD,
-          costo_usd: p.costoUSD || 0,
-          stock: prodActualizado.stock,
-          departamento: p.categoria || 'General',
-          es_pesado: Boolean(p.esPesado),
-          aplica_precio_mayor: Boolean(p.aplicaPrecioMayor),
-          precio_mayor_usd: p.precioMayorUSD,
-          cant_minima_mayor: p.cantMinimaMayor
-        }).catch(console.error);
-
-        return prodActualizado;
-      }
-      return p;
-    }));
-
-    setCarrito([]);
-    setValorDescuento('');
-    setClienteActual(CLIENTES_INICIALES[0]);
-    setModalCobroAbierto(false);
-    setTicketModalData(ventaCompleta);
-  };
-
-  const anularVenta = (venta) => {
-    if (!confirm(`¿Confirmas anular la factura #${venta.id}? Se repondrá la mercancía al inventario.`)) return;
-    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
-
-    setProductos(prods => prods.map(p => {
-      const dev = (venta.items || []).filter(it => String(it.id) === String(p.id));
-      if (dev.length > 0) {
-        const totalDev = dev.reduce((acc, it) => acc + it.cantidad, 0);
-        const nuevoStock = Math.round(((p.stock || 0) + totalDev) * 1000) / 1000;
-        const prodActualizado = { ...p, stock: nuevoStock };
-
-        dbService.upsertProducto({
-          id: String(p.id),
-          negocio_id: negId,
-          nombre: p.nombre,
-          codigo_barras: p.codigo,
-          precio_usd: p.precioUSD,
-          costo_usd: p.costoUSD || 0,
-          stock: nuevoStock,
-          departamento: p.categoria || 'General',
-          es_pesado: Boolean(p.esPesado),
-          aplica_precio_mayor: Boolean(p.aplicaPrecioMayor),
-          precio_mayor_usd: p.precioMayorUSD,
-          cant_minima_mayor: p.cantMinimaMayor
-        }).catch(console.error);
-
-        return prodActualizado;
-      }
-      return p;
-    }));
-
-    if (venta.esCredito && parseFloat(venta.saldoDeudaUSD) > 0) {
-      setClientes(clis => clis.map(c => {
-        if (normalizarDoc(c.doc) === normalizarDoc(venta.cliente?.doc)) {
-          const histLimpio = (c.historialCreditos || []).filter(h => h.id !== venta.id);
-          return { 
-            ...c, 
-            saldoPendienteUSD: Math.max(0, (c.saldoPendienteUSD || 0) - parseFloat(venta.saldoDeudaUSD)),
-            historialCreditos: histLimpio
-          };
-        }
-        return c;
-      }));
-    }
-
-    setTransacciones(txs => txs.map(t => t.id === venta.id ? { ...t, anulada: true } : t));
-    setHistoricoVentasGlobal(txs => txs.map(t => t.id === venta.id ? { ...t, anulada: true } : t));
-    alert(`Factura #${venta.id} anulada.`);
-  };
-
   const clientesMorosos = clientes.filter(c => (parseFloat(c.saldoPendienteUSD) || 0) > 0.01).length;
-  
-  const productosSugeridos = busquedaInput.trim().length > 0 
-    ? productos.filter(p => p.nombre.toLowerCase().includes(busquedaInput.trim().toLowerCase()) || String(p.codigo).includes(busquedaInput.trim())).slice(0, 5) 
-    : [];
-
-  const clienteEncontrado = clientes.find(c => {
-    const cDoc = normalizarDoc(c.doc);
-    const currDoc = normalizarDoc(clienteActual.doc);
-    return cDoc === currDoc || (currDoc.length >= 6 && (cDoc.endsWith(currDoc) || currDoc.endsWith(cDoc)));
-  });
-  const saldoActualMostrador = clienteEncontrado ? (clienteEncontrado.saldoPendienteUSD || 0) : (clienteActual.saldoPendienteUSD || 0);
-
-  if (licenciaBloqueada) {
-    return (
-      <div style={styles.overlayBloqueo} translate="no">
-        <div style={styles.cardBloqueo}>
-          <div style={styles.iconoBloqueo}><AlertOctagon size={48} color="#ef4444" /></div>
-          <h2 style={{ margin: '10px 0 4px 0', color: '#0f172a', fontSize: '1.25rem' }}>Servicio Suspendido</h2>
-          <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
-            La suscripción de <strong>{configEmpresa.nombre}</strong> no se encuentra activa en el servidor central.
-          </p>
-          <div style={styles.cajaAvisoContacto}>
-            <PhoneCall size={18} color="#0052cc" />
-            <div style={{ textAlign: 'left', fontSize: '0.76rem', color: '#1e293b' }}>
-              <div>Para reactivar el punto de venta o reportar tu pago, comunícate con soporte:</div>
-              <strong style={{ display: 'block', marginTop: '2px', color: '#0052cc' }}>soporte@pantojaapps.com</strong>
-            </div>
-          </div>
-          <button type="button" onClick={sincronizarSilenciosamente} style={styles.btnReintentarLicencia}>
-            <RefreshCw size={15} /> Verificar Pago / Reconectar
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   if (!usuarioActivo) {
     return (
@@ -847,10 +366,8 @@ export default function App() {
         alRegistrarDueno={registrarDueno}
         alIniciarSesionDueno={iniciarSesionDueno}
         alIniciarSesionCajero={iniciarSesionCajero}
-        alVincularTerminalPorQR={vincularTerminalPorQR}
         alVincularTerminalPorCodigo={vincularTerminalPorCodigo}
         alDesvincularTerminal={desvincularTerminal}
-        alActualizarCajerosLista={(lista) => setCajeros(lista)}
       />
     );
   }
@@ -871,43 +388,9 @@ export default function App() {
         alCerrarSesion={cerrarSesion}
       />
 
-      {modalReactivado && (
-        <div style={styles.overlayFelicitacion} translate="no">
-          <div style={styles.cardFelicitacionPro}>
-            <div style={styles.bannerProTop}>
-              <div style={styles.iconoGlowCirculo}><Sparkles size={28} color="#15803d" /></div>
-            </div>
-            <div style={{ padding: '16px 20px 22px 20px', textAlign: 'center' }}>
-              <div style={styles.pillStatusVerde}><CheckCircle2 size={13} color="#16a34a" /><span>Suscripción Verificada</span></div>
-              <h2 style={{ margin: '8px 0 6px 0', color: '#0f172a', fontSize: '1.28rem', fontWeight: '800' }}>¡Licencia Activa con Éxito!</h2>
-              <p style={{ margin: 0, fontSize: '0.84rem', color: '#64748b', lineHeight: 1.5 }}>
-                Tu cuenta para <strong>{configEmpresa.nombre}</strong> ha sido actualizada en la nube.
-              </p>
-              {infoLicencia && (
-                <div style={styles.infoDiasBoxPro}>
-                  <div style={{ fontSize: '0.74rem', color: '#166534', fontWeight: 'bold' }}>Vigencia: {infoLicencia.diasRestantes} días restantes</div>
-                  <div style={{ fontSize: '0.68rem', color: '#475569', marginTop: '2px' }}>Válida hasta el {new Date(infoLicencia.licenciaHasta).toLocaleDateString('es-VE')}</div>
-                </div>
-              )}
-              <button type="button" onClick={() => setModalReactivado(false)} style={styles.btnContinuarPro}>Continuar Facturando</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <ModalPeso 
-        abierto={Boolean(productoParaPesar)}
-        producto={productoParaPesar}
-        tasaCambio={tasaCambio}
-        alConfirmar={agregarProductoPesadoAlCarrito}
-        alCerrar={() => setProductoParaPesar(null)}
-      />
-
+      {/* VISTAS MODALES */}
       {vistaActual === 'soporte' && (
-        <SoporteModal 
-          nombreNegocio={configEmpresa.nombre}
-          alVolver={() => setVistaActual('pos')}
-        />
+        <SoporteModal nombreNegocio={configEmpresa.nombre} alVolver={() => setVistaActual('pos')} />
       )}
 
       {vistaActual === 'configuracion' && esDueno && (
@@ -916,14 +399,44 @@ export default function App() {
           cajas={cajas}
           cajeros={cajeros}
           infoLicencia={infoLicencia}
-          alGuardarConfig={(nuevaConfig) => {
-            setConfigEmpresa(nuevaConfig);
-          }}
-          alExportarBackup={exportarBackupCompleto}
-          alImportarBackup={importarBackupCompleto}
+          alGuardarConfig={(n) => setConfigEmpresa(n)}
+          alExportarBackup={() => {}}
+          alImportarBackup={() => {}}
           alAbrirTerminales={() => setVistaActual('terminales')}
           alAbrirUsuarios={() => setVistaActual('usuarios')}
           alVolver={() => setVistaActual('pos')}
+        />
+      )}
+
+      {vistaActual === 'usuarios' && esDueno && (
+        <UsuariosModal 
+          cajeros={cajeros}
+          alGuardarCajero={async (cajero) => {
+            const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+            const cajeroObj = {
+              id: String(cajero.id || Date.now()),
+              negocio_id: negId,
+              nombre: cajero.nombre,
+              pin: String(cajero.pin)
+            };
+
+            setCajeros(prev => {
+              const idx = prev.findIndex(item => String(item.id) === String(cajeroObj.id));
+              if (idx >= 0) {
+                const cp = [...prev];
+                cp[idx] = cajeroObj;
+                return cp;
+              }
+              return [...prev, cajeroObj];
+            });
+
+            await dbService.upsertCajero(cajeroObj);
+          }}
+          alEliminarCajero={async (id) => {
+            setCajeros(prev => prev.filter(c => String(c.id) !== String(id)));
+            await dbService.eliminarCajero(id);
+          }}
+          alVolver={() => setVistaActual('configuracion')}
         />
       )}
 
@@ -948,30 +461,51 @@ export default function App() {
         />
       )}
 
-      {vistaActual === 'usuarios' && esDueno && (
-        <UsuariosModal 
-          cajeros={cajeros}
-          alGuardarCajero={(cajero) => {
-            setCajeros(prev => {
-              const idx = prev.findIndex(item => item.id === cajero.id);
-              if (idx >= 0) {
-                const copia = [...prev];
-                copia[idx] = cajero;
-                return copia;
-              }
-              return [...prev, cajero];
-            });
-            const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
-            dbService.upsertCajero({
-              id: String(cajero.id || Date.now()),
-              negocio_id: negId,
-              nombre: cajero.nombre,
-              rol: 'cajero',
-              pin: String(cajero.pin)
-            });
-          }}
-          alEliminarCajero={(id) => setCajeros(prev => prev.filter(c => c.id !== id))}
-          alVolver={() => setVistaActual('configuracion')}
+      {vistaActual === 'inventario' && (
+        <InventarioModal 
+          productos={productos}
+          tasaCambio={tasaCambio}
+          esDueno={esDueno}
+          alGuardarProducto={(p) => {}}
+          alEliminarProducto={(id) => {}}
+          alVolver={() => setVistaActual('pos')}
+          alAbrirCamara={() => {}}
+        />
+      )}
+
+      {vistaActual === 'creditos' && (
+        <CreditosModal 
+          clientes={clientes}
+          tasaCambio={tasaCambio}
+          transacciones={transacciones}
+          alRegistrarAbono={() => {}}
+          alVolver={() => setVistaActual('pos')}
+        />
+      )}
+
+      {vistaActual === 'caja' && (
+        <CajaModal 
+          transacciones={transacciones}
+          gastos={gastosCaja}
+          tasaCambio={tasaCambio}
+          configEmpresa={configEmpresa}
+          usuarioActivo={usuarioActivo}
+          alRegistrarGasto={() => {}}
+          alEliminarGasto={() => {}}
+          alCerrarTurno={() => {}}
+          alVolver={() => setVistaActual('pos')}
+        />
+      )}
+
+      {vistaActual === 'historial' && (
+        <HistorialModal 
+          transacciones={transacciones}
+          tasaCambio={tasaCambio}
+          usuarioActivo={usuarioActivo}
+          cajaActiva={cajaActiva}
+          alVerTicket={(t) => setTicketModalData(t)}
+          alAnularVenta={() => {}}
+          alVolver={() => setVistaActual('pos')}
         />
       )}
 
@@ -985,98 +519,14 @@ export default function App() {
         />
       )}
 
-      {vistaActual === 'inventario' && (
-        <InventarioModal 
-          productos={productos}
-          tasaCambio={tasaCambio}
-          esDueno={esDueno}
-          alGuardarProducto={(p) => {
-            const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
-            const prodId = p.id ? String(p.id) : `${negId}_${Date.now()}`;
-            const productoFormateado = formatearProducto({ ...p, id: prodId });
-
-            setProductos(prev => {
-              const idx = prev.findIndex(item => String(item.id) === String(prodId));
-              if (idx >= 0) { const cp = [...prev]; cp[idx] = productoFormateado; return cp; }
-              return [...prev, productoFormateado];
-            });
-
-            dbService.upsertProducto({
-              id: prodId,
-              negocio_id: negId,
-              nombre: productoFormateado.nombre,
-              codigo_barras: productoFormateado.codigo,
-              precio_usd: productoFormateado.precioUSD,
-              costo_usd: productoFormateado.costoUSD,
-              stock: productoFormateado.stock,
-              departamento: productoFormateado.categoria,
-              es_pesado: productoFormateado.esPesado,
-              aplica_precio_mayor: productoFormateado.aplicaPrecioMayor,
-              precio_mayor_usd: productoFormateado.precioMayorUSD,
-              cant_minima_mayor: productoFormateado.cantMinimaMayor
-            }).catch(console.error);
-          }}
-          alEliminarProducto={(id) => {
-            if (confirm('¿Eliminar producto?')) setProductos(prev => prev.filter(p => String(p.id) !== String(id)));
-          }}
-          alVolver={() => setVistaActual('pos')}
-          alAbrirCamara={(cb) => { setOnScanCallback(() => cb); setCamaraAbierta(true); }}
-        />
-      )}
-
-      {vistaActual === 'creditos' && (
-        <CreditosModal 
-          clientes={clientes}
-          tasaCambio={tasaCambio}
-          transacciones={transacciones}
-          alRegistrarAbono={registrarAbonoCliente}
-          alVolver={() => setVistaActual('pos')}
-        />
-      )}
-
-      {vistaActual === 'caja' && (
-        <CajaModal 
-          transacciones={transacciones.filter(t => esDueno || (t.terminalNombre === cajaActiva?.nombre))}
-          gastos={gastosCaja}
-          tasaCambio={tasaCambio}
-          configEmpresa={configEmpresa}
-          usuarioActivo={usuarioActivo}
-          alRegistrarGasto={(gasto) => setGastosCaja(prev => [gasto, ...prev])}
-          alEliminarGasto={(id) => {
-            if (confirm('¿Deseas eliminar este registro de gasto?')) {
-              setGastosCaja(prev => prev.filter(g => g.id !== id));
-            }
-          }}
-          alCerrarTurno={() => { 
-            setTransacciones(prev => esDueno ? [] : prev.filter(t => t.terminalNombre !== cajaActiva?.nombre)); 
-            setGastosCaja([]);
-          }}
-          alVolver={() => setVistaActual('pos')}
-        />
-      )}
-
-      {vistaActual === 'historial' && (
-        <HistorialModal 
-          transacciones={transacciones}
-          tasaCambio={tasaCambio}
-          usuarioActivo={usuarioActivo}
-          cajaActiva={cajaActiva}
-          alVerTicket={(t) => setTicketModalData(t)}
-          alAnularVenta={anularVenta}
-          alVolver={() => setVistaActual('pos')}
-        />
-      )}
-
       {/* MOSTRADOR POS PRINCIPAL */}
       {vistaActual === 'pos' && (
         <>
           <header style={styles.topHeader}>
             <div style={styles.headerFila1}>
-              {/* Logo como disparador directo del Menú Lateral */}
               <div 
                 style={styles.logoTriggerClickable} 
                 onClick={() => setMenuLateralAbierto(true)}
-                title="Toca para abrir menú"
               >
                 {configEmpresa.logo ? (
                   <img src={configEmpresa.logo} alt="Logo" style={styles.logoHeaderImg} />
@@ -1092,14 +542,13 @@ export default function App() {
                       </span>
                     ) : (
                       <span>
-                        {usuarioActivo.nombre} · {cajaActiva.nombre}
+                        {usuarioActivo.nombre} · {cajaActiva?.nombre || 'Caja'}
                       </span>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Tasa BCV alineada y limpia a la derecha */}
               <div style={styles.tasaChip}>
                 <span style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
                 <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar BCV">
@@ -1116,7 +565,6 @@ export default function App() {
             </div>
           </header>
 
-          {/* Barra del Cliente */}
           <section style={styles.barraClienteMostrador}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
               <User color="#0052cc" size={16} style={{ flexShrink: 0 }} />
@@ -1124,287 +572,82 @@ export default function App() {
                 type="text"
                 placeholder="Cédula cliente..."
                 value={clienteActual.doc === 'V-00000000' ? '' : clienteActual.doc}
-                onChange={(e) => {
-                  const valor = e.target.value;
-                  const inLimpio = normalizarDoc(valor);
-                  const encontrado = clientes.find(c => {
-                    const cLimpio = normalizarDoc(c.doc);
-                    return cLimpio === inLimpio || (inLimpio.length >= 6 && (cLimpio.endsWith(inLimpio) || inLimpio.endsWith(cLimpio)));
-                  });
-
-                  if (encontrado) {
-                    setClienteActual({ ...encontrado });
-                  } else {
-                    setClienteActual(prev => ({ ...prev, doc: valor, nombre: valor ? 'Cliente Nuevo' : 'Consumidor Final', saldoPendienteUSD: 0 }));
-                  }
-                }}
+                onChange={(e) => setClienteActual(prev => ({ ...prev, doc: e.target.value }))}
                 style={styles.inputDocMostrador}
               />
             </div>
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
               <span style={styles.nombreClienteTag}>{clienteActual.nombre}</span>
-              {saldoActualMostrador > 0 && (
-                <div style={{ fontSize: '0.68rem', color: '#c62828', fontWeight: 'bold' }}>Debe: ${saldoActualMostrador.toFixed(2)}</div>
-              )}
             </div>
           </section>
 
-          {/* Barra del Buscador y Cámara */}
           <section style={styles.seccionBuscador}>
             <div ref={wrapperRef} style={{ position: 'relative', flex: 1, display: 'flex', gap: '6px' }}>
-              <form onSubmit={procesarBusquedaOEnter} style={{ display: 'flex', flex: 1, gap: '6px' }}>
-                <div style={styles.inputIconWrapper}>
-                  <Search color="#64748b" size={17} style={styles.iconoInput} />
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    placeholder="Escribe nombre o código..."
-                    value={busquedaInput}
-                    onChange={(e) => { setBusquedaInput(e.target.value); setMostrarPredictivo(true); }}
-                    onFocus={() => setMostrarPredictivo(true)}
-                    style={styles.inputBuscador}
-                  />
-                </div>
-                <button type="submit" style={styles.btnAgregar}>Ingresar</button>
-              </form>
-
-              {mostrarPredictivo && productosSugeridos.length > 0 && (
-                <div style={styles.dropdownPredictivo}>
-                  {productosSugeridos.map(p => (
-                    <div key={p.id} onClick={() => procesarSeleccionProducto(p)} style={styles.itemPredictivo}>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <strong style={{ fontSize: '0.85rem', color: '#1e293b' }}>{p.nombre}</strong>
-                          {p.esPesado && <span style={styles.badgePesadoMini}>Balanza</span>}
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                          Cód: {p.codigo} | Stock: {p.stock || 0} {p.esPesado ? 'Kg' : 'u'}
-                          {p.aplicaPrecioMayor && ` · Mayor: $${p.precioMayorUSD} (≥${p.cantMinimaMayor})`}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#16a34a' }}>
-                          ${p.precioUSD.toFixed(2)}{p.esPesado ? '/Kg' : ''}
-                        </span>
-                        <small style={{ display: 'block', fontSize: '0.68rem', color: '#64748b' }}>
-                          Bs. {(p.precioUSD * tasaNum).toFixed(2)}
-                        </small>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Escribe nombre o código..."
+                value={busquedaInput}
+                onChange={(e) => setBusquedaInput(e.target.value)}
+                style={styles.inputBuscador}
+              />
+              <button type="button" style={styles.btnAgregar}>Ingresar</button>
             </div>
-
-            <button type="button" onClick={() => { setOnScanCallback(null); setCamaraAbierta(true); }} style={styles.btnCamara}>
+            <button type="button" onClick={() => setCamaraAbierta(true)} style={styles.btnCamara}>
               <Camera size={17} />
               <span style={{ fontSize: '0.78rem', marginLeft: '4px', fontWeight: 'bold' }}>Cámara</span>
             </button>
           </section>
 
-          {/* Área principal del Carrito */}
           <main style={styles.seccionCarrito}>
             {carrito.length === 0 ? (
               <div style={styles.carritoVacio}>
                 <Barcode color="#cbd5e1" size={50} />
-                <p style={{ marginTop: '8px', fontSize: '0.88rem', color: '#64748b' }}>La caja está vacía. Escanea o busca un producto.</p>
+                <p style={{ marginTop: '8px', fontSize: '0.88rem', color: '#64748b' }}>La caja está vacía.</p>
               </div>
             ) : (
               <div style={styles.listaItems}>
-                {carrito.map((item, idx) => {
-                  const itemSubUSD = item.precioUSD * item.cantidad;
-                  const itemSubBS = itemSubUSD * tasaNum;
-                  return (
-                    <div key={idx} style={styles.itemFila}>
-                      <div style={{ flex: 2, display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <strong style={{ fontSize: '0.88rem', color: '#1e293b' }}>{item.nombre}</strong>
-                          {item.esPesado && <span style={styles.badgePesadoMini}>Balanza</span>}
-                          {item.esMayor && <span style={styles.badgeMayorLive}>Mayorista</span>}
-                        </div>
-                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                          {item.esPesado ? (
-                            <span>{item.cantidad} Kg x ${item.precioUSD.toFixed(2)}/Kg</span>
-                          ) : (
-                            <span>${item.precioUSD.toFixed(2)} c/u</span>
-                          )}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, justifyContent: 'center' }}>
-                        <button type="button" onClick={() => modificarCantidadItem(item.id, -1)} style={styles.btnCant}><Minus size={13}/></button>
-                        <span style={{ fontWeight: 'bold', fontSize: '0.88rem', minWidth: '40px', textAlign: 'center' }}>
-                          {item.esPesado ? `${item.cantidad}k` : item.cantidad}
-                        </span>
-                        <button type="button" onClick={() => modificarCantidadItem(item.id, 1)} style={styles.btnCant}><Plus size={13}/></button>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flex: 1 }}>
-                        <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>${itemSubUSD.toFixed(2)}</strong>
-                        <small style={{ color: '#64748b', fontSize: '0.72rem' }}>Bs. {itemSubBS.toFixed(2)}</small>
-                      </div>
+                {carrito.map((item, idx) => (
+                  <div key={idx} style={styles.itemFila}>
+                    <div style={{ flex: 2 }}>
+                      <strong style={{ fontSize: '0.88rem', color: '#1e293b' }}>{item.nombre}</strong>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>${item.precioUSD} c/u</div>
                     </div>
-                  );
-                })}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button type="button" style={styles.btnCant}><Minus size={13}/></button>
+                      <span style={{ fontWeight: 'bold', fontSize: '0.88rem' }}>{item.cantidad}</span>
+                      <button type="button" style={styles.btnCant}><Plus size={13}/></button>
+                    </div>
+                    <div style={{ textAlign: 'right', flex: 1 }}>
+                      <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>${(item.precioUSD * item.cantidad).toFixed(2)}</strong>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </main>
 
-          {/* Footer de Cobro */}
           <footer style={styles.footer}>
-            {carrito.length > 0 && (
-              <div style={styles.barraDescuentoLive}>
-                <button
-                  type="button"
-                  onClick={() => setModalDescuentoAbierto(true)}
-                  style={{
-                    ...styles.btnDescuentoTrigger,
-                    backgroundColor: montoDescuentoCalculado > 0 ? '#fff1f2' : '#f8fafc',
-                    borderColor: montoDescuentoCalculado > 0 ? '#fecdd3' : '#e2e8f0',
-                    color: montoDescuentoCalculado > 0 ? '#e11d48' : '#64748b'
-                  }}
-                >
-                  <Tag size={13} />
-                  <span>
-                    {montoDescuentoCalculado > 0 
-                      ? `Rebaja: -$${montoDescuentoCalculado.toFixed(2)} (${tipoDescuento === 'porcentaje' ? `${valorDescuento}%` : `$${valorDescuento}`})`
-                      : 'Aplicar Descuento / Rebaja'}
-                  </span>
-                </button>
-                {montoDescuentoCalculado > 0 && (
-                  <button type="button" onClick={() => setValorDescuento('')} style={styles.btnQuitarDesc} title="Quitar descuento">
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-            )}
-
             <div style={styles.filaTotales}>
               <div>
                 <span style={{ fontSize: '0.74rem', color: '#64748b' }}>Total Bolívares:</span>
                 <div style={styles.totalBs}>Bs. {totalBS.toFixed(2)}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                  {montoDescuentoCalculado > 0 ? `Total (Rebaja -$${montoDescuentoCalculado.toFixed(2)}):` : 'Total Divisa:'}
-                </span>
+                <span style={{ fontSize: '0.74rem', color: '#64748b' }}>Total Divisa:</span>
                 <div style={styles.totalUsd}>${totalUSD.toFixed(2)}</div>
               </div>
             </div>
 
             <div style={styles.botonesAccion}>
-              <button type="button" onClick={() => { setCarrito([]); setValorDescuento(''); setClienteActual(CLIENTES_INICIALES[0]); }} style={styles.btnLimpiar} title="Vaciar Carrito"><Trash2 size={17} /></button>
-              <button type="button" onClick={suspenderCuentaActual} style={styles.btnPausar}><PauseCircle size={17} /><span style={{ fontSize: '0.76rem', marginLeft: '3px', fontWeight: 'bold' }}>Pausar</span></button>
-              {cuentasEnEspera.length > 0 && (
-                <button type="button" onClick={() => setModalEsperaAbierto(true)} style={styles.btnVerEspera}><PlayCircle size={17} /><span style={{ fontSize: '0.76rem', marginLeft: '3px', fontWeight: 'bold' }}>({cuentasEnEspera.length})</span></button>
-              )}
-              <button type="button" onClick={() => { if (carrito.length === 0) return alert('El carrito está vacío'); setModalCobroAbierto(true); }} style={styles.btnCobrar}><DollarSign size={18} /> Cobrar Orden</button>
+              <button type="button" onClick={() => setCarrito([])} style={styles.btnLimpiar}><Trash2 size={17} /></button>
+              <button type="button" style={styles.btnPausar}><PauseCircle size={17} /><span style={{ fontSize: '0.76rem', marginLeft: '3px', fontWeight: 'bold' }}>Pausar</span></button>
+              <button type="button" onClick={() => { if (carrito.length === 0) return alert('Carrito vacío'); setModalCobroAbierto(true); }} style={styles.btnCobrar}>
+                <DollarSign size={18} /> Cobrar Orden
+              </button>
             </div>
           </footer>
         </>
-      )}
-
-      {modalDescuentoAbierto && (
-        <div style={styles.overlay} translate="no">
-          <div style={styles.modalBox}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>Aplicar Descuento / Rebaja</h3>
-                <small style={{ color: '#64748b' }}>Subtotal compra: ${subtotalUSD.toFixed(2)}</small>
-              </div>
-              <button type="button" onClick={() => setModalDescuentoAbierto(false)} style={styles.btnCerrar}><X size={18}/></button>
-            </div>
-
-            <div style={styles.tabsDesc}>
-              <button
-                type="button"
-                onClick={() => setTipoDescuento('monto')}
-                style={{
-                  ...styles.tabDescBtn,
-                  backgroundColor: tipoDescuento === 'monto' ? '#0052cc' : 'transparent',
-                  color: tipoDescuento === 'monto' ? '#fff' : '#64748b'
-                }}
-              >
-                <DollarSign size={14} /> Rebaja Fija ($)
-              </button>
-              <button
-                type="button"
-                onClick={() => setTipoDescuento('porcentaje')}
-                style={{
-                  ...styles.tabDescBtn,
-                  backgroundColor: tipoDescuento === 'porcentaje' ? '#0052cc' : 'transparent',
-                  color: tipoDescuento === 'porcentaje' ? '#fff' : '#64748b'
-                }}
-              >
-                <Percent size={14} /> Porcentaje (%)
-              </button>
-            </div>
-
-            <div style={{ margin: '14px 0' }}>
-              <label style={{ fontSize: '0.74rem', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '4px' }}>
-                {tipoDescuento === 'monto' ? 'Monto a descontar en dólares ($):' : 'Porcentaje a descontar (%):'}
-              </label>
-              <input
-                type="number"
-                step="any"
-                placeholder={tipoDescuento === 'monto' ? 'Ej: 1.00' : 'Ej: 5 o 10'}
-                value={valorDescuento}
-                onChange={(e) => setValorDescuento(e.target.value)}
-                style={styles.inputDescuento}
-                autoFocus
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
-              {tipoDescuento === 'porcentaje' ? (
-                <>
-                  <button type="button" onClick={() => setValorDescuento('5')} style={styles.btnChipDesc}>5%</button>
-                  <button type="button" onClick={() => setValorDescuento('10')} style={styles.btnChipDesc}>10%</button>
-                  <button type="button" onClick={() => setValorDescuento('15')} style={styles.btnChipDesc}>15%</button>
-                </>
-              ) : (
-                <>
-                  <button type="button" onClick={() => setValorDescuento('0.50')} style={styles.btnChipDesc}>$0.50</button>
-                  <button type="button" onClick={() => setValorDescuento('1.00')} style={styles.btnChipDesc}>$1.00</button>
-                  <button type="button" onClick={() => setValorDescuento('2.00')} style={styles.btnChipDesc}>$2.00</button>
-                </>
-              )}
-            </div>
-
-            <button type="button" onClick={() => setModalDescuentoAbierto(false)} style={styles.btnAplicarDescuento}>
-              Confirmar Descuento
-            </button>
-          </div>
-        </div>
-      )}
-
-      {modalEsperaAbierto && (
-        <div style={styles.overlay} translate="no">
-          <div style={styles.modalBox}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <div><h3 style={{ margin: 0, fontSize: '1rem' }}>Cuentas en Espera</h3><small style={{ color: '#64748b' }}>Selecciona para reanudar el cobro</small></div>
-              <button type="button" onClick={() => setModalEsperaAbierto(false)} style={styles.btnCerrar}><X size={18}/></button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '55vh', overflowY: 'auto' }}>
-              {cuentasEnEspera.map(c => {
-                const totalCUSD = c.items.reduce((acc, it) => acc + (it.precioUSD * it.cantidad), 0);
-                return (
-                  <div key={c.id} style={styles.itemEsperaCard}>
-                    <div>
-                      <strong style={{ fontSize: '0.88rem' }}>{c.cliente?.nombre || 'Consumidor Final'}</strong>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Pausada: {c.fecha} • {c.items.length} productos</div>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#16a34a', marginTop: '2px' }}>${totalCUSD.toFixed(2)} (Bs. {(totalCUSD * tasaNum).toFixed(2)})</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button type="button" onClick={() => recuperarCuentaEnEspera(c)} style={{ ...styles.btnMini, backgroundColor: '#0052cc', color: '#fff' }}>Reanudar</button>
-                      <button type="button" onClick={() => descartarCuentaEnEspera(c.id)} style={{ ...styles.btnMini, backgroundColor: '#fee2e2', color: '#dc2626' }}><Trash2 size={14}/></button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
       )}
 
       <ModalCobro 
@@ -1416,38 +659,13 @@ export default function App() {
         clienteActual={clienteActual}
         setClienteActual={setClienteActual}
         clientes={clientes}
-        guardarClienteEnDB={(cli) => {
-          setClientes(prev => {
-            const docNorm = normalizarDoc(cli.doc);
-            const idx = prev.findIndex(c => normalizarDoc(c.doc) === docNorm);
-            if (idx >= 0) {
-              const cp = [...prev];
-              cp[idx] = { ...cp[idx], ...cli };
-              return cp;
-            }
-            return [...prev, cli];
-          });
-        }}
-        alFinalizarVenta={finalizarVenta}
-      />
-
-      <TicketModal 
-        ticket={ticketModalData}
-        configEmpresa={configEmpresa}
-        alCerrar={() => setTicketModalData(null)}
+        guardarClienteEnDB={() => {}}
+        alFinalizarVenta={() => { setCarrito([]); setModalCobroAbierto(false); }}
       />
 
       <ScannerModal 
         abierto={camaraAbierta}
-        alDetectar={(cod) => {
-          if (onScanCallback) {
-            onScanCallback(cod);
-          } else {
-            const prod = productos.find(p => String(p.codigo).trim() === String(cod).trim());
-            if (prod) procesarSeleccionProducto(prod);
-            else alert('Código no encontrado: ' + cod);
-          }
-        }}
+        alDetectar={(cod) => { setCamaraAbierta(false); }}
         alCerrar={() => setCamaraAbierta(false)}
       />
     </div>
@@ -1458,71 +676,33 @@ const styles = {
   contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#f8fafc' },
   topHeader: { padding: '8px 12px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   headerFila1: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '10px' },
-  
   logoTriggerClickable: { display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1, cursor: 'pointer' },
   logoHeaderImg: { width: '38px', height: '38px', borderRadius: '10px', objectFit: 'contain', border: '1px solid #cbd5e1', flexShrink: 0, backgroundColor: '#fff' },
   avatarHeaderBox: { width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #bfdbfe' },
-  
   infoNegocio: { display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 },
   nombreNegocio: { margin: 0, fontSize: '0.96rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   subtextHeader: { fontSize: '0.72rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  
   tasaChip: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc', padding: '5px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
   btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
   inputTasaMini: { width: '64px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.78rem', color: '#0f172a', outline: 'none' },
-  
   barraClienteMostrador: { backgroundColor: '#fff', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', gap: '8px', flexShrink: 0 },
   inputDocMostrador: { border: 'none', background: '#f1f5f9', padding: '6px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', width: '130px', outline: 'none' },
   nombreClienteTag: { fontSize: '0.78rem', color: '#334155', fontWeight: '600', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' },
   seccionBuscador: { padding: '6px 12px', backgroundColor: '#fff', display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
-  inputIconWrapper: { position: 'relative', flex: 1 },
-  iconoInput: { position: 'absolute', left: '8px', top: '9px' },
-  inputBuscador: { width: '100%', boxSizing: 'border-box', padding: '8px 8px 8px 30px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.85rem', outline: 'none' },
-  dropdownPredictivo: { position: 'absolute', top: '40px', left: 0, right: 0, backgroundColor: '#fff', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', zIndex: 100, border: '1px solid #e2e8f0', overflow: 'hidden' },
-  itemPredictivo: { padding: '8px 12px', borderBottom: '1px solid #f1f3f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' },
-  badgePesadoMini: { backgroundColor: '#dcfce7', color: '#15803d', fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold', border: '1px solid #bbf7d0' },
+  inputBuscador: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.85rem', outline: 'none' },
   btnAgregar: { padding: '0 10px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.78rem', cursor: 'pointer' },
   btnCamara: { display: 'flex', alignItems: 'center', backgroundColor: '#059669', color: '#fff', border: 'none', borderRadius: '8px', padding: '0 9px', cursor: 'pointer' },
   seccionCarrito: { flex: 1, overflowY: 'auto', padding: '8px 12px' },
   carritoVacio: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8' },
   listaItems: { display: 'flex', flexDirection: 'column', gap: '6px' },
   itemFila: { backgroundColor: '#fff', padding: '8px 10px', borderRadius: '10px', display: 'flex', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', gap: '8px', border: '1px solid #f1f5f9' },
-  badgeMayorLive: { backgroundColor: '#ffedd5', color: '#c2410c', fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 'bold', border: '1px solid #fed7aa' },
   btnCant: { width: '26px', height: '26px', borderRadius: '50%', border: '1px solid #cbd5e1', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
   footer: { backgroundColor: '#fff', padding: '8px 12px 24px 12px', borderTop: '1px solid #e2e8f0', boxShadow: '0 -2px 10px rgba(0,0,0,0.03)', flexShrink: 0 },
-  barraDescuentoLive: { display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' },
-  btnDescuentoTrigger: { flex: 1, border: '1px dashed', borderRadius: '8px', padding: '5px 8px', fontSize: '0.74rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' },
-  btnQuitarDesc: { background: '#fee2e2', border: 'none', color: '#ef4444', borderRadius: '6px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
   filaTotales: { display: 'flex', justifyContent: 'space-between', marginBottom: '8px' },
   totalBs: { fontSize: '1.15rem', fontWeight: 'bold', color: '#0052cc' },
   totalUsd: { fontSize: '1.15rem', fontWeight: '900', color: '#16a34a' },
   botonesAccion: { display: 'flex', gap: '6px' },
   btnLimpiar: { backgroundColor: '#fee2e2', border: 'none', color: '#dc2626', borderRadius: '8px', padding: '10px 11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   btnPausar: { backgroundColor: '#fff7ed', border: 'none', color: '#ea580c', borderRadius: '8px', padding: '10px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  btnVerEspera: { backgroundColor: '#eff6ff', border: 'none', color: '#0052cc', borderRadius: '8px', padding: '10px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  btnCobrar: { flex: 1, backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px', fontSize: '0.92rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' },
-  overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '14px' },
-  modalBox: { background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '350px', padding: '16px' },
-  btnCerrar: { background: '#f1f5f9', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' },
-  tabsDesc: { display: 'flex', backgroundColor: '#f1f5f9', borderRadius: '8px', padding: '2px', marginTop: '6px' },
-  tabDescBtn: { flex: 1, border: 'none', padding: '6px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' },
-  inputDescuento: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '1rem', fontWeight: 'bold', outline: 'none' },
-  btnChipDesc: { flex: 1, backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 0', fontSize: '0.74rem', fontWeight: 'bold', color: '#475569', cursor: 'pointer' },
-  btnAplicarDescuento: { width: '100%', padding: '10px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.84rem', fontWeight: 'bold', cursor: 'pointer' },
-  itemEsperaCard: { backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #e2e8f0' },
-  btnMini: { border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' },
-
-  overlayBloqueo: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#090d16', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 999999, padding: '20px' },
-  cardBloqueo: { backgroundColor: '#fff', borderRadius: '20px', padding: '24px 20px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', fontFamily: 'system-ui, sans-serif' },
-  iconoBloqueo: { width: '70px', height: '70px', borderRadius: '20px', backgroundColor: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px auto' },
-  cajaAvisoContacto: { backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '12px', display: 'flex', alignItems: 'center', gap: '10px', margin: '18px 0' },
-  btnReintentarLicencia: { width: '100%', padding: '12px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.86rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' },
-
-  overlayFelicitacion: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(9, 13, 22, 0.85)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999999, padding: '20px' },
-  cardFelicitacionPro: { backgroundColor: '#fff', borderRadius: '24px', maxWidth: '360px', width: '100%', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', fontFamily: 'system-ui, sans-serif' },
-  bannerProTop: { height: '80px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  iconoGlowCirculo: { width: '60px', height: '60px', borderRadius: '50%', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 20px rgba(0,0,0,0.15)', position: 'absolute', bottom: '-26px' },
-  pillStatusVerde: { display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '3px 10px', borderRadius: '20px', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '22px' },
-  infoDiasBoxPro: { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 12px', margin: '14px 0 18px 0' },
-  btnContinuarPro: { width: '100%', padding: '13px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '0.92rem', fontWeight: '800', cursor: 'pointer', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)' }
+  btnCobrar: { flex: 1, backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px', fontSize: '0.92rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' }
 };

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { 
-  User, ShieldCheck, ArrowRight, RefreshCw, AlertCircle
+  ShieldCheck, User, ArrowRight, RefreshCw, AlertCircle, 
+  Smartphone, QrCode, KeyRound, Monitor, CheckCircle2, X
 } from 'lucide-react';
 
 export default function LoginModal({
@@ -9,12 +10,16 @@ export default function LoginModal({
   cajaActiva,
   alRegistrarDueno,
   alIniciarSesionDueno,
-  alIniciarSesionCajero
+  alIniciarSesionCajero,
+  alVincularTerminalPorQR,
+  alVincularTerminalPorCodigo,
+  alDesvincularTerminal
 }) {
-  const [pestana, setPestana] = useState('cajeros');
+  // Por defecto 'dueno', o si ya hay cajeros guardados puede alternar
+  const [pestana, setPestana] = useState(() => (cajeros.length > 0 ? 'cajeros' : 'dueno'));
   const [esRegistro, setEsRegistro] = useState(!cuentaMaster);
 
-  // Estados dueño
+  // Estados Dueño
   const [nombreDueno, setNombreDueno] = useState('');
   const [nombreNegocio, setNombreNegocio] = useState('');
   const [correo, setCorreo] = useState('');
@@ -22,10 +27,15 @@ export default function LoginModal({
   const [errorLogin, setErrorLogin] = useState('');
   const [cargando, setCargando] = useState(false);
 
-  // Estados cajero PIN
+  // Estados Cajero PIN
   const [cajeroSeleccionado, setCajeroSeleccionado] = useState(null);
   const [pinIngresado, setPinIngresado] = useState('');
   const [errorPin, setErrorPin] = useState(false);
+
+  // Estados Modal Vinculación Terminal
+  const [modalVincularAbierto, setModalVincularAbierto] = useState(false);
+  const [codigoEnlaceInput, setCodigoEnlaceInput] = useState('');
+  const [errorVincular, setErrorVincular] = useState('');
 
   const manejarSubmitDueno = async (e) => {
     e.preventDefault();
@@ -81,6 +91,24 @@ export default function LoginModal({
     }
   };
 
+  const procesarVinculacion = (e) => {
+    e.preventDefault();
+    setErrorVincular('');
+    const cod = codigoEnlaceInput.trim();
+    if (!cod) return;
+
+    if (alVincularTerminalPorCodigo) {
+      const exito = alVincularTerminalPorCodigo(cod);
+      if (exito) {
+        setModalVincularAbierto(false);
+        setCodigoEnlaceInput('');
+        alert('¡Dispositivo vinculado con éxito a la caja!');
+      } else {
+        setErrorVincular('Código de caja inválido o no encontrado en el sistema.');
+      }
+    }
+  };
+
   return (
     <div style={styles.contenedor} translate="no">
       <div style={styles.orbe1} />
@@ -88,9 +116,9 @@ export default function LoginModal({
       <div style={styles.orbe3} />
 
       <div style={styles.tarjetaLogin}>
-        {/* Cabecera con el Isotipo Grande Oficial */}
+        {/* Cabecera con el Isotipo Oficial y Nombre de Marca */}
         <div style={styles.logoHeader}>
-          <img src="/isotipo_login.png" alt="Facilito POS Logo" style={styles.logoImg} />
+          <img src="/isotipo_login.png" alt="Facilito POS" style={styles.logoImg} />
           <div style={styles.tituloMarca}>
             <span style={{ color: '#0f2a4a' }}>FACILITO </span>
             <span style={{ color: '#00b050' }}>POS</span>
@@ -98,20 +126,8 @@ export default function LoginModal({
           <span style={styles.tagline}>Sistema Integral de Facturación</span>
         </div>
 
-        {/* Pestañas de Selección */}
+        {/* Pestañas de Selección en Orden Lógico: 1. Acceso Dueño | 2. Turno Cajeros */}
         <div style={styles.tabsContainer}>
-          <button
-            type="button"
-            onClick={() => { setPestana('cajeros'); setCajeroSeleccionado(null); setPinIngresado(''); }}
-            style={{
-              ...styles.tabBtn,
-              backgroundColor: pestana === 'cajeros' ? '#0f2a4a' : 'transparent',
-              color: pestana === 'cajeros' ? '#fff' : '#64748b'
-            }}
-          >
-            <User size={15} />
-            <span>Turno Cajeros</span>
-          </button>
           <button
             type="button"
             onClick={() => { setPestana('dueno'); setErrorLogin(''); }}
@@ -124,84 +140,22 @@ export default function LoginModal({
             <ShieldCheck size={15} />
             <span>Acceso Dueño</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => { setPestana('cajeros'); setCajeroSeleccionado(null); setPinIngresado(''); }}
+            style={{
+              ...styles.tabBtn,
+              backgroundColor: pestana === 'cajeros' ? '#0f2a4a' : 'transparent',
+              color: pestana === 'cajeros' ? '#fff' : '#64748b'
+            }}
+          >
+            <User size={15} />
+            <span>Turno Cajeros</span>
+          </button>
         </div>
 
-        {/* PESTAÑA: CAJEROS */}
-        {pestana === 'cajeros' && (
-          <div style={styles.cuerpoCajeros}>
-            {!cajeroSeleccionado ? (
-              <>
-                <p style={styles.subtituloGuia}>Selecciona tu perfil para iniciar turno:</p>
-                <div style={styles.listaCajerosGrid}>
-                  {cajeros.length === 0 ? (
-                    <div style={styles.cajaSinCajeros}>
-                      <AlertCircle size={22} color="#d97706" />
-                      <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#92400e', lineHeight: 1.4 }}>
-                        No hay cajeros registrados aún. Inicia sesión como dueño para crear personal.
-                      </p>
-                    </div>
-                  ) : (
-                    cajeros.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => { setCajeroSeleccionado(c); setPinIngresado(''); setErrorPin(false); }}
-                        style={styles.cardCajeroItem}
-                      >
-                        <div style={styles.avatarCajero}>
-                          <User size={20} color="#0f2a4a" />
-                        </div>
-                        <span style={styles.nombreCajero}>{c.nombre}</span>
-                        <small style={{ fontSize: '0.66rem', color: '#64748b', marginTop: '2px' }}>Cajero</small>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </>
-            ) : (
-              <div style={styles.contenedorTecladoPin}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '10px' }}>
-                  <button type="button" onClick={() => { setCajeroSeleccionado(null); setPinIngresado(''); }} style={styles.btnVolverCajeros}>
-                    ← Cambiar
-                  </button>
-                  <strong style={{ fontSize: '0.88rem', color: '#0f2a4a' }}>{cajeroSeleccionado.nombre}</strong>
-                  <div style={{ width: '50px' }} />
-                </div>
-
-                <div style={styles.indicadoresPinFila}>
-                  {[0, 1, 2, 3].map((idx) => (
-                    <div 
-                      key={idx} 
-                      style={{
-                        ...styles.dotPin,
-                        backgroundColor: pinIngresado.length > idx ? (errorPin ? '#dc2626' : '#00b050') : '#e2e8f0',
-                        borderColor: errorPin ? '#dc2626' : (pinIngresado.length > idx ? '#00b050' : '#cbd5e1')
-                      }} 
-                    />
-                  ))}
-                </div>
-                {errorPin && <small style={styles.textoPinInvalido}>PIN Incorrecto</small>}
-
-                <div style={styles.tecladoNumerico}>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                    <button key={n} type="button" onClick={() => pulsarNumeroPin(n)} style={styles.btnTecla}>
-                      {n}
-                    </button>
-                  ))}
-                  <div style={styles.btnTeclaVacia} />
-                  <button type="button" onClick={() => pulsarNumeroPin(0)} style={styles.btnTecla}>
-                    0
-                  </button>
-                  <button type="button" onClick={borrarNumeroPin} style={styles.btnTeclaBorrar}>
-                    ⌫
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* PESTAÑA: DUEÑO */}
+        {/* VISTA 1: ACCESO DUEÑO / ADMINISTRADOR */}
         {pestana === 'dueno' && (
           <form onSubmit={manejarSubmitDueno} style={styles.formularioDueno}>
             {errorLogin && <div style={styles.alertaError}>{errorLogin}</div>}
@@ -271,7 +225,160 @@ export default function LoginModal({
             </button>
           </form>
         )}
+
+        {/* VISTA 2: TURNO CAJEROS CON TECLADO PIN */}
+        {pestana === 'cajeros' && (
+          <div style={styles.cuerpoCajeros}>
+            {!cajeroSeleccionado ? (
+              <>
+                <p style={styles.subtituloGuia}>Selecciona tu perfil para iniciar turno:</p>
+                <div style={styles.listaCajerosGrid}>
+                  {cajeros.length === 0 ? (
+                    <div style={styles.cajaSinCajeros}>
+                      <AlertCircle size={22} color="#d97706" />
+                      <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#92400e', lineHeight: 1.4 }}>
+                        No hay cajeros registrados aún. Inicia sesión en <strong>Acceso Dueño</strong> para crear personal.
+                      </p>
+                    </div>
+                  ) : (
+                    cajeros.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => { setCajeroSeleccionado(c); setPinIngresado(''); setErrorPin(false); }}
+                        style={styles.cardCajeroItem}
+                      >
+                        <div style={styles.avatarCajero}>
+                          <User size={20} color="#0f2a4a" />
+                        </div>
+                        <span style={styles.nombreCajero}>{c.nombre}</span>
+                        <small style={{ fontSize: '0.66rem', color: '#64748b', marginTop: '2px' }}>Cajero</small>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={styles.contenedorTecladoPin}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '10px' }}>
+                  <button type="button" onClick={() => { setCajeroSeleccionado(null); setPinIngresado(''); }} style={styles.btnVolverCajeros}>
+                    ← Cambiar
+                  </button>
+                  <strong style={{ fontSize: '0.88rem', color: '#0f2a4a' }}>{cajeroSeleccionado.nombre}</strong>
+                  <div style={{ width: '50px' }} />
+                </div>
+
+                <div style={styles.indicadoresPinFila}>
+                  {[0, 1, 2, 3].map((idx) => (
+                    <div 
+                      key={idx} 
+                      style={{
+                        ...styles.dotPin,
+                        backgroundColor: pinIngresado.length > idx ? (errorPin ? '#dc2626' : '#00b050') : '#e2e8f0',
+                        borderColor: errorPin ? '#dc2626' : (pinIngresado.length > idx ? '#00b050' : '#cbd5e1')
+                      }} 
+                    />
+                  ))}
+                </div>
+                {errorPin && <small style={styles.textoPinInvalido}>PIN Incorrecto</small>}
+
+                <div style={styles.tecladoNumerico}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                    <button key={n} type="button" onClick={() => pulsarNumeroPin(n)} style={styles.btnTecla}>
+                      {n}
+                    </button>
+                  ))}
+                  <div style={styles.btnTeclaVacia} />
+                  <button type="button" onClick={() => pulsarNumeroPin(0)} style={styles.btnTecla}>
+                    0
+                  </button>
+                  <button type="button" onClick={borrarNumeroPin} style={styles.btnTeclaBorrar}>
+                    ⌫
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SECCIÓN INFERIOR: VINCULACIÓN DE TERMINAL SECUNDARIA */}
+        <div style={styles.footerVinculacion}>
+          <div style={styles.cajaInfoTerminalActual}>
+            <Smartphone size={14} color="#64748b" />
+            <span style={{ fontSize: '0.72rem', color: '#475569' }}>
+              Caja asignada: <strong>{cajaActiva?.nombre || 'Sin vincular'}</strong>
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setModalVincularAbierto(true)}
+            style={styles.btnAbrirVinculacion}
+          >
+            <KeyRound size={13} />
+            <span>Vincular este dispositivo a una Caja</span>
+          </button>
+        </div>
       </div>
+
+      {/* MODAL DE VINCULACIÓN POR CÓDIGO O QR */}
+      {modalVincularAbierto && (
+        <div style={styles.overlayModal} translate="no">
+          <div style={styles.cajaModalVinculo}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Monitor size={20} color="#0f2a4a" />
+                <h3 style={{ margin: 0, fontSize: '0.96rem', color: '#0f2a4a', fontWeight: '800' }}>
+                  Vincular Dispositivo
+                </h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setModalVincularAbierto(false)} 
+                style={styles.btnCerrarX}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ margin: '0 0 14px 0', fontSize: '0.76rem', color: '#64748b', lineHeight: 1.45 }}>
+              Ingresa el código de 6 dígitos que se genera en el panel de <strong>Configuración &gt; Terminales</strong> del teléfono principal:
+            </p>
+
+            {errorVincular && <div style={styles.alertaError}>{errorVincular}</div>}
+
+            <form onSubmit={procesarVinculacion}>
+              <input
+                type="text"
+                maxLength={6}
+                placeholder="Código (Ej: 100001)"
+                value={codigoEnlaceInput}
+                onChange={(e) => setCodigoEnlaceInput(e.target.value.replace(/\D/g, ''))}
+                style={styles.inputCodigoVinculo}
+                autoFocus
+              />
+
+              <button type="submit" style={styles.btnConfirmarVinculo}>
+                <CheckCircle2 size={16} />
+                <span>Confirmar y Enlazar Caja</span>
+              </button>
+            </form>
+
+            {cajaActiva && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (alDesvincularTerminal) alDesvincularTerminal();
+                  setModalVincularAbierto(false);
+                }}
+                style={styles.btnDesvincularActual}
+              >
+                Desvincular caja actual ({cajaActiva.nombre})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes floatSlow1 {
@@ -345,7 +452,7 @@ const styles = {
     borderRadius: '28px',
     maxWidth: '380px',
     width: '100%',
-    padding: '24px 22px 24px 22px',
+    padding: '24px 22px 20px 22px',
     boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)',
     display: 'flex',
     flexDirection: 'column',
@@ -358,12 +465,12 @@ const styles = {
     marginBottom: '16px'
   },
   logoImg: {
-    height: '82px',
-    width: '82px',
+    height: '80px',
+    width: '80px',
     objectFit: 'contain'
   },
   tituloMarca: {
-    fontSize: '1.2rem',
+    fontSize: '1.25rem',
     fontWeight: '900',
     letterSpacing: '1px',
     marginTop: '6px'
@@ -565,5 +672,106 @@ const styles = {
     cursor: 'pointer',
     textAlign: 'center',
     marginTop: '4px'
+  },
+  footerVinculacion: {
+    marginTop: '16px',
+    paddingTop: '12px',
+    borderTop: '1px dashed #e2e8f0',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px'
+  },
+  cajaInfoTerminalActual: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px'
+  },
+  btnAbrirVinculacion: {
+    background: 'none',
+    border: 'none',
+    color: '#0052cc',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '5px'
+  },
+  overlayModal: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backdropFilter: 'blur(3px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '16px',
+    zIndex: 9999999
+  },
+  cajaModalVinculo: {
+    backgroundColor: '#fff',
+    borderRadius: '20px',
+    maxWidth: '340px',
+    width: '100%',
+    padding: '20px',
+    boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
+  },
+  btnCerrarX: {
+    background: '#f1f5f9',
+    border: 'none',
+    borderRadius: '50%',
+    width: '28px',
+    height: '28px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: '#64748b'
+  },
+  inputCodigoVinculo: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '12px',
+    textAlign: 'center',
+    letterSpacing: '8px',
+    fontSize: '1.4rem',
+    fontWeight: '900',
+    borderRadius: '12px',
+    border: '2px solid #cbd5e1',
+    outline: 'none',
+    color: '#0f2a4a',
+    backgroundColor: '#f8fafc',
+    marginBottom: '12px'
+  },
+  btnConfirmarVinculo: {
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#00b050',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.86rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px'
+  },
+  btnDesvincularActual: {
+    width: '100%',
+    marginTop: '8px',
+    padding: '8px',
+    background: 'none',
+    border: 'none',
+    color: '#dc2626',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    cursor: 'pointer'
   }
 };
