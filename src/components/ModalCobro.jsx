@@ -24,21 +24,20 @@ export default function ModalCobro({
   const tasaNum = parseFloat(tasaCambio) || 1;
   const totalBSNum = totalUSDNum * tasaNum;
 
-  // Datos del Cliente
+  // Datos Cliente
   const [docCliente, setDocCliente] = useState(clienteActual?.doc === 'V-00000000' ? '' : (clienteActual?.doc || ''));
   const [nombreCliente, setNombreCliente] = useState(clienteActual?.nombre || 'Consumidor Final');
   const [telefonoCliente, setTelefonoCliente] = useState(clienteActual?.telefono || '');
   const [sugerencias, setSugerencias] = useState([]);
 
-  // Montos por Método para Pago Mixto / Combinado
-  const [metodoActivo, setMetodoActivo] = useState('usd'); // 'usd' | 'pago_movil' | 'punto' | 'efectivo_bs' | 'credito'
+  // Montos por Método
+  const [metodoActivo, setMetodoActivo] = useState('usd');
   const [montoUSD, setMontoUSD] = useState('');
   const [montoPagoMovilBS, setMontoPagoMovilBS] = useState('');
   const [montoPuntoBS, setMontoPuntoBS] = useState('');
   const [montoEfectivoBS, setMontoEfectivoBS] = useState('');
   const [esCredito, setEsCredito] = useState(false);
 
-  // Autocompletado de clientes al escribir cédula
   const manejarCambioDoc = (doc) => {
     setDocCliente(doc);
     const docLimpio = doc.replace(/[^0-9]/g, '');
@@ -68,17 +67,14 @@ export default function ModalCobro({
     setSugerencias([]);
   };
 
-  // Conversión numérica de cada método
   const valUSD = parseFloat(montoUSD) || 0;
   const valPM = parseFloat(montoPagoMovilBS) || 0;
   const valPunto = parseFloat(montoPuntoBS) || 0;
   const valEfBS = parseFloat(montoEfectivoBS) || 0;
 
-  // Total pagado consolidado en USD
   const totalAbonadoUSD = valUSD + (valPM / tasaNum) + (valPunto / tasaNum) + (valEfBS / tasaNum);
   const totalAbonadoBS = totalAbonadoUSD * tasaNum;
 
-  // Diferencia
   const diferenciaUSD = totalAbonadoUSD - totalUSDNum;
   const vueltoUSD = diferenciaUSD > 0.005 ? diferenciaUSD : 0;
   const vueltoBS = vueltoUSD * tasaNum;
@@ -86,10 +82,8 @@ export default function ModalCobro({
   const saldoFaltanteUSD = Math.max(0, totalUSDNum - totalAbonadoUSD);
   const saldoFaltanteBS = saldoFaltanteUSD * tasaNum;
 
-  // Manejador del Teclado Numérico sobre el método activo
   const pulsarTecla = (t) => {
     if (esCredito) return;
-
     const actualizarValor = (prev) => {
       if (t === '.' && prev.includes('.')) return prev;
       if (prev.length >= 9) return prev;
@@ -110,7 +104,6 @@ export default function ModalCobro({
     else if (metodoActivo === 'efectivo_bs') setMontoEfectivoBS(prev => prev.slice(0, -1));
   };
 
-  // Botón para liquidar el restante en el método activo
   const liquidarRestanteEnMetodoActivo = () => {
     if (esCredito) return;
 
@@ -140,7 +133,6 @@ export default function ModalCobro({
         return alert('Para fiar o vender a crédito debes registrar la Cédula y Nombre del cliente.');
       }
     } else {
-      // Si no introdujo montos en ningún método, asume pago exacto en el método seleccionado
       if (totalAbonadoUSD <= 0) {
         if (metodoActivo === 'usd') setMontoUSD(totalUSDNum.toFixed(2));
         else if (metodoActivo === 'pago_movil') setMontoPagoMovilBS(totalBSNum.toFixed(2));
@@ -160,30 +152,54 @@ export default function ModalCobro({
     if (guardarClienteEnDB) guardarClienteEnDB(clienteFinal);
     if (setClienteActual) setClienteActual(clienteFinal);
 
-    // Desglose de pagos realizados
+    // Desglose de pagos respetando su moneda real
     const pagosDesglose = [];
     if (valUSD > 0 || (totalAbonadoUSD === 0 && metodoActivo === 'usd')) {
       const mUSD = valUSD > 0 ? valUSD : totalUSDNum;
-      pagosDesglose.push({ metodo: 'Efectivo ($)', montoUSD: mUSD, montoBS: mUSD * tasaNum });
+      pagosDesglose.push({ 
+        metodo: 'Efectivo ($)', 
+        moneda: 'USD',
+        monto: mUSD, 
+        montoUSD: mUSD, 
+        montoBS: mUSD * tasaNum 
+      });
     }
     if (valPM > 0 || (totalAbonadoUSD === 0 && metodoActivo === 'pago_movil')) {
       const mPM = valPM > 0 ? valPM : totalBSNum;
-      pagosDesglose.push({ metodo: 'Pago Móvil', montoUSD: mPM / tasaNum, montoBS: mPM });
+      pagosDesglose.push({ 
+        metodo: 'Pago Móvil', 
+        moneda: 'BS',
+        monto: mPM, 
+        montoUSD: mPM / tasaNum, 
+        montoBS: mPM 
+      });
     }
     if (valPunto > 0 || (totalAbonadoUSD === 0 && metodoActivo === 'punto')) {
       const mPto = valPunto > 0 ? valPunto : totalBSNum;
-      pagosDesglose.push({ metodo: 'Punto Débito', montoUSD: mPto / tasaNum, montoBS: mPto });
+      pagosDesglose.push({ 
+        metodo: 'Punto Débito', 
+        moneda: 'BS',
+        monto: mPto, 
+        montoUSD: mPto / tasaNum, 
+        montoBS: mPto 
+      });
     }
     if (valEfBS > 0 || (totalAbonadoUSD === 0 && metodoActivo === 'efectivo_bs')) {
       const mEf = valEfBS > 0 ? valEfBS : totalBSNum;
-      pagosDesglose.push({ metodo: 'Efectivo (Bs)', montoUSD: mEf / tasaNum, montoBS: mEf });
+      pagosDesglose.push({ 
+        metodo: 'Efectivo (Bs)', 
+        moneda: 'BS',
+        monto: mEf, 
+        montoUSD: mEf / tasaNum, 
+        montoBS: mEf 
+      });
     }
 
     let textoMetodoPrincipal = 'Efectivo ($)';
     if (esCredito) {
       textoMetodoPrincipal = 'credito';
     } else if (pagosDesglose.length > 1) {
-      textoMetodoPrincipal = 'Pago Mixto (' + pagosDesglose.map(p => `${p.metodo}: $${p.montoUSD.toFixed(2)}`).join(' + ') + ')';
+      textoMetodoPrincipal = 'Pago Mixto';
     } else if (pagosDesglose.length === 1) {
       textoMetodoPrincipal = pagosDesglose[0].metodo;
     }
@@ -279,7 +295,7 @@ export default function ModalCobro({
           </div>
         </div>
 
-        {/* Botón / Pastilla de Fiar a Crédito */}
+        {/* Fiar a Crédito */}
         <div
           onClick={() => {
             setEsCredito(!esCredito);
@@ -315,7 +331,7 @@ export default function ModalCobro({
           />
         </div>
 
-        {/* PAGO MIXTO: Selector de método activo para escribir con la calculadora */}
+        {/* Métodos de Pago con Calculadora Táctil */}
         {!esCredito && (
           <>
             <div style={styles.gridMetodosPastillas}>
@@ -377,7 +393,6 @@ export default function ModalCobro({
                 )}
               </div>
 
-              {/* Barra de Billetes en caso de estar en Dólares */}
               {metodoActivo === 'usd' && (
                 <div style={styles.filaBilletes}>
                   {BILLETES_USD.map(b => (
@@ -401,7 +416,7 @@ export default function ModalCobro({
               <button type="button" onClick={borrarTecla} style={styles.btnTeclaBorrar}>⌫</button>
             </div>
 
-            {/* Cuadro de Resumen Consolidado */}
+            {/* Resumen Consolidado */}
             <div style={styles.tarjetaResumenConsolidado}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.74rem', color: '#0f2a4a', fontWeight: '800' }}>TOTAL ABONADO:</span>

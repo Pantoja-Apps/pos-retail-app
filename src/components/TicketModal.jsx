@@ -14,8 +14,9 @@ export default function TicketModal({
   const totalBS = Number(datos.totalBS || (totalUSD * tasa));
   const items = datos.items || [];
   const cliente = datos.cliente || { nombre: 'Consumidor Final', doc: 'V-00000000', telefono: '' };
+  const pagos = datos.pagos || [];
 
-  // Detección matemática estricta: Pesados vs Unidades
+  // Discriminación matemática estricta: Pesados vs Unidades
   let totalPiezasUnid = 0;
   let totalPesoKg = 0;
   let hayUnidades = false;
@@ -23,7 +24,6 @@ export default function TicketModal({
 
   items.forEach(it => {
     const cant = Number(it.cantidad || 0);
-    // Es pesado si tiene la marca esPesado o si la cantidad tiene decimales
     const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
 
     if (esRealmentePesado) {
@@ -45,14 +45,30 @@ export default function TicketModal({
     if (config?.rif) texto += `RIF: ${config.rif}\n`;
     if (config?.telefono) texto += `TEL: ${config.telefono}\n`;
     texto += `--------------------------------\n`;
-    texto += `TICKET #: ${datos.correlativo || datos.id}\n`;
+    texto += `CONTROL #: ${datos.correlativo || datos.id}\n`;
     texto += `FECHA: ${datos.fechaFormateada || new Date().toLocaleString()}\n`;
     texto += `CLIENTE: ${cliente.nombre}\n`;
     texto += `CÉDULA / RIF: ${cliente.doc}\n`;
     if (cliente.telefono) texto += `TELÉFONO: ${cliente.telefono}\n`;
-    texto += `FORMA DE PAGO: ${datos.esCredito ? 'A CRÉDITO (FIADO)' : (datos.metodoPago || 'EFECTIVO')}\n`;
     texto += `--------------------------------\n`;
 
+    // Desglose de formas de pago en WhatsApp
+    if (datos.esCredito) {
+      texto += `FORMA DE PAGO: CUENTA POR COBRAR (A CRÉDITO)\n`;
+    } else if (pagos.length > 1) {
+      texto += `FORMAS DE PAGO (PAGO MIXTO):\n`;
+      pagos.forEach(p => {
+        if (p.moneda === 'BS' || p.metodo.includes('Bs') || p.metodo.includes('Móvil') || p.metodo.includes('Punto')) {
+          texto += `  • ${p.metodo}: Bs. ${Number(p.montoBS || p.monto).toFixed(2)}\n`;
+        } else {
+          texto += `  • ${p.metodo}: $${Number(p.montoUSD || p.monto).toFixed(2)}\n`;
+        }
+      });
+    } else {
+      texto += `FORMA DE PAGO: ${datos.metodoPago || 'EFECTIVO'}\n`;
+    }
+
+    texto += `--------------------------------\n`;
     items.forEach(it => {
       const cant = Number(it.cantidad || 0);
       const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
@@ -116,18 +132,66 @@ export default function TicketModal({
 
           <div style={styles.separadorLineas} />
 
-          {/* Datos del Comprobante */}
-          <div style={styles.gridInfo}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>CONTROL: <strong>#{datos.correlativo || datos.id}</strong></span>
-              <span>{datos.fechaFormateada || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          {/* Datos del Comprobante Alineados y Ordenados */}
+          <div style={styles.bloqueMetadatos}>
+            <div style={styles.filaMeta}>
+              <span style={styles.metaLabel}>COMPROBANTE:</span>
+              <strong style={styles.metaValor}>#{datos.correlativo || datos.id}</strong>
             </div>
-            <div>CAJERO: {datos.cajero || 'Angel Pantoja'} · CAJA: {datos.caja || 'Caja 01'}</div>
-            <div>CLIENTE: <strong>{cliente.nombre}</strong></div>
-            <div>CÉDULA / RIF: <strong>{cliente.doc}</strong></div>
-            {cliente.telefono && <div>TELÉFONO: {cliente.telefono}</div>}
-            <div style={{ wordBreak: 'break-word', marginTop: '2px' }}>
-              PAGO: <strong>{datos.esCredito ? 'A CRÉDITO (FIADO)' : (datos.metodoPago || 'EFECTIVO')}</strong>
+
+            <div style={styles.filaMeta}>
+              <span style={styles.metaLabel}>FECHA / HORA:</span>
+              <span style={styles.metaValor}>{datos.fechaFormateada || new Date().toLocaleString()}</span>
+            </div>
+
+            <div style={styles.filaMeta}>
+              <span style={styles.metaLabel}>CAJERO / CAJA:</span>
+              <span style={styles.metaValor}>{datos.cajero || 'Angel Pantoja'} · {datos.caja || 'Caja 01'}</span>
+            </div>
+
+            <div style={styles.filaMeta}>
+              <span style={styles.metaLabel}>CLIENTE:</span>
+              <strong style={styles.metaValor}>{cliente.nombre}</strong>
+            </div>
+
+            <div style={styles.filaMeta}>
+              <span style={styles.metaLabel}>CÉDULA / RIF:</span>
+              <strong style={styles.metaValor}>{cliente.doc}</strong>
+            </div>
+
+            {cliente.telefono && (
+              <div style={styles.filaMeta}>
+                <span style={styles.metaLabel}>TELÉFONO:</span>
+                <span style={styles.metaValor}>{cliente.telefono}</span>
+              </div>
+            )}
+
+            {/* Desglose Limpio de Forma de Pago */}
+            <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px dashed #e2e8f0' }}>
+              <div style={styles.filaMeta}>
+                <span style={styles.metaLabel}>FORMA DE PAGO:</span>
+                <strong style={styles.metaValor}>
+                  {datos.esCredito ? 'CUENTA POR COBRAR (CRÉDITO)' : (pagos.length > 1 ? 'PAGO MIXTO' : (datos.metodoPago || 'EFECTIVO'))}
+                </strong>
+              </div>
+
+              {/* Renglones discriminados si es pago mixto */}
+              {pagos.length > 1 && !datos.esCredito && (
+                <div style={styles.cajaDesglosePagoMixto}>
+                  {pagos.map((p, i) => {
+                    const esBs = p.moneda === 'BS' || p.metodo.includes('Bs') || p.metodo.includes('Móvil') || p.metodo.includes('Punto');
+                    const montoMostrar = esBs 
+                      ? `Bs. ${Number(p.montoBS || p.monto).toFixed(2)}`
+                      : `$${Number(p.montoUSD || p.monto).toFixed(2)}`;
+                    return (
+                      <div key={i} style={styles.itemFilaPagoMixto}>
+                        <span>• {p.metodo}:</span>
+                        <strong>{montoMostrar}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -163,7 +227,7 @@ export default function TicketModal({
 
           <div style={styles.separadorLineas} />
 
-          {/* Desglose de Totales: Diferencia piezas de kilogramos */}
+          {/* Desglose de Totales */}
           <div style={styles.seccionDesglose}>
             {hayUnidades && (
               <div style={styles.filaSub}>
@@ -321,10 +385,41 @@ const styles = {
     borderTop: '1px dashed #cbd5e1',
     margin: '7px 0'
   },
-  gridInfo: {
+  bloqueMetadatos: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px',
     fontSize: '0.68rem',
-    lineHeight: 1.45,
     color: '#1e293b'
+  },
+  filaMeta: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'baseline'
+  },
+  metaLabel: {
+    color: '#64748b',
+    fontWeight: '600'
+  },
+  metaValor: {
+    color: '#0f2a4a',
+    textAlign: 'right'
+  },
+  cajaDesglosePagoMixto: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    backgroundColor: '#f8fafc',
+    padding: '5px 8px',
+    borderRadius: '6px',
+    marginTop: '3px',
+    border: '1px solid #f1f5f9'
+  },
+  itemFilaPagoMixto: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.66rem',
+    color: '#334155'
   },
   tablaHeader: {
     display: 'flex',
