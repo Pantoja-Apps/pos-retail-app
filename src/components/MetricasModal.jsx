@@ -2,31 +2,35 @@ import React, { useState } from 'react';
 import { 
   ArrowLeft, TrendingUp, DollarSign, Download, Calendar, 
   Package, PieChart, Star, Layers, FileSpreadsheet, CheckCircle2,
-  Filter, ChevronDown
+  Printer, Share2, ShieldCheck, X, Wallet, CreditCard, Smartphone, Banknote,
+  ArrowUpRight, ShoppingBag, BarChart3
 } from 'lucide-react';
 
 export default function MetricasModal({
   transaccionesTurno = [],
   historicoGlobal = [],
+  gastos = [],
   productos = [],
   tasaCambio = 855.66,
+  configEmpresa,
+  usuarioActivo,
   alVolver
 }) {
   const [vista, setVista] = useState('turno'); // 'turno' | 'historico'
+  const [moneda, setMoneda] = useState('USD'); // 'USD' | 'BS'
   const [periodoFiltro, setPeriodoFiltro] = useState('todos'); // 'todos' | 'hoy' | 'ayer' | 'semana' | 'mes' | 'custom'
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
+  const [modalReporteEjecutivo, setModalReporteEjecutivo] = useState(false);
 
   const tasa = Number(tasaCambio) || 1;
 
-  // Normalizador universal de ventas para que nunca fallen campos
+  // 1. Normalizador universal de ventas
   const normalizarVenta = (v) => {
     let items = [];
-    if (Array.isArray(v.items) && v.items.length > 0) {
-      items = v.items;
-    } else if (v.detalles && Array.isArray(v.detalles.items)) {
-      items = v.detalles.items;
-    } else if (typeof v.detalles === 'string') {
+    if (Array.isArray(v.items) && v.items.length > 0) items = v.items;
+    else if (v.detalles && Array.isArray(v.detalles.items)) items = v.detalles.items;
+    else if (typeof v.detalles === 'string') {
       try {
         const parsed = JSON.parse(v.detalles);
         if (Array.isArray(parsed.items)) items = parsed.items;
@@ -43,6 +47,8 @@ export default function MetricasModal({
     const metodoPago = v.metodoPago || v.metodo_pago || 'Efectivo';
     const cajero = v.cajero || v.cajero_nombre || 'Angel Pantoja';
     const caja = v.caja || v.caja_nombre || 'Caja 01';
+    const pagos = Array.isArray(v.pagos) ? v.pagos : [];
+    const esCredito = Boolean(v.esCredito);
 
     return {
       ...v,
@@ -55,25 +61,25 @@ export default function MetricasModal({
       clienteDoc,
       clienteTelefono,
       metodoPago,
+      pagos,
+      esCredito,
       cajero,
       caja
     };
   };
 
-  // 1. Filtrado por vista
+  // 2. Pool base según vista
   const poolVentas = (vista === 'turno' ? transaccionesTurno : historicoGlobal)
     .filter(t => !t.anulada && (vista === 'historico' || !t.cerradoEnTurno))
     .map(normalizarVenta);
 
-  // 2. Filtrado por fechas
+  // 3. Filtrado por fechas
   const hoyStr = new Date().toISOString().slice(0, 10);
   const ayer = new Date();
   ayer.setDate(ayer.getDate() - 1);
   const ayerStr = ayer.toISOString().slice(0, 10);
-
   const sieteDiasAtras = new Date();
   sieteDiasAtras.setDate(sieteDiasAtras.getDate() - 7);
-
   const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
   const ventasFiltradas = poolVentas.filter(v => {
@@ -94,11 +100,20 @@ export default function MetricasModal({
     return true;
   });
 
-  // 3. Cálculos financieros
+  // 4. Totales financieros
   let ventaBrutaUSD = 0;
   let costoTotalUSD = 0;
   let totalPiezasVendidas = 0;
   let totalPesoKgVendido = 0;
+
+  // Medios de pago
+  const flujoMedios = {
+    usd: 0,
+    bs_efectivo: 0,
+    pago_movil: 0,
+    punto: 0,
+    credito: 0
+  };
 
   const conteoProductos = {};
   const conteoCategorias = {};
@@ -106,6 +121,27 @@ export default function MetricasModal({
   ventasFiltradas.forEach(v => {
     ventaBrutaUSD += v.totalUSD;
 
+    // Métodos de pago
+    if (v.esCredito) {
+      flujoMedios.credito += v.totalUSD;
+    } else if (v.pagos && v.pagos.length > 0) {
+      v.pagos.forEach(p => {
+        const met = (p.metodo || '').toLowerCase();
+        const mUSD = Number(p.montoUSD || (Number(p.montoBS || p.monto || 0) / tasa));
+        if (met.includes('usd') || met.includes('$')) flujoMedios.usd += mUSD;
+        else if (met.includes('móvil') || met.includes('movil')) flujoMedios.pago_movil += mUSD;
+        else if (met.includes('punto') || met.includes('tarjeta')) flujoMedios.punto += mUSD;
+        else flujoMedios.bs_efectivo += mUSD;
+      });
+    } else {
+      const met = (v.metodoPago || '').toLowerCase();
+      if (met.includes('usd') || met === 'efectivo_usd') flujoMedios.usd += v.totalUSD;
+      else if (met.includes('movil') || met === 'pago_movil') flujoMedios.pago_movil += v.totalUSD;
+      else if (met.includes('punto') || met === 'punto_venta') flujoMedios.punto += v.totalUSD;
+      else flujoMedios.bs_efectivo += v.totalUSD;
+    }
+
+    // Artículos
     v.items.forEach(it => {
       const cant = Number(it.cantidad || 0);
       const costoUnit = Number(it.costoUSD ?? it.costo ?? 0);
@@ -113,11 +149,8 @@ export default function MetricasModal({
 
       costoTotalUSD += (costoUnit * cant);
 
-      if (it.esPesado || (cant % 1 !== 0)) {
-        totalPesoKgVendido += cant;
-      } else {
-        totalPiezasVendidas += Math.round(cant);
-      }
+      if (it.esPesado || (cant % 1 !== 0)) totalPesoKgVendido += cant;
+      else totalPiezasVendidas += Math.round(cant);
 
       const prodNombre = it.nombre || 'Producto';
       if (!conteoProductos[prodNombre]) {
@@ -140,11 +173,31 @@ export default function MetricasModal({
     });
   });
 
-  const gananciaNetaUSD = Math.max(0, ventaBrutaUSD - costoTotalUSD);
-  const gananciaNetaBS = gananciaNetaUSD * tasa;
-  const ventaBrutaBS = ventaBrutaUSD * tasa;
-  const margenUtilidad = ventaBrutaUSD > 0 ? ((gananciaNetaUSD / ventaBrutaUSD) * 100).toFixed(1) : '0.0';
+  // Gastos del período/turno
+  let totalGastosUSD = 0;
+  if (vista === 'turno') {
+    gastos.forEach(g => {
+      totalGastosUSD += Number(g.montoUSD || (Number(g.monto || 0) / tasa));
+    });
+  }
 
+  // Utilidad Líquida Operativa
+  const gananciaBrutaUSD = Math.max(0, ventaBrutaUSD - costoTotalUSD);
+  const gananciaNetaUSD = Math.max(0, gananciaBrutaUSD - totalGastosUSD);
+  const margenUtilidad = ventaBrutaUSD > 0 ? ((gananciaNetaUSD / ventaBrutaUSD) * 100).toFixed(1) : '0.0';
+  const ticketPromedioUSD = ventasFiltradas.length > 0 ? (ventaBrutaUSD / ventasFiltradas.length) : 0;
+
+  // Valoración Patrimonial del Inventario
+  let valorInventarioCostoUSD = 0;
+  let valorInventarioVentaUSD = 0;
+  productos.forEach(p => {
+    const stk = Number(p.stock || 0);
+    valorInventarioCostoUSD += (Number(p.costoUSD || 0) * stk);
+    valorInventarioVentaUSD += (Number(p.precioUSD || 0) * stk);
+  });
+  const gananciaProyectadaInventario = Math.max(0, valorInventarioVentaUSD - valorInventarioCostoUSD);
+
+  // Rankings
   const rankingProductos = Object.values(conteoProductos)
     .sort((a, b) => b.totalUSD - a.totalUSD)
     .slice(0, 5);
@@ -153,61 +206,44 @@ export default function MetricasModal({
     .map(([cat, data]) => ({ categoria: cat, ...data }))
     .sort((a, b) => b.totalUSD - a.totalUSD);
 
-  // DESCARGA ROBUSTA CON BLOB (Compatible con Android / Chrome / PC)
-  const exportarReporteCompleto = () => {
-    if (ventasFiltradas.length === 0) {
-      alert(`No hay ventas para exportar en la vista "${vista === 'turno' ? 'Turno Actual' : 'Histórico Global'}". Si acabas de cerrar turno, cambia a la pestaña "Histórico Global" para descargar el reporte.`);
-      return;
+  // Formateador monetario según switch
+  const formatMonto = (montoUSD) => {
+    if (moneda === 'BS') {
+      return `Bs. ${(Number(montoUSD) * tasa).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
+    return `$${Number(montoUSD).toFixed(2)}`;
+  };
 
-    const filas = [];
-    filas.push([
-      'Nro Ticket',
-      'Fecha y Hora',
-      'Cliente',
-      'Cedula/RIF',
-      'Telefono',
-      'Forma de Pago',
-      'Articulos Vendidos',
-      'Total Venta (USD)',
-      'Costo Mercancia (USD)',
-      'Ganancia Neta (USD)',
-      'Margen Utilidad (%)',
-      'Total Venta (BS)',
-      'Tasa BCV',
-      'Cajero',
-      'Caja'
-    ]);
+  // EXPORTAR CSV AUDITABLE
+  const exportarCSV = () => {
+    if (ventasFiltradas.length === 0) return alert('No hay ventas registradas en esta vista.');
+
+    const filas = [
+      ['Nro Ticket', 'Fecha y Hora', 'Cliente', 'Cedula/RIF', 'Telefono', 'Forma de Pago', 'Articulos', 'Total Venta (USD)', 'Costo (USD)', 'Ganancia (USD)', 'Margen %', 'Total Venta (BS)', 'Tasa BCV', 'Cajero', 'Caja']
+    ];
 
     ventasFiltradas.forEach(v => {
-      const ticket = v.correlativo.startsWith('#') ? v.correlativo : `#${v.correlativo}`;
-      const fechaTexto = v.fechaFormateada || new Date(v.fecha).toLocaleString();
-      
-      let costoVenta = 0;
-      const itemsTextoArr = v.items.map(it => {
-        const cUnit = Number(it.costoUSD ?? it.costo ?? 0);
-        const cant = Number(it.cantidad || 0);
-        costoVenta += (cUnit * cant);
-        const sufijo = it.esPesado || (cant % 1 !== 0) ? 'kg' : 'u';
-        return `${it.nombre || 'Item'} (${cant}${sufijo})`;
-      });
+      let costoV = 0;
+      const itemsTexto = v.items.map(it => {
+        costoV += (Number(it.costoUSD ?? it.costo ?? 0) * Number(it.cantidad || 0));
+        return `${it.nombre} (${it.cantidad}${it.esPesado ? 'kg' : 'u'})`;
+      }).join('; ');
 
-      const itemsCadena = itemsTextoArr.length > 0 ? itemsTextoArr.join('; ') : 'Venta directa';
-      const utilidad = Math.max(0, v.totalUSD - costoVenta);
-      const margen = v.totalUSD > 0 ? ((utilidad / v.totalUSD) * 100).toFixed(1) : '0.0';
+      const util = Math.max(0, v.totalUSD - costoV);
+      const marg = v.totalUSD > 0 ? ((util / v.totalUSD) * 100).toFixed(1) : '0.0';
 
       filas.push([
-        ticket,
-        fechaTexto,
+        v.correlativo.startsWith('#') ? v.correlativo : `#${v.correlativo}`,
+        v.fechaFormateada || new Date(v.fecha).toLocaleString(),
         v.clienteNombre,
         v.clienteDoc,
         v.clienteTelefono || 'N/A',
         v.metodoPago,
-        itemsCadena,
+        itemsTexto || 'Venta directa',
         v.totalUSD.toFixed(2),
-        costoVenta.toFixed(2),
-        utilidad.toFixed(2),
-        `${margen}%`,
+        costoV.toFixed(2),
+        util.toFixed(2),
+        `${marg}%`,
         v.totalBS.toFixed(2),
         tasa.toFixed(2),
         v.cajero,
@@ -215,23 +251,47 @@ export default function MetricasModal({
       ]);
     });
 
-    // Escapar celdas para CSV estándar
-    const csvString = filas.map(f => f.map(celda => {
-      const valor = String(celda ?? '').replace(/"/g, '""');
-      return `"${valor}"`;
-    }).join(',')).join('\r\n');
-
-    // Blob UTF-8 con BOM para que Excel abra sin problemas de tildes o caracteres
-    const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' });
+    const csvContent = filas.map(f => f.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const etiquetaPeriodo = vista === 'turno' ? 'TurnoActual' : periodoFiltro.toUpperCase();
-    link.download = `Reporte_Ventas_${etiquetaPeriodo}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `Auditoria_Ventas_${vista.toUpperCase()}_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const compartirReporteEjecutivoWhatsApp = () => {
+    let t = `*📈 INFORME FINANCIERO Y RENDIMIENTO*\n`;
+    t += `*${(configEmpresa?.nombre || 'FACILITO POS').toUpperCase()}*\n`;
+    if (configEmpresa?.rif) t += `RIF: ${configEmpresa.rif}\n`;
+    t += `================================\n`;
+    t += `Período: ${vista === 'turno' ? 'Turno Actual' : periodoFiltro.toUpperCase()}\n`;
+    t += `Fecha de Emisión: ${new Date().toLocaleString()}\n`;
+    t += `Total Operaciones: ${ventasFiltradas.length} ticket(s)\n`;
+    t += `Ticket Promedio: $${ticketPromedioUSD.toFixed(2)} (Bs. ${(ticketPromedioUSD * tasa).toFixed(2)})\n`;
+    t += `================================\n`;
+    t += `*RESULTADOS FINANCIEROS:*\n`;
+    t += `  • Venta Bruta Facturada: $${ventaBrutaUSD.toFixed(2)} (Bs. ${(ventaBrutaUSD * tasa).toFixed(2)})\n`;
+    t += `  • Costo de Mercancía:    $${costoTotalUSD.toFixed(2)}\n`;
+    if (totalGastosUSD > 0) t += `  • Salidas y Gastos:      -$${totalGastosUSD.toFixed(2)}\n`;
+    t += `  • *GANANCIA NETA REAL:*  +$${gananciaNetaUSD.toFixed(2)} (Bs. ${(gananciaNetaUSD * tasa).toFixed(2)})\n`;
+    t += `  • *Margen de Utilidad:*   ${margenUtilidad}%\n`;
+    t += `--------------------------------\n`;
+    t += `*FLUJO DE CAJA POR MÉTODO:*\n`;
+    t += `  • Efectivo Divisas ($): $${flujoMedios.usd.toFixed(2)}\n`;
+    t += `  • Pago Móvil:          Bs. ${(flujoMedios.pago_movil * tasa).toFixed(2)}\n`;
+    t += `  • Punto Débito:        Bs. ${(flujoMedios.punto * tasa).toFixed(2)}\n`;
+    t += `  • Efectivo Bolívares:  Bs. ${(flujoMedios.bs_efectivo * tasa).toFixed(2)}\n`;
+    if (flujoMedios.credito > 0) t += `  • Cuentas por Cobrar:  $${flujoMedios.credito.toFixed(2)}\n`;
+    t += `================================\n`;
+    t += `Tasa BCV Oficial: Bs. ${tasa.toFixed(2)} / USD\n`;
+    t += `Informe auditado por Facilito POS\n`;
+
+    const url = `https://wa.me/?text=${encodeURIComponent(t)}`;
+    window.open(url, '_blank');
   };
 
   return (
@@ -242,15 +302,37 @@ export default function MetricasModal({
           <ArrowLeft size={18} />
         </button>
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <h2 style={styles.tituloHeader}>Rendimiento y Ganancias</h2>
+          <h2 style={styles.tituloHeader}>Rendimiento y Finanzas</h2>
           <small style={{ color: '#64748b', fontSize: '0.72rem' }}>
-            Auditoría financiera y margen de utilidad · BCV: <strong>Bs. {tasa.toFixed(2)}</strong>
+            Control Ejecutivo · BCV: <strong>Bs. {tasa.toFixed(2)}</strong>
           </small>
         </div>
-        <button type="button" onClick={exportarReporteCompleto} style={styles.btnExportarTop} title="Descargar Reporte en Excel">
-          <Download size={14} />
-          <span>Excel</span>
-        </button>
+
+        {/* Switch de Moneda Maestro */}
+        <div style={styles.switchMonedaBox}>
+          <button
+            type="button"
+            onClick={() => setMoneda('USD')}
+            style={{
+              ...styles.btnMonedaSwitch,
+              backgroundColor: moneda === 'USD' ? '#00b050' : 'transparent',
+              color: moneda === 'USD' ? '#fff' : '#64748b'
+            }}
+          >
+            $
+          </button>
+          <button
+            type="button"
+            onClick={() => setMoneda('BS')}
+            style={{
+              ...styles.btnMonedaSwitch,
+              backgroundColor: moneda === 'BS' ? '#0052cc' : 'transparent',
+              color: moneda === 'BS' ? '#fff' : '#64748b'
+            }}
+          >
+            Bs
+          </button>
+        </div>
       </header>
 
       {/* Tabs Principales */}
@@ -283,12 +365,12 @@ export default function MetricasModal({
       </div>
 
       <main style={styles.cuerpo}>
-        {/* Selector de Rango de Fechas (Solo en Histórico Global) */}
+        {/* Selector de Fechas (Solo en Histórico) */}
         {vista === 'historico' && (
           <div style={styles.bloqueFiltroFechas}>
             <div style={styles.filaBotonesPeriodo}>
               {[
-                { id: 'todos', label: 'Todo el Histórico' },
+                { id: 'todos', label: 'Todo' },
                 { id: 'hoy', label: 'Hoy' },
                 { id: 'ayer', label: 'Ayer' },
                 { id: 'semana', label: '7 Días' },
@@ -336,55 +418,151 @@ export default function MetricasModal({
           </div>
         )}
 
-        {/* Tarjeta Principal: Ganancia Neta */}
+        {/* Tarjeta Principal: Ganancia Neta Real */}
         <div style={styles.tarjetaGananciaPrincipal}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
             <TrendingUp size={16} color="#00b050" />
             <span style={styles.etiquetaGanancia}>
-              GANANCIA NETA ({vista === 'turno' ? 'EN EL TURNO' : 'EN EL PERÍODO'})
+              UTILIDAD NETA {vista === 'turno' ? 'DEL TURNO' : 'DEL PERÍODO'}
             </span>
           </div>
 
-          <div style={styles.cifraGananciaUSD}>+${gananciaNetaUSD.toFixed(2)}</div>
-          <div style={styles.cifraGananciaBS}>Bs. {gananciaNetaBS.toFixed(2)}</div>
-
-          <div style={styles.pillMargen}>
-            Margen de Utilidad Promedio: <strong>{margenUtilidad}%</strong>
-          </div>
-        </div>
-
-        {/* Tarjetas Secundarias: Venta Bruta y Costo */}
-        <div style={styles.gridSecundario}>
-          <div style={styles.cardDetalle}>
-            <small style={styles.subLabelDetalle}>Venta Bruta Facturada</small>
-            <strong style={styles.valorCardSec}>${ventaBrutaUSD.toFixed(2)}</strong>
-            <span style={styles.textoPieDetalle}>Bs. {ventaBrutaBS.toFixed(2)}</span>
+          <div style={styles.cifraGananciaUSD}>{formatMonto(gananciaNetaUSD)}</div>
+          <div style={styles.cifraSecundaria}>
+            {moneda === 'USD' ? `Bs. ${(gananciaNetaUSD * tasa).toFixed(2)}` : `$${gananciaNetaUSD.toFixed(2)}`}
           </div>
 
-          <div style={styles.cardDetalle}>
-            <small style={styles.subLabelDetalle}>Costo de Mercancía</small>
-            <strong style={{ ...styles.valorCardSec, color: '#dc2626' }}>${costoTotalUSD.toFixed(2)}</strong>
-            <span style={styles.textoPieDetalle}>
-              {totalPiezasVendidas} unids {totalPesoKgVendido > 0 && `· ${totalPesoKgVendido.toFixed(2)}kg`}
+          <div style={styles.filaPillsGanancia}>
+            <span style={styles.pillMargen}>
+              Margen de Ganancia: <strong>{margenUtilidad}%</strong>
+            </span>
+            <span style={styles.pillTicketMedio}>
+              Ticket Promedio: <strong>{formatMonto(ticketPromedioUSD)}</strong>
             </span>
           </div>
         </div>
 
-        {/* Botón de Descarga del Reporte */}
-        <div style={styles.cajaDescargaReporte}>
-          <div style={{ flex: 1 }}>
-            <strong style={{ fontSize: '0.8rem', color: '#0f2a4a' }}>Descargar Libro de Ventas</strong>
-            <small style={{ fontSize: '0.66rem', color: '#64748b', display: 'block' }}>
-              Exporta las {ventasFiltradas.length} venta(s) de esta vista con costos y utilidades
-            </small>
+        {/* Tablero de KPIs Cuádruple */}
+        <div style={styles.gridKpis}>
+          <div style={styles.cardKpi}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
+              <ShoppingBag size={14} color="#0052cc" />
+              <small style={styles.kpiLabel}>Venta Bruta</small>
+            </div>
+            <strong style={styles.kpiValor}>{formatMonto(ventaBrutaUSD)}</strong>
+            <span style={styles.kpiSub}>{ventasFiltradas.length} operaciones</span>
           </div>
-          <button type="button" onClick={exportarReporteCompleto} style={styles.btnDescargarExcel}>
+
+          <div style={styles.cardKpi}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
+              <Package size={14} color="#dc2626" />
+              <small style={styles.kpiLabel}>Costo Mercancía</small>
+            </div>
+            <strong style={{ ...styles.kpiValor, color: '#dc2626' }}>{formatMonto(costoTotalUSD)}</strong>
+            <span style={styles.kpiSub}>{totalPiezasVendidas}u · {totalPesoKgVendido.toFixed(2)}kg</span>
+          </div>
+
+          <div style={styles.cardKpi}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
+              <Wallet size={14} color="#d97706" />
+              <small style={styles.kpiLabel}>Gastos Operativos</small>
+            </div>
+            <strong style={{ ...styles.kpiValor, color: '#d97706' }}>{formatMonto(totalGastosUSD)}</strong>
+            <span style={styles.kpiSub}>{gastos.length} deducciones</span>
+          </div>
+
+          <div style={styles.cardKpi}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
+              <DollarSign size={14} color="#00b050" />
+              <small style={styles.kpiLabel}>Utilidad Bruta</small>
+            </div>
+            <strong style={{ ...styles.kpiValor, color: '#00b050' }}>{formatMonto(gananciaBrutaUSD)}</strong>
+            <span style={styles.kpiSub}>Antes de gastos</span>
+          </div>
+        </div>
+
+        {/* Flujo de Caja por Método de Pago */}
+        <div style={styles.seccionCard}>
+          <div style={styles.encabezadoSeccion}>
+            <BarChart3 size={16} color="#0052cc" />
+            <strong style={{ fontSize: '0.84rem', color: '#0f2a4a' }}>Distribución de Cobros por Método</strong>
+          </div>
+
+          <div style={styles.gridMediosCobro}>
+            {[
+              { label: 'Efectivo ($)', icon: DollarSign, color: '#00b050', val: flujoMedios.usd },
+              { label: 'Pago Móvil (Bs)', icon: Smartphone, color: '#0052cc', val: flujoMedios.pago_movil },
+              { label: 'Punto Débito', icon: CreditCard, color: '#7c3aed', val: flujoMedios.punto },
+              { label: 'Efectivo (Bs)', icon: Banknote, color: '#d97706', val: flujoMedios.bs_efectivo },
+              { label: 'Cuentas x Cobrar', icon: Wallet, color: '#dc2626', val: flujoMedios.credito }
+            ].map((m, i) => {
+              const Icon = m.icon;
+              const porcentaje = ventaBrutaUSD > 0 ? ((m.val / ventaBrutaUSD) * 100).toFixed(0) : 0;
+              return (
+                <div key={i} style={styles.itemMedioRow}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ ...styles.iconoMiniMedio, backgroundColor: `${m.color}15` }}>
+                      <Icon size={12} color={m.color} />
+                    </div>
+                    <span style={{ fontSize: '0.74rem', color: '#334155', fontWeight: '600' }}>{m.label}</span>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <strong style={{ fontSize: '0.8rem', color: '#0f2a4a' }}>{formatMonto(m.val)}</strong>
+                    <small style={{ color: '#64748b', fontSize: '0.64rem', marginLeft: '4px' }}>({porcentaje}%)</small>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Valoración Patrimonial del Inventario */}
+        <div style={styles.cardValoracionInventario}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Package size={16} color="#0052cc" />
+              <strong style={{ fontSize: '0.82rem', color: '#0f2a4a' }}>Capital Invertido en Inventario</strong>
+            </div>
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 'bold' }}>
+              {productos.length} Productos
+            </span>
+          </div>
+
+          <div style={styles.gridInventarioValores}>
+            <div>
+              <small style={{ color: '#64748b', fontSize: '0.66rem' }}>Costo de Adquisición</small>
+              <div style={{ fontSize: '0.96rem', fontWeight: '900', color: '#0f2a4a' }}>
+                {formatMonto(valorInventarioCostoUSD)}
+              </div>
+            </div>
+            <div>
+              <small style={{ color: '#64748b', fontSize: '0.66rem' }}>Valor de Venta Proyectado</small>
+              <div style={{ fontSize: '0.96rem', fontWeight: '900', color: '#0052cc' }}>
+                {formatMonto(valorInventarioVentaUSD)}
+              </div>
+            </div>
+            <div>
+              <small style={{ color: '#64748b', fontSize: '0.66rem' }}>Ganancia Proyectada</small>
+              <div style={{ fontSize: '0.96rem', fontWeight: '900', color: '#00b050' }}>
+                +{formatMonto(gananciaProyectadaInventario)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Barra de Acciones de Exportación Premium */}
+        <div style={styles.cajaExportacionPremium}>
+          <button type="button" onClick={() => setModalReporteEjecutivo(true)} style={styles.btnReporteFormal}>
+            <Printer size={15} />
+            <span>Emitir Informe Ejecutivo</span>
+          </button>
+          <button type="button" onClick={exportarCSV} style={styles.btnExcelCSV}>
             <FileSpreadsheet size={15} />
-            <span>Descargar CSV</span>
+            <span>Exportar Excel (CSV)</span>
           </button>
         </div>
 
-        {/* Ranking Productos Estrella */}
+        {/* Productos Estrella */}
         <div style={styles.seccionCard}>
           <div style={styles.encabezadoSeccion}>
             <Star size={16} color="#d97706" />
@@ -404,7 +582,7 @@ export default function MetricasModal({
                       {p.esPesado ? `${Number(p.cantidad).toFixed(3)} kg vendidos` : `${Math.round(p.cantidad)} unids vendidas`}
                     </small>
                   </div>
-                  <strong style={styles.montoRanking}>${p.totalUSD.toFixed(2)}</strong>
+                  <strong style={styles.montoRanking}>{formatMonto(p.totalUSD)}</strong>
                 </div>
               ))}
             </div>
@@ -429,7 +607,7 @@ export default function MetricasModal({
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <strong style={{ fontSize: '0.78rem', color: '#0f2a4a' }}>{c.categoria}</strong>
                       <div style={{ textAlign: 'right' }}>
-                        <strong style={{ fontSize: '0.82rem', color: '#0052cc' }}>${c.totalUSD.toFixed(2)}</strong>
+                        <strong style={{ fontSize: '0.82rem', color: '#0052cc' }}>{formatMonto(c.totalUSD)}</strong>
                         <small style={{ color: '#64748b', fontSize: '0.66rem', marginLeft: '6px' }}>({porcentajeCat}%)</small>
                       </div>
                     </div>
@@ -443,6 +621,155 @@ export default function MetricasModal({
           )}
         </div>
       </main>
+
+      {/* MODAL INFORME EJECUTIVO AUDITABLE IMPRIMIBLE / WHATSAPP */}
+      {modalReporteEjecutivo && (
+        <div style={styles.overlayModal}>
+          <div style={styles.modalBoxInforme}>
+            <div style={styles.barraControlInforme}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle2 size={17} color="#00b050" />
+                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '800', color: '#0f2a4a' }}>
+                  Informe Financiero de Auditoría
+                </h3>
+              </div>
+              <button type="button" onClick={() => setModalReporteEjecutivo(false)} style={styles.btnCerrarX}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Documento Imprimible */}
+            <div id="area-informe-financiero" style={styles.papelInforme}>
+              <div style={{ textAlign: 'center', lineHeight: 1.35 }}>
+                {configEmpresa?.logo && (
+                  <img src={configEmpresa.logo} alt="Logo" style={styles.logoInforme} />
+                )}
+                <h3 style={{ margin: '0 0 2px 0', fontSize: '0.96rem', fontWeight: '900', color: '#0f2a4a' }}>
+                  {(configEmpresa?.nombre || 'FACILITO POS').toUpperCase()}
+                </h3>
+                {configEmpresa?.rif && <div style={{ fontSize: '0.66rem', color: '#475569' }}>RIF: {configEmpresa.rif}</div>}
+                {configEmpresa?.direccion && <div style={{ fontSize: '0.64rem', color: '#64748b' }}>{configEmpresa.direccion}</div>}
+                {configEmpresa?.telefono && <div style={{ fontSize: '0.64rem', color: '#64748b' }}>TEL: {configEmpresa.telefono}</div>}
+
+                <div style={styles.tagInformeTitulo}>
+                  ESTADO DE RENDIMIENTO Y RESULTADOS FINANCIEROS
+                </div>
+              </div>
+
+              <div style={styles.lineaDobleCorte} />
+
+              <div style={styles.infoMetaInforme}>
+                <div style={styles.filaMetaInforme}>
+                  <span>PERÍODO AUDITADO:</span>
+                  <strong>{vista === 'turno' ? 'TURNO ACTUAL' : periodoFiltro.toUpperCase()}</strong>
+                </div>
+                <div style={styles.filaMetaInforme}>
+                  <span>FECHA DE EMISIÓN:</span>
+                  <span>{new Date().toLocaleString()}</span>
+                </div>
+                <div style={styles.filaMetaInforme}>
+                  <span>EMITIDO POR:</span>
+                  <span>{usuarioActivo?.nombre || 'Angel Pantoja'} (Gerencia)</span>
+                </div>
+                <div style={styles.filaMetaInforme}>
+                  <span>TASA OFICIAL BCV:</span>
+                  <strong>Bs. {tasa.toFixed(2)} / USD</strong>
+                </div>
+              </div>
+
+              <div style={styles.lineaDobleCorte} />
+
+              {/* Renglones Financieros */}
+              <div style={styles.seccionResultados}>
+                <div style={styles.filaResultado}>
+                  <span>Ventas Brutas Facturadas ({ventasFiltradas.length} ops):</span>
+                  <strong>${ventaBrutaUSD.toFixed(2)}</strong>
+                </div>
+                <div style={styles.filaResultado}>
+                  <span>Costo de Mercancía Vendida (CMV):</span>
+                  <span style={{ color: '#dc2626' }}>-${costoTotalUSD.toFixed(2)}</span>
+                </div>
+                <div style={styles.filaResultado}>
+                  <span>Utilidad Bruta de Venta:</span>
+                  <strong>${gananciaBrutaUSD.toFixed(2)}</strong>
+                </div>
+
+                {totalGastosUSD > 0 && (
+                  <div style={styles.filaResultado}>
+                    <span>Deducción por Gastos Operativos:</span>
+                    <span style={{ color: '#dc2626' }}>-${totalGastosUSD.toFixed(2)}</span>
+                  </div>
+                )}
+
+                <div style={styles.lineaFina} />
+
+                <div style={styles.filaResultadoDestacada}>
+                  <span>UTILIDAD NETA REAL:</span>
+                  <span style={{ color: '#00b050' }}>+${gananciaNetaUSD.toFixed(2)}</span>
+                </div>
+                <div style={{ ...styles.filaResultadoDestacada, fontSize: '0.86rem', color: '#0052cc' }}>
+                  <span>EQUIVALENTE EN BOLÍVARES:</span>
+                  <span>Bs. {(gananciaNetaUSD * tasa).toFixed(2)}</span>
+                </div>
+                <div style={{ textAlign: 'right', fontSize: '0.66rem', color: '#64748b', marginTop: '2px' }}>
+                  Margen Neto sobre Ventas: <strong>{margenUtilidad}%</strong> · Ticket Promedio: <strong>${ticketPromedioUSD.toFixed(2)}</strong>
+                </div>
+              </div>
+
+              <div style={styles.lineaDobleCorte} />
+
+              {/* Desglose de Medios de Pago */}
+              <div style={{ fontSize: '0.68rem', color: '#0f2a4a' }}>
+                <strong style={{ display: 'block', marginBottom: '4px' }}>RECAUDO POR FORMA DE PAGO:</strong>
+                <div style={styles.filaResultado}>
+                  <span>• Efectivo Divisas ($):</span>
+                  <strong>${flujoMedios.usd.toFixed(2)}</strong>
+                </div>
+                <div style={styles.filaResultado}>
+                  <span>• Pago Móvil:</span>
+                  <strong>Bs. {(flujoMedios.pago_movil * tasa).toFixed(2)} (${flujoMedios.pago_movil.toFixed(2)})</strong>
+                </div>
+                <div style={styles.filaResultado}>
+                  <span>• Punto Débito:</span>
+                  <strong>Bs. {(flujoMedios.punto * tasa).toFixed(2)} (${flujoMedios.punto.toFixed(2)})</strong>
+                </div>
+                <div style={styles.filaResultado}>
+                  <span>• Efectivo Bolívares:</span>
+                  <strong>Bs. {(flujoMedios.bs_efectivo * tasa).toFixed(2)} (${flujoMedios.bs_efectivo.toFixed(2)})</strong>
+                </div>
+                {flujoMedios.credito > 0 && (
+                  <div style={styles.filaResultado}>
+                    <span>• Cuentas por Cobrar (Crédito):</span>
+                    <strong style={{ color: '#dc2626' }}>${flujoMedios.credito.toFixed(2)}</strong>
+                  </div>
+                )}
+              </div>
+
+              <div style={styles.lineaDobleCorte} />
+
+              <div style={{ textAlign: 'center', fontSize: '0.64rem', color: '#64748b' }}>
+                <ShieldCheck size={13} color="#00b050" style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+                <span>Documento Financiero Certificado para Auditoría y Contabilidad</span>
+              </div>
+            </div>
+
+            {/* Acciones */}
+            <div style={styles.accionesInformeFila}>
+              <button type="button" onClick={() => window.print()} style={styles.btnImprimirInforme}>
+                <Printer size={15} />
+                <span>Imprimir Informe</span>
+              </button>
+              <button type="button" onClick={compartirReporteEjecutivoWhatsApp} style={styles.btnWhatsAppInforme}>
+                <Share2 size={15} />
+                <span>WhatsApp</span>
+              </button>
+              <button type="button" onClick={() => setModalReporteEjecutivo(false)} style={styles.btnListoInforme}>
+                <span>Cerrar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -482,17 +809,19 @@ const styles = {
     fontWeight: '800',
     color: '#0f2a4a'
   },
-  btnExportarTop: {
+  switchMonedaBox: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    backgroundColor: '#f0fdf4',
-    color: '#00b050',
-    border: '1px solid #bbf7d0',
+    backgroundColor: '#f1f5f9',
     borderRadius: '8px',
-    padding: '6px 10px',
+    padding: '2px',
+    border: '1px solid #e2e8f0'
+  },
+  btnMonedaSwitch: {
+    border: 'none',
+    borderRadius: '6px',
+    padding: '4px 8px',
     fontSize: '0.72rem',
-    fontWeight: 'bold',
+    fontWeight: '900',
     cursor: 'pointer'
   },
   tabsFila: {
@@ -591,73 +920,62 @@ const styles = {
     lineHeight: 1.1,
     margin: '3px 0'
   },
-  cifraGananciaBS: {
-    fontSize: '0.88rem',
+  cifraSecundaria: {
+    fontSize: '0.84rem',
     fontWeight: '700',
     color: '#bfdbfe'
   },
+  filaPillsGanancia: {
+    display: 'flex',
+    gap: '6px',
+    justifyContent: 'center',
+    marginTop: '8px',
+    flexWrap: 'wrap'
+  },
   pillMargen: {
-    display: 'inline-block',
-    marginTop: '6px',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: '10px',
-    padding: '3px 10px',
-    fontSize: '0.7rem',
+    borderRadius: '8px',
+    padding: '3px 8px',
+    fontSize: '0.68rem',
     color: '#e2e8f0'
   },
-  gridSecundario: {
+  pillTicketMedio: {
+    backgroundColor: 'rgba(0, 176, 80, 0.2)',
+    borderRadius: '8px',
+    padding: '3px 8px',
+    fontSize: '0.68rem',
+    color: '#bbf7d0'
+  },
+  gridKpis: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     gap: '8px'
   },
-  cardDetalle: {
+  cardKpi: {
     backgroundColor: '#fff',
-    borderRadius: '14px',
-    padding: '10px 12px',
+    borderRadius: '12px',
+    padding: '9px 10px',
     border: '1px solid #e2e8f0'
   },
-  subLabelDetalle: {
+  kpiLabel: {
     color: '#64748b',
-    fontSize: '0.68rem',
+    fontSize: '0.66rem',
     fontWeight: 'bold'
   },
-  valorCardSec: {
-    fontSize: '1.2rem',
+  kpiValor: {
+    fontSize: '1.05rem',
     fontWeight: '900',
     color: '#0f2a4a',
     display: 'block',
-    margin: '2px 0'
+    margin: '1px 0'
   },
-  textoPieDetalle: {
-    fontSize: '0.66rem',
+  kpiSub: {
+    fontSize: '0.64rem',
     color: '#94a3b8'
-  },
-  cajaDescargaReporte: {
-    backgroundColor: '#fff',
-    borderRadius: '14px',
-    padding: '10px 12px',
-    border: '1px solid #e2e8f0',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '10px'
-  },
-  btnDescargarExcel: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '5px',
-    backgroundColor: '#0f2a4a',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    padding: '8px 12px',
-    fontSize: '0.74rem',
-    fontWeight: 'bold',
-    cursor: 'pointer'
   },
   seccionCard: {
     backgroundColor: '#fff',
-    borderRadius: '16px',
+    borderRadius: '14px',
     padding: '12px',
     border: '1px solid #e2e8f0'
   },
@@ -667,10 +985,79 @@ const styles = {
     gap: '6px',
     marginBottom: '8px'
   },
+  gridMediosCobro: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '5px'
+  },
+  itemMedioRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '6px 8px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '8px',
+    border: '1px solid #f1f5f9'
+  },
+  iconoMiniMedio: {
+    width: '22px',
+    height: '22px',
+    borderRadius: '6px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cardValoracionInventario: {
+    backgroundColor: '#eff6ff',
+    borderRadius: '14px',
+    padding: '12px',
+    border: '1px solid #bfdbfe'
+  },
+  gridInventarioValores: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '6px'
+  },
+  cajaExportacionPremium: {
+    display: 'flex',
+    gap: '8px'
+  },
+  btnReporteFormal: {
+    flex: 1.2,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '5px',
+    backgroundColor: '#0f2a4a',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    padding: '10px',
+    fontSize: '0.76rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(15, 42, 74, 0.2)'
+  },
+  btnExcelCSV: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '5px',
+    backgroundColor: '#00b050',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    padding: '10px',
+    fontSize: '0.76rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(0, 176, 80, 0.2)'
+  },
   vacioText: {
     textAlign: 'center',
-    padding: '14px',
-    fontSize: '0.76rem',
+    padding: '12px',
+    fontSize: '0.74rem',
     color: '#94a3b8'
   },
   listaRanking: {
@@ -736,5 +1123,157 @@ const styles = {
     height: '100%',
     backgroundColor: '#0052cc',
     borderRadius: '3px'
+  },
+  overlayModal: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backdropFilter: 'blur(3px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '12px',
+    zIndex: 99999999
+  },
+  modalBoxInforme: {
+    backgroundColor: '#ffffff',
+    borderRadius: '24px',
+    maxWidth: '370px',
+    width: '100%',
+    height: '92vh',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 25px 60px rgba(0,0,0,0.35)',
+    overflow: 'hidden'
+  },
+  barraControlInforme: {
+    padding: '12px 14px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottom: '1px solid #f1f5f9',
+    backgroundColor: '#ffffff',
+    flexShrink: 0
+  },
+  btnCerrarX: {
+    background: '#f1f5f9',
+    border: 'none',
+    borderRadius: '50%',
+    width: '28px',
+    height: '28px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: '#64748b'
+  },
+  papelInforme: {
+    flex: 1,
+    overflowY: 'auto',
+    backgroundColor: '#ffffff',
+    padding: '14px 14px 20px 14px',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontSize: '0.72rem',
+    color: '#0f172a'
+  },
+  logoInforme: {
+    maxHeight: '48px',
+    maxWidth: '120px',
+    objectFit: 'contain',
+    marginBottom: '6px'
+  },
+  tagInformeTitulo: {
+    display: 'inline-block',
+    fontSize: '0.64rem',
+    color: '#0f2a4a',
+    fontWeight: '900',
+    marginTop: '4px',
+    backgroundColor: '#eff6ff',
+    padding: '2px 8px',
+    borderRadius: '6px'
+  },
+  lineaDobleCorte: {
+    borderTop: '2px dashed #94a3b8',
+    margin: '8px 0'
+  },
+  lineaFina: {
+    borderTop: '1px solid #e2e8f0',
+    margin: '6px 0'
+  },
+  infoMetaInforme: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    fontSize: '0.68rem',
+    color: '#1e293b'
+  },
+  filaMetaInforme: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'baseline'
+  },
+  seccionResultados: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px'
+  },
+  filaResultado: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.7rem'
+  },
+  filaResultadoDestacada: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '1rem',
+    fontWeight: '900'
+  },
+  accionesInformeFila: {
+    padding: '10px 14px 14px 14px',
+    backgroundColor: '#ffffff',
+    borderTop: '1px solid #f1f5f9',
+    display: 'flex',
+    gap: '6px',
+    flexShrink: 0
+  },
+  btnImprimirInforme: {
+    flex: 1,
+    padding: '10px',
+    backgroundColor: '#0f2a4a',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px'
+  },
+  btnWhatsAppInforme: {
+    flex: 1.2,
+    padding: '10px',
+    backgroundColor: '#00b050',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px'
+  },
+  btnListoInforme: {
+    padding: '10px 14px',
+    backgroundColor: '#f1f5f9',
+    color: '#0f2a4a',
+    border: '1px solid #cbd5e1',
+    borderRadius: '10px',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    cursor: 'pointer'
   }
 };

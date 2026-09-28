@@ -790,6 +790,7 @@ export default function App() {
         />
       )}
 
+      {/* CAJA Y CUADRE Z */}
       {vistaActual === 'caja' && (
         <CajaModal 
           transacciones={transacciones}
@@ -805,6 +806,7 @@ export default function App() {
         />
       )}
 
+      {/* HISTORIAL GLOBAL */}
       {vistaActual === 'historial' && (
         <HistorialModal 
           transacciones={transacciones}
@@ -817,13 +819,16 @@ export default function App() {
         />
       )}
 
-      {/* MÉTRICAS Y RENDIMIENTO CON FUENTES INDEPENDIENTES */}
+      {/* RENDIMIENTO Y FINANZAS EJECUTIVO */}
       {vistaActual === 'metricas' && esDueno && (
         <MetricasModal 
           transaccionesTurno={transacciones}
           historicoGlobal={historicoVentasGlobal}
+          gastos={gastosCaja}
           productos={productos}
           tasaCambio={tasaCambio}
+          configEmpresa={configEmpresa}
+          usuarioActivo={usuarioActivo}
           alVolver={() => setVistaActual('pos')}
         />
       )}
@@ -1129,7 +1134,7 @@ const styles = {
   subtextHeader: { fontSize: '0.72rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   tasaChip: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc', padding: '5px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
   btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
-  inputTasaMini: { width: '64px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.78rem', color: '#0f172a', outline: 'none' },
+  inputTasaMini: { width: '64px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.78rem', color: '#0f2a4a', outline: 'none' },
   barraClienteMostrador: { backgroundColor: '#fff', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', gap: '8px', flexShrink: 0 },
   inputDocMostrador: { border: 'none', background: '#f1f5f9', padding: '6px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', width: '130px', outline: 'none' },
   nombreClienteTag: { fontSize: '0.78rem', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' },
