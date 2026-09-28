@@ -28,7 +28,10 @@ export const dbService = {
   async registrarNegocio(negocio, dueno) {
     if (!supabase) return false;
     try {
-      await supabase.from('negocios').upsert([negocio]);
+      await supabase.from('negocios').upsert([{
+        id: negocio.id,
+        nombre: negocio.nombre
+      }]);
       await supabase.from('usuarios').upsert([{
         id: dueno.id,
         negocio_id: negocio.id,
@@ -79,17 +82,20 @@ export const dbService = {
   async actualizarConfigNegocio(negocioId, datosConfig) {
     if (!supabase || !negocioId) return false;
     try {
+      const updateData = {
+        nombre: datosConfig.nombre,
+        rif: datosConfig.rif || null,
+        direccion: datosConfig.direccion || null,
+        telefono: datosConfig.telefono || null,
+        logo: datosConfig.logo || null,
+        mensaje_pie: datosConfig.mensajePie || null
+      };
+
       const { error } = await supabase
         .from('negocios')
-        .update({
-          nombre: datosConfig.nombre,
-          rif: datosConfig.rif,
-          direccion: datosConfig.direccion,
-          telefono: datosConfig.telefono,
-          logo_url: datosConfig.logo || null,
-          mensaje_pie: datosConfig.mensajePie
-        })
+        .update(updateData)
         .eq('id', negocioId);
+
       return !error;
     } catch (e) {
       return false;
@@ -153,7 +159,7 @@ export const dbService = {
       if (error || !data) return [];
       return data.map(p => ({
         id: String(p.id),
-        codigo: p.codigo,
+        codigo: p.codigo_barras || '',
         nombre: p.nombre,
         costoUSD: Number(p.costo_usd || 0),
         precioUSD: Number(p.precio_usd || 0),
@@ -162,8 +168,8 @@ export const dbService = {
         precioMayorUSD: Number(p.precio_mayor_usd || 0),
         cantMinimaMayor: Number(p.cant_minima_mayor || 3),
         stock: Number(p.stock || 0),
-        categoria: p.categoria || 'General',
-        imagen: p.imagen_url || ''
+        categoria: p.departamento || 'General',
+        imagen: p.imagen || ''
       }));
     } catch (e) {
       return [];
@@ -176,7 +182,7 @@ export const dbService = {
       const payload = {
         id: String(prod.id),
         negocio_id: negocioId,
-        codigo: String(prod.codigo || '').trim(),
+        codigo_barras: String(prod.codigo || '').trim(),
         nombre: prod.nombre,
         costo_usd: Number(prod.costoUSD || 0),
         precio_usd: Number(prod.precioUSD || 0),
@@ -185,8 +191,8 @@ export const dbService = {
         precio_mayor_usd: Number(prod.precioMayorUSD || 0),
         cant_minima_mayor: Number(prod.cantMinimaMayor || 3),
         stock: Number(prod.stock || 0),
-        categoria: prod.categoria || 'General',
-        imagen_url: prod.imagen || ''
+        departamento: prod.categoria || 'General',
+        imagen: prod.imagen || ''
       };
 
       const { error } = await supabase.from('productos').upsert([payload]);
