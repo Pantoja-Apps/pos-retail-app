@@ -15,7 +15,8 @@ export default function LoginModal({
   alVincularTerminalPorCodigo,
   alDesvincularTerminal
 }) {
-  const [pestana, setPestana] = useState(() => (cajeros.length > 0 ? 'cajeros' : 'dueno'));
+  // Predeterminado siempre en Acceso Dueño
+  const [pestana, setPestana] = useState('dueno');
   const [esRegistro, setEsRegistro] = useState(!cuentaMaster);
 
   // Estados Dueño
@@ -154,7 +155,7 @@ export default function LoginModal({
           </button>
         </div>
 
-        {/* VISTA 1: ACCESO DUEÑO */}
+        {/* VISTA 1: ACCESO DUEÑO (PREDETERMINADA) */}
         {pestana === 'dueno' && (
           <form onSubmit={manejarSubmitDueno} style={styles.formularioDueno}>
             {errorLogin && <div style={styles.alertaError}>{errorLogin}</div>}
