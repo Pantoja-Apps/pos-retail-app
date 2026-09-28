@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ArrowLeft, Receipt, DollarSign, Smartphone, CreditCard, Banknote, 
-  MinusCircle, PlusCircle, CheckCircle2, AlertCircle, Printer, X
+  MinusCircle, CheckCircle2, X, Printer, Share2, ShieldCheck, AlertCircle
 } from 'lucide-react';
 
 export default function CajaModal({
@@ -18,25 +18,25 @@ export default function CajaModal({
 }) {
   const [pestana, setPestana] = useState('arqueo'); // 'arqueo' | 'gastos'
   const [modalGastoAbierto, setModalGastoAbierto] = useState(false);
+  const [reporteZGenerado, setReporteZGenerado] = useState(null);
+
+  // Formulario de Gasto
   const [descripcionGasto, setDescripcionGasto] = useState('');
-  const [montoGastoUSD, setMontoGastoUSD] = useState('');
-  const [monedaGasto, setMonedaGasto] = useState('USD');
+  const [origenGasto, setOrigenGasto] = useState('efectivo_bs'); // 'efectivo_bs' | 'efectivo_usd' | 'pago_movil'
+  const [montoGasto, setMontoGasto] = useState('');
 
   const tasa = Number(tasaCambio) || 1;
 
-  // Filtrar ventas del turno actual (por usuario activo o todas las de la sesión)
-  const ventasTurno = transacciones.filter(t => {
-    if (!usuarioActivo) return true;
-    return !t.cajero || t.cajero === usuarioActivo.nombre || usuarioActivo.rol === 'dueno';
-  });
+  // Filtrar ventas del turno actual (no anuladas)
+  const ventasTurno = transacciones.filter(t => !t.anulada);
 
-  // Cálculos de Totales por Método de Pago
+  // Totales de Ventas del Turno
   let totalVentasUSD = 0;
   let totalVentasBS = 0;
-  let efectivoUSD = 0;
-  let efectivoBS = 0;
-  let pagoMovilBS = 0;
-  let puntoVentaBS = 0;
+  let ventasEfectivoUSD = 0;
+  let ventasEfectivoBS = 0;
+  let ventasPagoMovilBS = 0;
+  let ventasPuntoBS = 0;
 
   ventasTurno.forEach(v => {
     const usd = Number(v.totalUSD || 0);
@@ -44,60 +44,141 @@ export default function CajaModal({
     totalVentasUSD += usd;
     totalVentasBS += bs;
 
-    const met = (v.metodoPago || '').toLowerCase();
-    if (met.includes('usd') || met === 'efectivo_usd') {
-      efectivoUSD += usd;
-    } else if (met.includes('efectivo_bs') || met === 'efectivo_bs') {
-      efectivoBS += bs;
-    } else if (met.includes('movil') || met === 'pago_movil') {
-      pagoMovilBS += bs;
-    } else if (met.includes('punto') || met === 'tarjeta' || met === 'punto_venta') {
-      puntoVentaBS += bs;
+    if (Array.isArray(v.pagos) && v.pagos.length > 0) {
+      v.pagos.forEach(p => {
+        const met = (p.metodo || '').toLowerCase();
+        if (met.includes('usd') || met.includes('$')) {
+          ventasEfectivoUSD += Number(p.montoUSD || p.monto || 0);
+        } else if (met.includes('móvil') || met.includes('movil')) {
+          ventasPagoMovilBS += Number(p.montoBS || p.monto || 0);
+        } else if (met.includes('punto') || met.includes('tarjeta')) {
+          ventasPuntoBS += Number(p.montoBS || p.monto || 0);
+        } else {
+          ventasEfectivoBS += Number(p.montoBS || p.monto || 0);
+        }
+      });
     } else {
-      // Si tiene desglose de pagos múltiples
-      if (Array.isArray(v.pagos)) {
-        v.pagos.forEach(p => {
-          const pMet = (p.metodo || '').toLowerCase();
-          if (pMet.includes('usd')) efectivoUSD += Number(p.montoUSD || 0);
-          else if (pMet.includes('movil')) pagoMovilBS += Number(p.montoBS || 0);
-          else if (pMet.includes('punto')) puntoVentaBS += Number(p.montoBS || 0);
-          else efectivoBS += Number(p.montoBS || 0);
-        });
-      } else {
-        efectivoUSD += usd;
-      }
+      const met = (v.metodoPago || '').toLowerCase();
+      if (met.includes('usd') || met === 'efectivo_usd') ventasEfectivoUSD += usd;
+      else if (met.includes('movil') || met === 'pago_movil') ventasPagoMovilBS += bs;
+      else if (met.includes('punto') || met === 'punto_venta') ventasPuntoBS += bs;
+      else ventasEfectivoBS += bs;
     }
   });
 
-  // Gastos
-  const totalGastosUSD = gastos.reduce((acc, g) => acc + Number(g.montoUSD || 0), 0);
-  const totalGastosBS = gastos.reduce((acc, g) => acc + Number(g.montoBS || 0), 0);
+  // Gastos discriminados por origen de fondo real
+  let gastosEfectivoUSD = 0;
+  let gastosEfectivoBS = 0;
+  let gastosPagoMovilBS = 0;
 
-  const efectivoFisicoNetoUSD = Math.max(0, efectivoUSD - totalGastosUSD);
-  const efectivoFisicoNetoBS = Math.max(0, efectivoBS - totalGastosBS);
+  gastos.forEach(g => {
+    const origen = g.origen || (g.moneda === 'USD' ? 'efectivo_usd' : 'efectivo_bs');
+    const m = Number(g.monto || g.montoBS || g.montoUSD || 0);
 
-  const guardarGasto = (e) => {
+    if (origen === 'efectivo_usd') {
+      gastosEfectivoUSD += Number(g.montoUSD || m);
+    } else if (origen === 'pago_movil') {
+      gastosPagoMovilBS += Number(g.montoBS || m);
+    } else {
+      gastosEfectivoBS += Number(g.montoBS || m);
+    }
+  });
+
+  // Saldos Netos en Gaveta y Banco
+  const efectivoNetoUSD = Math.max(0, ventasEfectivoUSD - gastosEfectivoUSD);
+  const efectivoNetoBS = Math.max(0, ventasEfectivoBS - gastosEfectivoBS);
+  const pagoMovilNetoBS = Math.max(0, ventasPagoMovilBS - gastosPagoMovilBS);
+  const saldoDigitalNetoBS = pagoMovilNetoBS + ventasPuntoBS;
+
+  const registrarNuevoGasto = (e) => {
     e.preventDefault();
-    const val = parseFloat(montoGastoUSD) || 0;
-    if (val <= 0 || !descripcionGasto.trim()) return alert('Ingresa descripción y monto válidos');
+    const val = parseFloat(montoGasto) || 0;
+    if (val <= 0 || !descripcionGasto.trim()) {
+      return alert('Ingresa una descripción y un monto válido mayor a 0');
+    }
 
     const nuevoGasto = {
       id: 'gst_' + Date.now(),
       descripcion: descripcionGasto.trim(),
-      montoUSD: monedaGasto === 'USD' ? val : (val / tasa),
-      montoBS: monedaGasto === 'BS' ? val : (val * tasa),
-      hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      usuario: usuarioActivo?.nombre || 'Usuario'
+      origen: origenGasto,
+      monto: val,
+      montoUSD: origenGasto === 'efectivo_usd' ? val : (val / tasa),
+      montoBS: origenGasto === 'efectivo_usd' ? (val * tasa) : val,
+      hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+      usuario: usuarioActivo?.nombre || 'Angel Pantoja'
     };
 
     if (alRegistrarGasto) alRegistrarGasto(nuevoGasto);
     setDescripcionGasto('');
-    setMontoGastoUSD('');
+    setMontoGasto('');
     setModalGastoAbierto(false);
+  };
+
+  const ejecutarCierreTurno = () => {
+    const datosReporte = {
+      fechaHora: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+      cajero: usuarioActivo?.nombre || 'Angel Pantoja',
+      caja: cajaActiva?.nombre || 'Caja 01',
+      totalVentasUSD,
+      totalVentasBS,
+      ventasEfectivoUSD,
+      ventasEfectivoBS,
+      ventasPagoMovilBS,
+      ventasPuntoBS,
+      gastosEfectivoUSD,
+      gastosEfectivoBS,
+      gastosPagoMovilBS,
+      efectivoNetoUSD,
+      efectivoNetoBS,
+      pagoMovilNetoBS,
+      ventasCount: ventasTurno.length,
+      gastosCount: gastos.length,
+      tasa
+    };
+
+    setReporteZGenerado(datosReporte);
+  };
+
+  const compartirReporteWhatsApp = () => {
+    if (!reporteZGenerado) return;
+    const r = reporteZGenerado;
+
+    let t = `*📊 REPORTE DE CIERRE DE CAJA (Z)*\n`;
+    t += `*${(configEmpresa?.nombre || 'FACILITO POS').toUpperCase()}*\n`;
+    t += `--------------------------------\n`;
+    t += `Fecha: ${r.fechaHora}\n`;
+    t += `Responsable: ${r.cajero} · ${r.caja}\n`;
+    t += `Total Ventas: ${r.ventasCount} ticket(s)\n`;
+    t += `--------------------------------\n`;
+    t += `*VENTAS TOTALES DEL TURNO:*\n`;
+    t += `  • Total USD: $${r.totalVentasUSD.toFixed(2)}\n`;
+    t += `  • Total Bs:  Bs. ${r.totalVentasBS.toFixed(2)}\n`;
+    t += `--------------------------------\n`;
+    t += `*EFECTIVO FÍSICO EN GAVETA (NETO):*\n`;
+    t += `  • Dólares ($):   $${r.efectivoNetoUSD.toFixed(2)}\n`;
+    t += `  • Bolívares (Bs): Bs. ${r.efectivoNetoBS.toFixed(2)}\n`;
+    t += `--------------------------------\n`;
+    t += `*RECAUDO BANCARIO (DIGITAL):*\n`;
+    t += `  • Pago Móvil:    Bs. ${r.pagoMovilNetoBS.toFixed(2)}\n`;
+    t += `  • Punto Débito:  Bs. ${r.ventasPuntoBS.toFixed(2)}\n`;
+    t += `--------------------------------\n`;
+    t += `Salidas / Gastos del turno: ${r.gastosCount}\n`;
+    t += `Tasa BCV de Cierre: Bs. ${r.tasa.toFixed(2)}\n`;
+    t += `--------------------------------\n`;
+
+    const url = `https://wa.me/?text=${encodeURIComponent(t)}`;
+    window.open(url, '_blank');
+  };
+
+  const finalizarCierreDefinitivo = () => {
+    if (alCerrarTurno) alCerrarTurno();
+    setReporteZGenerado(null);
+    alVolver();
   };
 
   return (
     <div style={styles.contenedor} translate="no">
+      {/* Cabecera */}
       <header style={styles.header}>
         <button type="button" onClick={alVolver} style={styles.btnAtras}>
           <ArrowLeft size={18} />
@@ -105,16 +186,16 @@ export default function CajaModal({
         <div style={{ flex: 1, textAlign: 'center' }}>
           <h2 style={styles.tituloHeader}>Caja y Cuadre de Turno (Z)</h2>
           <small style={{ color: '#64748b', fontSize: '0.72rem' }}>
-            Responsable: <strong>{usuarioActivo?.nombre || 'Admin'}</strong> · {cajaActiva?.nombre || 'Caja 01'}
+            Responsable: <strong>{usuarioActivo?.nombre || 'Angel Pantoja'}</strong> · {cajaActiva?.nombre || 'Caja 01'}
           </small>
         </div>
-        <button type="button" onClick={() => setModalGastoAbierto(true)} style={styles.btnGastoTop}>
+        <button type="button" onClick={() => setModalGastoAbierto(true)} style={styles.btnRegistrarGastoTop}>
           <MinusCircle size={14} />
           <span>Registrar Gasto</span>
         </button>
       </header>
 
-      {/* Pestañas Arqueo / Gastos */}
+      {/* Tabs */}
       <div style={styles.tabsFila}>
         <button
           type="button"
@@ -125,7 +206,7 @@ export default function CajaModal({
             color: pestana === 'arqueo' ? '#0052cc' : '#64748b'
           }}
         >
-          <Receipt size={16} />
+          <Receipt size={15} />
           <span>Arqueo de Caja (Z)</span>
         </button>
         <button
@@ -137,192 +218,324 @@ export default function CajaModal({
             color: pestana === 'gastos' ? '#0052cc' : '#64748b'
           }}
         >
-          <MinusCircle size={16} />
+          <MinusCircle size={15} />
           <span>Salidas y Gastos ({gastos.length})</span>
         </button>
       </div>
 
       <main style={styles.cuerpo}>
         {pestana === 'arqueo' && (
-          <div style={styles.seccionArqueo}>
-            {/* Tarjeta Resumen Total Ventas */}
-            <div style={styles.cardTotalVentas}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Tarjeta Ventas del Turno */}
+            <div style={styles.tarjetaVentasTurno}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 'bold', color: '#0f2a4a' }}>VENTAS DE TU TURNO</span>
+                <span style={styles.etiquetaTotalVentas}>VENTAS DE TU TURNO</span>
                 <span style={styles.badgeVentasCount}>{ventasTurno.length} ventas</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '4px' }}>
                 <div>
-                  <small style={{ fontSize: '0.68rem', color: '#64748b' }}>Total Divisa ($)</small>
-                  <div style={styles.montoPrincipalUSD}>${totalVentasUSD.toFixed(2)}</div>
+                  <small style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Total Divisa ($)</small>
+                  <div style={styles.cifraUSD}>${totalVentasUSD.toFixed(2)}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <small style={{ fontSize: '0.68rem', color: '#64748b' }}>Total en Bolívares</small>
-                  <div style={styles.montoPrincipalBS}>Bs. {totalVentasBS.toFixed(2)}</div>
+                  <small style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Total en Bolívares</small>
+                  <div style={styles.cifraBS}>Bs. {totalVentasBS.toFixed(2)}</div>
                 </div>
               </div>
             </div>
 
             {/* Efectivo Físico en Gaveta */}
-            <div style={styles.bloqueMetodos}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <strong style={{ fontSize: '0.84rem', color: '#0f2a4a' }}>Efectivo Físico en Gaveta</strong>
-                <span style={{ fontSize: '0.7rem', color: '#00b050', fontWeight: 'bold' }}>Billetes Físicos</span>
+            <div style={styles.bloqueSeccion}>
+              <div style={styles.encabezadoBloque}>
+                <strong style={{ fontSize: '0.82rem', color: '#0f2a4a' }}>Efectivo Físico en Gaveta</strong>
+                <span style={{ fontSize: '0.68rem', color: '#00b050', fontWeight: 'bold' }}>Billetes Físicos</span>
               </div>
 
               <div style={styles.gridGaveta}>
-                <div style={styles.itemGavetaCard}>
-                  <small style={{ color: '#64748b', fontSize: '0.7rem' }}>Dólares en Efectivo ($)</small>
-                  <strong style={{ fontSize: '1.25rem', color: '#00b050', display: 'block', margin: '3px 0' }}>
-                    ${efectivoFisicoNetoUSD.toFixed(2)}
+                {/* Dólares Físicos */}
+                <div style={styles.tarjetaGaveta}>
+                  <small style={{ color: '#64748b', fontSize: '0.68rem' }}>Dólares en Efectivo ($)</small>
+                  <strong style={{ fontSize: '1.25rem', color: '#00b050', display: 'block', margin: '2px 0' }}>
+                    ${efectivoNetoUSD.toFixed(2)}
                   </strong>
-                  <div style={{ fontSize: '0.64rem', color: '#94a3b8' }}>
-                    Cobrado: ${efectivoUSD.toFixed(2)} | Gastos: -${totalGastosUSD.toFixed(2)}
+                  <div style={{ fontSize: '0.62rem', color: '#94a3b8' }}>
+                    Cobrado: ${ventasEfectivoUSD.toFixed(2)} \vert{} Gastos: -${gastosEfectivoUSD.toFixed(2)}
                   </div>
                 </div>
 
-                <div style={styles.itemGavetaCard}>
-                  <small style={{ color: '#64748b', fontSize: '0.7rem' }}>Bolívares en Efectivo (Bs)</small>
-                  <strong style={{ fontSize: '1.25rem', color: '#0052cc', display: 'block', margin: '3px 0' }}>
-                    Bs. {efectivoFisicoNetoBS.toFixed(2)}
+                {/* Bolívares Físicos */}
+                <div style={styles.tarjetaGaveta}>
+                  <small style={{ color: '#64748b', fontSize: '0.68rem' }}>Bolívares en Efectivo (Bs)</small>
+                  <strong style={{ fontSize: '1.25rem', color: '#0052cc', display: 'block', margin: '2px 0' }}>
+                    Bs. {efectivoNetoBS.toFixed(2)}
                   </strong>
-                  <div style={{ fontSize: '0.64rem', color: '#94a3b8' }}>
-                    Cobrado: Bs. {efectivoBS.toFixed(2)} | Gastos: -Bs. {totalGastosBS.toFixed(2)}
+                  <div style={{ fontSize: '0.62rem', color: '#94a3b8' }}>
+                    Cobrado: Bs. {ventasEfectivoBS.toFixed(2)} | Gastos: -Bs. {gastosEfectivoBS.toFixed(2)}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Recaudo Digital / Bancario */}
-            <div style={styles.bloqueMetodos}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <strong style={{ fontSize: '0.84rem', color: '#0f2a4a' }}>Recaudo Bancario (Digital)</strong>
-                <span style={{ fontSize: '0.7rem', color: '#0052cc', fontWeight: 'bold' }}>
-                  Saldo Neto: Bs. {(pagoMovilBS + puntoVentaBS).toFixed(2)}
+            {/* Recaudo Bancario Digital */}
+            <div style={styles.bloqueSeccion}>
+              <div style={styles.encabezadoBloque}>
+                <strong style={{ fontSize: '0.82rem', color: '#0f2a4a' }}>Recaudo Bancario (Digital)</strong>
+                <span style={{ fontSize: '0.68rem', color: '#0052cc', fontWeight: 'bold' }}>
+                  Saldo Neto: Bs. {saldoDigitalNetoBS.toFixed(2)}
                 </span>
               </div>
 
               <div style={styles.filaBancaria}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Smartphone size={17} color="#0052cc" />
-                  <span style={{ fontSize: '0.78rem', color: '#334155', fontWeight: '600' }}>Pago Móvil Recibido:</span>
+                  <Smartphone size={16} color="#0052cc" />
+                  <span style={{ fontSize: '0.76rem', color: '#334155', fontWeight: '600' }}>Pago Móvil Recibido:</span>
                 </div>
-                <strong style={{ fontSize: '0.86rem', color: '#0f2a4a' }}>Bs. {pagoMovilBS.toFixed(2)}</strong>
+                <div style={{ textAlign: 'right' }}>
+                  <strong style={{ fontSize: '0.84rem', color: '#0f2a4a' }}>Bs. {pagoMovilNetoBS.toFixed(2)}</strong>
+                  {gastosPagoMovilBS > 0 && (
+                    <small style={{ display: 'block', fontSize: '0.6rem', color: '#dc2626' }}>
+                      (Gastos: -Bs. {gastosPagoMovilBS.toFixed(2)})
+                    </small>
+                  )}
+                </div>
               </div>
 
               <div style={{ ...styles.filaBancaria, marginTop: '6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <CreditCard size={17} color="#d97706" />
-                  <span style={{ fontSize: '0.78rem', color: '#334155', fontWeight: '600' }}>Punto de Venta (Tarjetas):</span>
+                  <CreditCard size={16} color="#7c3aed" />
+                  <span style={{ fontSize: '0.76rem', color: '#334155', fontWeight: '600' }}>Punto de Venta (Tarjetas):</span>
                 </div>
-                <strong style={{ fontSize: '0.86rem', color: '#0f2a4a' }}>Bs. {puntoVentaBS.toFixed(2)}</strong>
+                <strong style={{ fontSize: '0.84rem', color: '#0f2a4a' }}>Bs. {ventasPuntoBS.toFixed(2)}</strong>
               </div>
             </div>
 
-            {/* Botón de Cierre de Turno */}
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('¿Cerrar turno e imprimir reporte de Cierre Z?')) {
-                  if (alCerrarTurno) alCerrarTurno();
-                }
-              }}
-              style={styles.btnCerrarTurno}
-            >
+            {/* Botón Cerrar Turno */}
+            <button type="button" onClick={ejecutarCierreTurno} style={styles.btnCerrarTurno}>
               <CheckCircle2 size={18} />
               <span>Cerrar Turno e Imprimir Reporte Z</span>
             </button>
           </div>
         )}
 
+        {/* Pestaña Gastos */}
         {pestana === 'gastos' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {gastos.length === 0 ? (
-              <div style={styles.vacioGastos}>
-                <MinusCircle size={36} color="#cbd5e1" />
-                <p style={{ margin: '6px 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>No hay salidas de dinero registradas en este turno.</p>
+              <div style={styles.vacioBox}>
+                <MinusCircle size={38} color="#cbd5e1" />
+                <p style={{ margin: '6px 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                  No hay salidas ni gastos registrados en este turno.
+                </p>
               </div>
             ) : (
-              gastos.map((g) => (
-                <div key={g.id} style={styles.cardGastoItem}>
-                  <div style={{ flex: 1 }}>
-                    <strong style={{ fontSize: '0.84rem', color: '#0f2a4a' }}>{g.descripcion}</strong>
-                    <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                      {g.hora} · Por {g.usuario}
+              gastos.map((g) => {
+                const origenTexto = g.origen === 'efectivo_usd' ? 'Efectivo ($)' : 
+                                    g.origen === 'pago_movil' ? 'Pago Móvil (Bs)' : 'Efectivo (Bs)';
+                const montoMostrar = g.origen === 'efectivo_usd'
+                  ? `-$${Number(g.monto || g.montoUSD).toFixed(2)}`
+                  : `-Bs. ${Number(g.monto || g.montoBS).toFixed(2)}`;
+
+                return (
+                  <div key={g.id} style={styles.cardGastoItem}>
+                    <div style={{ flex: 1 }}>
+                      <strong style={{ fontSize: '0.82rem', color: '#0f2a4a' }}>{g.descripcion}</strong>
+                      <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                        {g.hora} · Retirado de: <strong>{origenTexto}</strong>
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#dc2626' }}>
-                      -${Number(g.montoUSD).toFixed(2)}
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#dc2626' }}>
+                        {montoMostrar}
+                      </div>
+                      <small style={{ fontSize: '0.64rem', color: '#94a3b8' }}>
+                        Equiv: ${Number(g.montoUSD || 0).toFixed(2)}
+                      </small>
                     </div>
-                    <small style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                      Bs. {Number(g.montoBS).toFixed(2)}
-                    </small>
+                    <button type="button" onClick={() => alEliminarGasto(g.id)} style={styles.btnBorrarGasto}>
+                      <X size={15} />
+                    </button>
                   </div>
-                  <button type="button" onClick={() => alEliminarGasto(g.id)} style={styles.btnBorrarGasto}>
-                    <X size={14} />
-                  </button>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
       </main>
 
-      {/* Modal Registrar Gasto */}
+      {/* MODAL REGISTRAR GASTO DISCRIMINADO */}
       {modalGastoAbierto && (
         <div style={styles.overlayModal}>
-          <div style={styles.modalGastoBox}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <strong style={{ fontSize: '0.92rem', color: '#0f2a4a' }}>Registrar Salida / Gasto</strong>
-              <button type="button" onClick={() => setModalGastoAbierto(false)} style={styles.btnCerrarModal}>
+          <div style={styles.modalBoxGasto}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <MinusCircle size={18} color="#dc2626" />
+                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f2a4a' }}>
+                  Registrar Salida de Dinero
+                </h3>
+              </div>
+              <button type="button" onClick={() => setModalGastoAbierto(false)} style={styles.btnCerrarX}>
                 <X size={16} />
               </button>
             </div>
 
-            <form onSubmit={guardarGasto} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <form onSubmit={registrarNuevoGasto} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
-                <label style={styles.labelForm}>Concepto del Gasto</label>
+                <label style={styles.labelCampo}>Concepto / Motivo del Gasto *</label>
                 <input
                   type="text"
-                  placeholder="Ej. Almuerzo, Bolsas, Pago de hielo"
+                  placeholder="Ej: Compra de bolsas, almuerzo, pago hielo..."
                   value={descripcionGasto}
                   onChange={(e) => setDescripcionGasto(e.target.value)}
-                  style={styles.inputGasto}
+                  style={styles.inputModal}
                   required
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div>
-                  <label style={styles.labelForm}>Moneda</label>
-                  <select
-                    value={monedaGasto}
-                    onChange={(e) => setMonedaGasto(e.target.value)}
-                    style={{ ...styles.inputGasto, backgroundColor: '#fff' }}
-                  >
-                    <option value="USD">Dólares ($)</option>
-                    <option value="BS">Bolívares (Bs)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={styles.labelForm}>Monto</label>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="0.00"
-                    value={montoGastoUSD}
-                    onChange={(e) => setMontoGastoUSD(e.target.value)}
-                    style={styles.inputGasto}
-                    required
-                  />
+              {/* Origen del dinero: SIN PUNTO DE VENTA */}
+              <div>
+                <label style={styles.labelCampo}>¿De dónde se retira el dinero? *</label>
+                <select
+                  value={origenGasto}
+                  onChange={(e) => setOrigenGasto(e.target.value)}
+                  style={{ ...styles.inputModal, backgroundColor: '#fff' }}
+                >
+                  <option value="efectivo_bs">💵 Efectivo Físico en Bolívares (Bs)</option>
+                  <option value="efectivo_usd">💵 Efectivo Físico en Dólares ($)</option>
+                  <option value="pago_movil">📱 Transferencia / Pago Móvil (Bs)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={styles.labelCampo}>
+                  Monto a Retirar ({origenGasto === 'efectivo_usd' ? 'USD $' : 'Bolívares Bs'}) *
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="0.00"
+                  value={montoGasto}
+                  onChange={(e) => setMontoGasto(e.target.value)}
+                  style={styles.inputModal}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                <button type="button" onClick={() => setModalGastoAbierto(false)} style={styles.btnCancelarGasto}>
+                  Cancelar
+                </button>
+                <button type="submit" style={styles.btnConfirmarGasto}>
+                  Confirmar Salida
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL REPORTE DE CIERRE Z CON OPCIÓN IMPRIMIR Y WHATSAPP */}
+      {reporteZGenerado && (
+        <div style={styles.overlayModal}>
+          <div style={styles.modalBoxReporteZ}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle2 size={18} color="#00b050" />
+                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f2a4a' }}>
+                  Cierre de Turno Z Generado
+                </h3>
+              </div>
+              <button type="button" onClick={() => setReporteZGenerado(null)} style={styles.btnCerrarX}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Recibo Térmico del Cierre Z */}
+            <div id="area-ticket-cierre-z" style={styles.papelReporteZ}>
+              <div style={{ textAlign: 'center', lineHeight: 1.35 }}>
+                <h3 style={{ margin: '0 0 2px 0', fontSize: '0.94rem', fontWeight: '900', color: '#0f2a4a' }}>
+                  {(configEmpresa?.nombre || 'FACILITO POS').toUpperCase()}
+                </h3>
+                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                  REPORTE DE CIERRE DE CAJA (CORTE Z)
                 </div>
               </div>
 
-              <button type="submit" style={styles.btnGuardarGastoConfirm}>
-                Confirmar Salida de Caja
+              <div style={styles.lineaDobleCorte} />
+
+              <div style={styles.infoReporteZ}>
+                <div>FECHA: {reporteZGenerado.fechaHora}</div>
+                <div>RESPONSABLE: {reporteZGenerado.cajero} · {reporteZGenerado.caja}</div>
+                <div>TOTAL VENTAS REALIZADAS: <strong>{reporteZGenerado.ventasCount} ticket(s)</strong></div>
+                <div>TOTAL GASTOS: <strong>{reporteZGenerado.gastosCount} salida(s)</strong></div>
+                <div>TASA BCV: Bs. {reporteZGenerado.tasa.toFixed(2)}</div>
+              </div>
+
+              <div style={styles.lineaDobleCorte} />
+
+              <div style={styles.seccionDesgloseZ}>
+                <strong style={{ fontSize: '0.72rem', color: '#0f2a4a', display: 'block', marginBottom: '4px' }}>
+                  VENTAS TOTALES DEL TURNO
+                </strong>
+                <div style={styles.filaZ}>
+                  <span>Total Ventas ($):</span>
+                  <strong>${reporteZGenerado.totalVentasUSD.toFixed(2)}</strong>
+                </div>
+                <div style={styles.filaZ}>
+                  <span>Total Ventas (Bs):</span>
+                  <strong>Bs. {reporteZGenerado.totalVentasBS.toFixed(2)}</strong>
+                </div>
+
+                <div style={styles.lineaFinaZ} />
+
+                <strong style={{ fontSize: '0.72rem', color: '#0f2a4a', display: 'block', margin: '4px 0' }}>
+                  EFECTIVO FÍSICO EN GAVETA (NETO)
+                </strong>
+                <div style={styles.filaZ}>
+                  <span>Dólares en Efectivo ($):</span>
+                  <strong style={{ color: '#00b050' }}>${reporteZGenerado.efectivoNetoUSD.toFixed(2)}</strong>
+                </div>
+                <div style={styles.filaZ}>
+                  <span>Bolívares en Efectivo (Bs):</span>
+                  <strong style={{ color: '#0052cc' }}>Bs. {reporteZGenerado.efectivoNetoBS.toFixed(2)}</strong>
+                </div>
+
+                <div style={styles.lineaFinaZ} />
+
+                <strong style={{ fontSize: '0.72rem', color: '#0f2a4a', display: 'block', margin: '4px 0' }}>
+                  RECAUDO BANCARIO (DIGITAL)
+                </strong>
+                <div style={styles.filaZ}>
+                  <span>Pago Móvil Recibido:</span>
+                  <strong>Bs. {reporteZGenerado.pagoMovilNetoBS.toFixed(2)}</strong>
+                </div>
+                <div style={styles.filaZ}>
+                  <span>Punto Débito (Tarjetas):</span>
+                  <strong>Bs. {reporteZGenerado.ventasPuntoBS.toFixed(2)}</strong>
+                </div>
+              </div>
+
+              <div style={styles.lineaDobleCorte} />
+
+              <div style={{ textAlign: 'center', fontSize: '0.64rem', color: '#64748b' }}>
+                <ShieldCheck size={13} color="#00b050" style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+                <span>Auditoría de Turno Completada Satisfactoriamente</span>
+              </div>
+            </div>
+
+            {/* Acciones */}
+            <div style={styles.accionesReporteZFila}>
+              <button type="button" onClick={() => window.print()} style={styles.btnImprimirZ}>
+                <Printer size={15} />
+                <span>Imprimir Reporte Z</span>
               </button>
-            </form>
+              <button type="button" onClick={compartirReporteWhatsApp} style={styles.btnWhatsAppZ}>
+                <Share2 size={15} />
+                <span>WhatsApp</span>
+              </button>
+              <button type="button" onClick={finalizarCierreDefinitivo} style={styles.btnFinalizarCierre}>
+                <span>Finalizar y Salir</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -331,31 +544,344 @@ export default function CajaModal({
 }
 
 const styles = {
-  contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f8fafc', fontFamily: 'system-ui, -apple-system, sans-serif' },
-  header: { padding: '10px 14px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
-  btnAtras: { width: '32px', height: '32px', borderRadius: '50%', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#334155' },
-  tituloHeader: { margin: 0, fontSize: '0.96rem', fontWeight: '800', color: '#0f2a4a' },
-  btnGastoTop: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', padding: '6px 10px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer' },
-  tabsFila: { display: 'flex', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
-  btnTab: { flex: 1, padding: '11px', background: 'none', border: 'none', borderBottom: '3px solid transparent', fontSize: '0.78rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer' },
-  cuerpo: { flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' },
-  seccionArqueo: { display: 'flex', flexDirection: 'column', gap: '12px' },
-  cardTotalVentas: { backgroundColor: '#eff6ff', borderRadius: '16px', border: '1px solid #bfdbfe', padding: '12px 14px' },
-  badgeVentasCount: { backgroundColor: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: '12px', fontSize: '0.68rem', fontWeight: 'bold' },
-  montoPrincipalUSD: { fontSize: '1.4rem', fontWeight: '900', color: '#0f2a4a' },
-  montoPrincipalBS: { fontSize: '1.1rem', fontWeight: '800', color: '#0052cc' },
-  bloqueMetodos: { backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '14px' },
-  gridGaveta: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' },
-  itemGavetaCard: { backgroundColor: '#f8fafc', borderRadius: '12px', padding: '10px', border: '1px solid #e2e8f0' },
-  filaBancaria: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #f1f5f9' },
-  btnCerrarTurno: { width: '100%', padding: '13px', backgroundColor: '#00b050', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '0.88rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '6px', boxShadow: '0 4px 12px rgba(0, 176, 80, 0.3)' },
-  vacioGastos: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '200px' },
-  cardGastoItem: { backgroundColor: '#fff', borderRadius: '12px', padding: '10px 12px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' },
-  btnBorrarGasto: { background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: 0 },
-  overlayModal: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 9999999 },
-  modalGastoBox: { backgroundColor: '#fff', borderRadius: '20px', maxWidth: '320px', width: '100%', padding: '16px', boxShadow: '0 20px 40px rgba(0,0,0,0.3)' },
-  btnCerrarModal: { background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '26px', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b' },
-  labelForm: { fontSize: '0.7rem', fontWeight: 'bold', color: '#475569', marginBottom: '2px', display: 'block' },
-  inputGasto: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.84rem', outline: 'none' },
-  btnGuardarGastoConfirm: { width: '100%', padding: '10px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.82rem', fontWeight: 'bold', cursor: 'pointer', marginTop: '6px' }
+  contenedor: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100vh',
+    backgroundColor: '#f8fafc',
+    fontFamily: 'system-ui, -apple-system, sans-serif'
+  },
+  header: {
+    padding: '10px 14px',
+    backgroundColor: '#fff',
+    borderBottom: '1px solid #e2e8f0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexShrink: 0
+  },
+  btnAtras: {
+    width: '32px',
+    height: '32px',
+    borderRadius: '50%',
+    border: '1px solid #e2e8f0',
+    backgroundColor: '#f8fafc',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: '#334155'
+  },
+  tituloHeader: {
+    margin: 0,
+    fontSize: '0.94rem',
+    fontWeight: '800',
+    color: '#0f2a4a'
+  },
+  btnRegistrarGastoTop: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    backgroundColor: '#fee2e2',
+    color: '#dc2626',
+    border: '1px solid #fecaca',
+    borderRadius: '8px',
+    padding: '6px 10px',
+    fontSize: '0.72rem',
+    fontWeight: 'bold',
+    cursor: 'pointer'
+  },
+  tabsFila: {
+    display: 'flex',
+    backgroundColor: '#fff',
+    borderBottom: '1px solid #e2e8f0',
+    flexShrink: 0
+  },
+  btnTab: {
+    flex: 1,
+    padding: '10px',
+    background: 'none',
+    border: 'none',
+    borderBottom: '3px solid transparent',
+    fontSize: '0.78rem',
+    fontWeight: 'bold',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    cursor: 'pointer'
+  },
+  cuerpo: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '12px 14px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px'
+  },
+  tarjetaVentasTurno: {
+    backgroundColor: '#0f2a4a',
+    borderRadius: '16px',
+    padding: '12px 14px',
+    color: '#fff',
+    boxShadow: '0 4px 12px rgba(15, 42, 74, 0.15)'
+  },
+  etiquetaTotalVentas: {
+    fontSize: '0.66rem',
+    fontWeight: '800',
+    letterSpacing: '0.8px',
+    color: '#94a3b8'
+  },
+  badgeVentasCount: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    color: '#fff',
+    padding: '2px 8px',
+    borderRadius: '12px',
+    fontSize: '0.66rem',
+    fontWeight: 'bold'
+  },
+  cifraUSD: {
+    fontSize: '1.65rem',
+    fontWeight: '900',
+    color: '#00b050',
+    lineHeight: 1.1
+  },
+  cifraBS: {
+    fontSize: '0.88rem',
+    fontWeight: '700',
+    color: '#bfdbfe'
+  },
+  bloqueSeccion: {
+    backgroundColor: '#fff',
+    borderRadius: '14px',
+    border: '1px solid #e2e8f0',
+    padding: '12px'
+  },
+  encabezadoBloque: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '8px'
+  },
+  gridGaveta: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '8px'
+  },
+  tarjetaGaveta: {
+    backgroundColor: '#f8fafc',
+    borderRadius: '12px',
+    padding: '10px',
+    border: '1px solid #e2e8f0'
+  },
+  filaBancaria: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 10px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '10px',
+    border: '1px solid #f1f5f9'
+  },
+  btnCerrarTurno: {
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#00b050',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '12px',
+    fontSize: '0.88rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    boxShadow: '0 4px 12px rgba(0, 176, 80, 0.3)',
+    marginTop: '2px'
+  },
+  vacioBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '200px'
+  },
+  cardGastoItem: {
+    backgroundColor: '#fff',
+    borderRadius: '12px',
+    padding: '10px 12px',
+    border: '1px solid #e2e8f0',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  },
+  btnBorrarGasto: {
+    background: 'none',
+    border: 'none',
+    color: '#dc2626',
+    cursor: 'pointer',
+    padding: 0
+  },
+  overlayModal: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backdropFilter: 'blur(3px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '14px',
+    zIndex: 99999999
+  },
+  modalBoxGasto: {
+    backgroundColor: '#fff',
+    borderRadius: '20px',
+    maxWidth: '340px',
+    width: '100%',
+    padding: '16px',
+    boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  modalBoxReporteZ: {
+    backgroundColor: '#fff',
+    borderRadius: '24px',
+    maxWidth: '360px',
+    width: '100%',
+    maxHeight: '94vh',
+    overflowY: 'auto',
+    padding: '16px',
+    boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  btnCerrarX: {
+    background: '#f1f5f9',
+    border: 'none',
+    borderRadius: '50%',
+    width: '28px',
+    height: '28px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: '#64748b'
+  },
+  labelCampo: {
+    fontSize: '0.7rem',
+    fontWeight: 'bold',
+    color: '#475569',
+    marginBottom: '2px',
+    display: 'block'
+  },
+  inputModal: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid #cbd5e1',
+    fontSize: '0.82rem',
+    outline: 'none'
+  },
+  btnCancelarGasto: {
+    flex: 1,
+    padding: '9px',
+    backgroundColor: '#f1f5f9',
+    color: '#475569',
+    border: '1px solid #cbd5e1',
+    borderRadius: '10px',
+    fontSize: '0.76rem',
+    fontWeight: 'bold',
+    cursor: 'pointer'
+  },
+  btnConfirmarGasto: {
+    flex: 1.4,
+    padding: '9px',
+    backgroundColor: '#dc2626',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.76rem',
+    fontWeight: 'bold',
+    cursor: 'pointer'
+  },
+  papelReporteZ: {
+    backgroundColor: '#ffffff',
+    borderRadius: '12px',
+    padding: '14px 12px',
+    border: '1px solid #cbd5e1',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontSize: '0.72rem',
+    color: '#0f172a'
+  },
+  lineaDobleCorte: {
+    borderTop: '2px dashed #94a3b8',
+    margin: '8px 0'
+  },
+  lineaFinaZ: {
+    borderTop: '1px solid #e2e8f0',
+    margin: '6px 0'
+  },
+  infoReporteZ: {
+    fontSize: '0.68rem',
+    lineHeight: 1.45,
+    color: '#1e293b'
+  },
+  seccionDesgloseZ: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px'
+  },
+  filaZ: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.7rem'
+  },
+  accionesReporteZFila: {
+    display: 'flex',
+    gap: '6px',
+    marginTop: '12px'
+  },
+  btnImprimirZ: {
+    flex: 1,
+    padding: '9px',
+    backgroundColor: '#0f2a4a',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px'
+  },
+  btnWhatsAppZ: {
+    flex: 1.2,
+    padding: '9px',
+    backgroundColor: '#00b050',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px'
+  },
+  btnFinalizarCierre: {
+    padding: '9px 12px',
+    backgroundColor: '#f1f5f9',
+    color: '#0f2a4a',
+    border: '1px solid #cbd5e1',
+    borderRadius: '10px',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    cursor: 'pointer'
+  }
 };
