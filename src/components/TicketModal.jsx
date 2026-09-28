@@ -15,7 +15,7 @@ export default function TicketModal({
   const items = datos.items || [];
   const cliente = datos.cliente || { nombre: 'Consumidor Final', doc: 'V-00000000', telefono: '' };
 
-  // Cálculo discriminado: Unidades vs Kilogramos
+  // Detección matemática estricta: Pesados vs Unidades
   let totalPiezasUnid = 0;
   let totalPesoKg = 0;
   let hayUnidades = false;
@@ -23,11 +23,14 @@ export default function TicketModal({
 
   items.forEach(it => {
     const cant = Number(it.cantidad || 0);
-    if (it.esPesado) {
+    // Es pesado si tiene la marca esPesado o si la cantidad tiene decimales
+    const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
+
+    if (esRealmentePesado) {
       totalPesoKg += cant;
       hayPesados = true;
     } else {
-      totalPiezasUnid += cant;
+      totalPiezasUnid += Math.round(cant);
       hayUnidades = true;
     }
   });
@@ -42,24 +45,26 @@ export default function TicketModal({
     if (config?.rif) texto += `RIF: ${config.rif}\n`;
     if (config?.telefono) texto += `TEL: ${config.telefono}\n`;
     texto += `--------------------------------\n`;
-    texto += `CONTROL #: ${datos.correlativo || datos.id}\n`;
+    texto += `TICKET #: ${datos.correlativo || datos.id}\n`;
     texto += `FECHA: ${datos.fechaFormateada || new Date().toLocaleString()}\n`;
     texto += `CLIENTE: ${cliente.nombre}\n`;
     texto += `CÉDULA / RIF: ${cliente.doc}\n`;
     if (cliente.telefono) texto += `TELÉFONO: ${cliente.telefono}\n`;
-    texto += `PAGO: ${datos.esCredito ? 'A CRÉDITO (FIADO)' : (datos.metodoPago || 'EFECTIVO')}\n`;
+    texto += `FORMA DE PAGO: ${datos.esCredito ? 'A CRÉDITO (FIADO)' : (datos.metodoPago || 'EFECTIVO')}\n`;
     texto += `--------------------------------\n`;
 
     items.forEach(it => {
-      const sub = (it.precioUSD * it.cantidad).toFixed(2);
-      const unidadMedida = it.esPesado ? `${it.cantidad} kg` : `${it.cantidad} unid`;
+      const cant = Number(it.cantidad || 0);
+      const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
+      const sub = (it.precioUSD * cant).toFixed(2);
+      const etiquetaCant = esRealmentePesado ? `${cant.toFixed(3)}kg` : `${Math.round(cant)} unid`;
       texto += `• ${it.nombre}\n`;
-      texto += `  ${unidadMedida} x $${Number(it.precioUSD).toFixed(2)} = $${sub}\n`;
+      texto += `  ${etiquetaCant} x $${Number(it.precioUSD).toFixed(2)} = $${sub}\n`;
     });
 
     texto += `--------------------------------\n`;
     if (hayUnidades) texto += `Total Unidades: ${totalPiezasUnid} unids\n`;
-    if (hayPesados) texto += `Peso Total: ${totalPesoKg.toFixed(3)} KG\n`;
+    if (hayPesados) texto += `Peso Total a Granel: ${totalPesoKg.toFixed(3)} KG\n`;
     texto += `*TOTAL FACTURA: $${totalUSD.toFixed(2)}*\n`;
     texto += `*TOTAL EN BS: Bs. ${totalBS.toFixed(2)}*\n`;
     texto += `Tasa Oficial BCV: Bs. ${tasa.toFixed(2)}\n`;
@@ -121,8 +126,8 @@ export default function TicketModal({
             <div>CLIENTE: <strong>{cliente.nombre}</strong></div>
             <div>CÉDULA / RIF: <strong>{cliente.doc}</strong></div>
             {cliente.telefono && <div>TELÉFONO: {cliente.telefono}</div>}
-            <div>
-              FORMA DE PAGO: <strong>{datos.esCredito ? 'CUENTA POR COBRAR (CRÉDITO)' : (datos.metodoPago || 'EFECTIVO')}</strong>
+            <div style={{ wordBreak: 'break-word', marginTop: '2px' }}>
+              PAGO: <strong>{datos.esCredito ? 'A CRÉDITO (FIADO)' : (datos.metodoPago || 'EFECTIVO')}</strong>
             </div>
           </div>
 
@@ -140,21 +145,25 @@ export default function TicketModal({
 
           {/* Renglones */}
           <div style={styles.listaProductos}>
-            {items.map((it, idx) => (
-              <div key={idx} style={styles.itemFila}>
-                <div style={styles.colNombre}>{it.nombre}</div>
-                <div style={styles.colCant}>
-                  {it.esPesado ? `${Number(it.cantidad).toFixed(3)}kg` : `${it.cantidad} unid`}
+            {items.map((it, idx) => {
+              const cant = Number(it.cantidad || 0);
+              const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
+              return (
+                <div key={idx} style={styles.itemFila}>
+                  <div style={styles.colNombre}>{it.nombre}</div>
+                  <div style={styles.colCant}>
+                    {esRealmentePesado ? `${cant.toFixed(3)}kg` : `${Math.round(cant)}`}
+                  </div>
+                  <div style={styles.colPu}>${Number(it.precioUSD).toFixed(2)}</div>
+                  <div style={styles.colTotal}>${(it.precioUSD * cant).toFixed(2)}</div>
                 </div>
-                <div style={styles.colPu}>${Number(it.precioUSD).toFixed(2)}</div>
-                <div style={styles.colTotal}>${(it.precioUSD * it.cantidad).toFixed(2)}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div style={styles.separadorLineas} />
 
-          {/* Desglose de Totales: Diferencia unidades vs peso */}
+          {/* Desglose de Totales: Diferencia piezas de kilogramos */}
           <div style={styles.seccionDesglose}>
             {hayUnidades && (
               <div style={styles.filaSub}>
