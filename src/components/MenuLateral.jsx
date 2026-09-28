@@ -1,8 +1,7 @@
 import React from 'react';
 import { 
   X, Store, Package, BookOpen, Wallet, History, 
-  TrendingUp, Users, Monitor, Settings, HelpCircle, 
-  LogOut, ShieldCheck, UserCheck, ChevronRight
+  TrendingUp, Settings, LogOut, ShieldCheck, UserCheck, ChevronRight
 } from 'lucide-react';
 
 export default function MenuLateral({ 
@@ -19,6 +18,7 @@ export default function MenuLateral({
 
   const esDueno = usuarioActivo?.rol === 'dueno';
 
+  // Solo opciones operativas y esenciales del día a día
   const items = [
     { id: 'pos', label: 'Punto de Venta (Caja)', icon: Store, color: '#0052cc', bg: '#eff6ff', soloDueno: false },
     { id: 'inventario', label: 'Inventario de Productos', icon: Package, color: '#0052cc', bg: '#eff6ff', soloDueno: false },
@@ -34,10 +34,7 @@ export default function MenuLateral({
     { id: 'caja', label: 'Cierre de Caja (Z)', icon: Wallet, color: '#16a34a', bg: '#f0fdf4', soloDueno: false },
     { id: 'historial', label: 'Historial de Ventas', icon: History, color: '#9333ea', bg: '#faf5ff', soloDueno: false },
     { id: 'metricas', label: 'Ganancias y Rendimiento', icon: TrendingUp, color: '#16a34a', bg: '#f0fdf4', soloDueno: true },
-    { id: 'usuarios', label: 'Personal y Cajeros', icon: Users, color: '#0052cc', bg: '#eff6ff', soloDueno: true },
-    { id: 'terminales', label: 'Cajas y Terminales', icon: Monitor, color: '#0284c7', bg: '#f0f9ff', soloDueno: true },
-    { id: 'configuracion', label: 'Ajustes y Logo', icon: Settings, color: '#475569', bg: '#f1f5f9', soloDueno: true },
-    { id: 'soporte', label: 'Centro de Soporte Pantoja Apps', icon: HelpCircle, color: '#059669', bg: '#ecfdf5', soloDueno: false }
+    { id: 'configuracion', label: 'Ajustes y Configuración', icon: Settings, color: '#475569', bg: '#f1f5f9', soloDueno: true }
   ];
 
   const itemsFiltrados = items.filter(it => !it.soloDueno || esDueno);
@@ -52,7 +49,7 @@ export default function MenuLateral({
               <img src={configEmpresa.logo} alt="Logo" style={styles.avatarLogo} />
             ) : (
               <div style={styles.avatarDefault}>
-                <Store size={24} color="#0052cc" />
+                <Store size={22} color="#0052cc" />
               </div>
             )}
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -73,7 +70,7 @@ export default function MenuLateral({
           </button>
         </div>
 
-        {/* Lista de Navegación */}
+        {/* Lista de Navegación Esencial */}
         <nav style={styles.listaNav}>
           {itemsFiltrados.map((it) => {
             const Icon = it.icon;
@@ -102,7 +99,7 @@ export default function MenuLateral({
           })}
         </nav>
 
-        {/* Pie del Menú con Cerrar Sesión */}
+        {/* Pie del Menú con Cerrar Turno */}
         <div style={styles.footerDrawer}>
           <button
             type="button"
@@ -141,8 +138,7 @@ const styles = {
     height: '100%',
     display: 'flex',
     flexDirection: 'column',
-    boxShadow: '4px 0 20px rgba(0, 0, 0, 0.15)',
-    animation: 'slideIn 0.22s ease-out'
+    boxShadow: '4px 0 20px rgba(0, 0, 0, 0.15)'
   },
   perfilHeader: {
     padding: '16px 14px',
@@ -161,16 +157,16 @@ const styles = {
     flex: 1
   },
   avatarLogo: {
-    width: '44px',
-    height: '44px',
+    width: '42px',
+    height: '42px',
     borderRadius: '12px',
     objectFit: 'contain',
     border: '1px solid #e2e8f0',
     backgroundColor: '#fff'
   },
   avatarDefault: {
-    width: '44px',
-    height: '44px',
+    width: '42px',
+    height: '42px',
     borderRadius: '12px',
     backgroundColor: '#eff6ff',
     display: 'flex',
@@ -180,7 +176,7 @@ const styles = {
   },
   nombreNegocio: {
     margin: 0,
-    fontSize: '0.94rem',
+    fontSize: '0.92rem',
     fontWeight: '800',
     color: '#0f172a',
     whiteSpace: 'nowrap',
@@ -238,7 +234,7 @@ const styles = {
   listaNav: {
     flex: 1,
     overflowY: 'auto',
-    padding: '10px 12px',
+    padding: '12px',
     display: 'flex',
     flexDirection: 'column',
     gap: '4px'
@@ -247,17 +243,16 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '9px 10px',
+    padding: '10px 10px',
     borderRadius: '10px',
     border: 'none',
     backgroundColor: 'transparent',
     cursor: 'pointer',
-    width: '100%',
-    transition: 'background 0.15s ease'
+    width: '100%'
   },
   iconoContenedor: {
-    width: '34px',
-    height: '34px',
+    width: '36px',
+    height: '36px',
     borderRadius: '10px',
     display: 'flex',
     alignItems: 'center',
@@ -265,7 +260,7 @@ const styles = {
   },
   itemLabel: {
     display: 'block',
-    fontSize: '0.82rem',
+    fontSize: '0.84rem',
     fontWeight: '700',
     color: '#1e293b'
   },

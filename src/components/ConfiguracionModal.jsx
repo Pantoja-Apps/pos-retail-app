@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { 
-  ArrowLeft, Store, Save, ShieldAlert, Monitor, 
+  ArrowLeft, Store, Save, ShieldAlert, Monitor, Users,
   Download, Upload, HelpCircle, Image as ImageIcon, Trash2
 } from 'lucide-react';
 
 export default function ConfiguracionModal({ 
   config, 
   cajas = [], 
+  cajeros = [],
   infoLicencia, 
   alGuardarConfig, 
   alExportarBackup, 
   alImportarBackup, 
   alAbrirTerminales,
+  alAbrirUsuarios,
   alAbrirSoporte,
   alVolver 
 }) {
@@ -64,30 +66,29 @@ export default function ConfiguracionModal({
           <ArrowLeft size={18} />
         </button>
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <h2 style={styles.tituloHeader}>Ajustes del Sistema</h2>
-          <small style={{ color: '#64748b', fontSize: '0.72rem' }}>Configuración general y soporte</small>
+          <h2 style={styles.tituloHeader}>Ajustes y Configuración</h2>
+          <small style={{ color: '#64748b', fontSize: '0.72rem' }}>Control general de tu comercio</small>
         </div>
         <div style={{ width: '32px' }} />
       </header>
 
       <main style={styles.cuerpo}>
+        {/* Formulario de Datos y Logo */}
         <form onSubmit={handleSubmit} style={styles.formulario}>
-          {/* Logo y Datos del Comercio */}
           <div style={styles.cardSeccion}>
             <div style={styles.tituloSeccion}>
               <Store size={16} color="#0052cc" />
-              <span>Datos del Comercio y Marca</span>
+              <span>Datos del Comercio y Logo</span>
             </div>
 
-            {/* Selector de Logo */}
             <div style={styles.contenedorLogo}>
               <div style={styles.previewLogoBox}>
                 {datos.logo ? (
-                  <img src={datos.logo} alt="Logo comercio" style={styles.logoImg} />
+                  <img src={datos.logo} alt="Logo" style={styles.logoImg} />
                 ) : (
                   <div style={styles.logoVacio}>
-                    <ImageIcon size={26} color="#94a3b8" />
-                    <span style={{ fontSize: '0.66rem', color: '#94a3b8', marginTop: '2px' }}>Sin Logo</span>
+                    <ImageIcon size={24} color="#94a3b8" />
+                    <span style={{ fontSize: '0.64rem', color: '#94a3b8', marginTop: '2px' }}>Sin Logo</span>
                   </div>
                 )}
               </div>
@@ -169,20 +170,35 @@ export default function ConfiguracionModal({
           </div>
         </form>
 
-        {/* Accesos Rápidos */}
+        {/* Módulos de Administración y Gestión */}
         <div style={styles.cardSeccion}>
           <div style={styles.tituloSeccion}>
             <Monitor size={16} color="#0052cc" />
-            <span>Terminales y Asistencia</span>
+            <span>Administración de Cajas y Personal</span>
           </div>
 
-          <button type="button" onClick={alAbrirTerminales} style={styles.btnModuloItem}>
+          <button type="button" onClick={alAbrirUsuarios} style={styles.btnModuloItem}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={styles.iconoPill}>
-                <Monitor size={16} color="#0052cc" />
+              <div style={{ ...styles.iconoPill, backgroundColor: '#eff6ff', color: '#0052cc' }}>
+                <Users size={16} />
               </div>
               <div style={{ textAlign: 'left' }}>
-                <strong style={{ fontSize: '0.84rem', color: '#1e293b' }}>Gestión de Cajas Registradoras</strong>
+                <strong style={{ fontSize: '0.84rem', color: '#1e293b' }}>Personal y Cajeros</strong>
+                <span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b' }}>
+                  {cajeros.length} cajero(s) registrado(s) · Control de PIN
+                </span>
+              </div>
+            </div>
+            <ArrowLeft size={16} style={{ transform: 'rotate(180deg)', color: '#94a3b8' }} />
+          </button>
+
+          <button type="button" onClick={alAbrirTerminales} style={{ ...styles.btnModuloItem, marginTop: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ ...styles.iconoPill, backgroundColor: '#f0f9ff', color: '#0284c7' }}>
+                <Monitor size={16} />
+              </div>
+              <div style={{ textAlign: 'left' }}>
+                <strong style={{ fontSize: '0.84rem', color: '#1e293b' }}>Cajas y Terminales POS</strong>
                 <span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b' }}>
                   {cajas.length} caja(s) configurada(s) · Enlace QR
                 </span>
@@ -207,14 +223,14 @@ export default function ConfiguracionModal({
           </button>
         </div>
 
-        {/* Copias de Seguridad */}
+        {/* Respaldo de Datos */}
         <div style={styles.cardSeccion}>
           <div style={styles.tituloSeccion}>
             <ShieldAlert size={16} color="#ea580c" />
             <span>Respaldo y Seguridad de Datos</span>
           </div>
           <p style={{ margin: '0 0 10px 0', fontSize: '0.74rem', color: '#64748b', lineHeight: 1.4 }}>
-            Descarga un archivo seguro con todos tus productos, clientes y transacciones para guardarlo en tu computadora o pendrive.
+            Descarga un respaldo seguro con todos tus productos, clientes y transacciones para guardarlo en tu computadora o pendrive.
           </p>
 
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -307,8 +323,8 @@ const styles = {
     marginBottom: '14px'
   },
   previewLogoBox: {
-    width: '64px',
-    height: '64px',
+    width: '60px',
+    height: '60px',
     borderRadius: '12px',
     border: '1px dashed #cbd5e1',
     backgroundColor: '#fff',

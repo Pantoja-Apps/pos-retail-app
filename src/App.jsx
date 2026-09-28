@@ -47,7 +47,7 @@ const CONFIG_INICIAL = {
 };
 
 const CAJAS_DEFAULT = [
-  { id: 'caja_01', numero: 1, nombre: 'Caja 01 - Principal', tipoGaveta: 'centralizada', codigoEnlace: '100001', creadaEn: 'Inicial' }
+  { id: 'caja_01', numero: 1, nombre: 'Caja 01', tipoGaveta: 'centralizada', codigoEnlace: '100001', creadaEn: 'Inicial' }
 ];
 
 function normalizarDoc(str) {
@@ -905,7 +905,7 @@ export default function App() {
       {vistaActual === 'soporte' && (
         <SoporteModal 
           nombreNegocio={configEmpresa.nombre}
-          alVolver={() => setVistaActual('pos')}
+          alVolver={() => setVistaActual(esDueno ? 'configuracion' : 'pos')}
         />
       )}
 
@@ -913,6 +913,7 @@ export default function App() {
         <ConfiguracionModal 
           config={configEmpresa}
           cajas={cajas}
+          cajeros={cajeros}
           infoLicencia={infoLicencia}
           alGuardarConfig={(nuevaConfig) => {
             setConfigEmpresa(nuevaConfig);
@@ -920,6 +921,7 @@ export default function App() {
           alExportarBackup={exportarBackupCompleto}
           alImportarBackup={importarBackupCompleto}
           alAbrirTerminales={() => setVistaActual('terminales')}
+          alAbrirUsuarios={() => setVistaActual('usuarios')}
           alAbrirSoporte={() => setVistaActual('soporte')}
           alVolver={() => setVistaActual('pos')}
         />
@@ -969,7 +971,7 @@ export default function App() {
             });
           }}
           alEliminarCajero={(id) => setCajeros(prev => prev.filter(c => c.id !== id))}
-          alVolver={() => setVistaActual('pos')}
+          alVolver={() => setVistaActual('configuracion')}
         />
       )}
 
@@ -1065,19 +1067,19 @@ export default function App() {
         />
       )}
 
-      {/* MOSTRADOR POS PRINCIPAL (Limpio y optimizado) */}
+      {/* MOSTRADOR POS PRINCIPAL */}
       {vistaActual === 'pos' && (
         <>
           <header style={styles.topHeader}>
             <div style={styles.headerFila1}>
-              {/* Botón de Menú a la izquierda + Logo/Avatar */}
+              {/* Sección Izquierda: Botón Menú + Info */}
               <div 
                 style={styles.marcaContainerClickable} 
                 onClick={() => setMenuLateralAbierto(true)}
                 title="Toca para abrir el menú"
               >
                 <div style={styles.btnMenuToggle}>
-                  <Menu size={20} color="#0052cc" />
+                  <Menu size={19} color="#0052cc" />
                 </div>
                 {configEmpresa.logo ? (
                   <img src={configEmpresa.logo} alt="Logo" style={styles.logoMini} />
@@ -1085,25 +1087,22 @@ export default function App() {
                   <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
                 )}
                 <div style={styles.infoNegocio}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
                     <span style={onlineBackend ? styles.badgeOnline : styles.badgeOffline}>
-                      {onlineBackend ? <Cloud size={10} /> : <CloudOff size={10} />}
+                      {onlineBackend ? <Cloud size={9} /> : <CloudOff size={9} />}
                       <span>{onlineBackend ? 'Nube' : 'Local'}</span>
                     </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '1px' }}>
-                    <span style={styles.badgeUsuarioHeader}>
-                      {usuarioActivo.nombre} ({esDueno ? 'Dueño' : 'Cajero'})
-                    </span>
-                    <span style={styles.badgeTerminalHeader}>
-                      <Monitor size={10} color="#0052cc" /> {cajaActiva.nombre}
-                    </span>
+                  <div style={styles.subtextHeader}>
+                    <span>{usuarioActivo.nombre} ({esDueno ? 'Dueño' : 'Cajero'})</span>
+                    <span>·</span>
+                    <span>{cajaActiva.nombre}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Tasa BCV integrada en la cabecera superior derecha */}
+              {/* Sección Derecha: Chip Tasa BCV alineado */}
               <div style={styles.tasaChip}>
                 <span style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
                 <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar BCV">
@@ -1460,25 +1459,24 @@ export default function App() {
 
 const styles = {
   contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#f8fafc' },
-  topHeader: { padding: '8px 12px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
+  topHeader: { padding: '8px 12px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   headerFila1: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' },
   
   marcaContainerClickable: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, cursor: 'pointer' },
-  btnMenuToggle: { width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  logoMini: { width: '36px', height: '36px', borderRadius: '10px', objectFit: 'contain', border: '1px solid #e2e8f0', flexShrink: 0, backgroundColor: '#fff' },
-  avatarIcon: { width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #bfdbfe' },
+  btnMenuToggle: { width: '34px', height: '34px', borderRadius: '10px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  logoMini: { width: '34px', height: '34px', borderRadius: '10px', objectFit: 'contain', border: '1px solid #e2e8f0', flexShrink: 0, backgroundColor: '#fff' },
+  avatarIcon: { width: '34px', height: '34px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #bfdbfe' },
+  
   infoNegocio: { display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', flex: 1 },
-  nombreNegocio: { margin: 0, fontSize: '0.94rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  nombreNegocio: { margin: 0, fontSize: '0.88rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  subtextHeader: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.66rem', color: '#64748b', fontWeight: '600', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   
-  badgeUsuarioHeader: { display: 'inline-flex', alignItems: 'center', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#334155' },
-  badgeTerminalHeader: { display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.62rem', fontWeight: 'bold', backgroundColor: '#f1f5f9', color: '#334155', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' },
+  badgeOnline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.54rem', fontWeight: 'bold', backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 4px', borderRadius: '4px' },
+  badgeOffline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.54rem', fontWeight: 'bold', backgroundColor: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: '4px' },
   
-  badgeOnline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.58rem', fontWeight: 'bold', backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 5px', borderRadius: '4px' },
-  badgeOffline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.58rem', fontWeight: 'bold', backgroundColor: '#fef3c7', color: '#b45309', padding: '1px 5px', borderRadius: '4px' },
-  
-  tasaChip: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc', padding: '5px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
+  tasaChip: { display: 'flex', alignItems: 'center', gap: '3px', backgroundColor: '#f8fafc', padding: '4px 6px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
   btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
-  inputTasaMini: { width: '68px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.8rem', color: '#0f172a', outline: 'none' },
+  inputTasaMini: { width: '64px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.78rem', color: '#0f172a', outline: 'none' },
   
   barraClienteMostrador: { backgroundColor: '#fff', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', gap: '8px', flexShrink: 0 },
   inputDocMostrador: { border: 'none', background: '#f1f5f9', padding: '6px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', width: '130px', outline: 'none' },
