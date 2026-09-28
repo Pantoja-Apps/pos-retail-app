@@ -5,6 +5,24 @@ import {
 } from 'lucide-react';
 import { optimizarImagen } from '../utils/imageOptimizer';
 
+const CATEGORIAS_PREDEFINIDAS = [
+  'Víveres',
+  'Charcutería',
+  'Carnicería y Pollo',
+  'Verduras y Frutas',
+  'Bebidas y Refrescos',
+  'Lácteos y Huevos',
+  'Panadería y Dulces',
+  'Higiene Personal',
+  'Limpieza del Hogar',
+  'Snacks y Golosinas',
+  'Licores',
+  'Farmacia / Droguería',
+  'Mascotas',
+  'General',
+  '+ Otra Categoría...'
+];
+
 export default function InventarioModal({
   productos = [],
   tasaCambio = 855.66,
@@ -26,7 +44,8 @@ export default function InventarioModal({
   const [precioUSD, setPrecioUSD] = useState('');
   const [margenGanancia, setMargenGanancia] = useState('30');
   const [stock, setStock] = useState('');
-  const [categoria, setCategoria] = useState('Víveres');
+  const [categoriaSelect, setCategoriaSelect] = useState('Víveres');
+  const [categoriaOtra, setCategoriaOtra] = useState('');
   const [esPesado, setEsPesado] = useState(false);
   const [aplicaMayor, setAplicaMayor] = useState(false);
   const [precioMayorUSD, setPrecioMayorUSD] = useState('');
@@ -34,10 +53,9 @@ export default function InventarioModal({
   const [imagen, setImagen] = useState('');
   const [procesandoFoto, setProcesandoFoto] = useState(false);
 
-  // Categorías automáticas
+  // Categorías presentes para la barra de filtro
   const categoriasDisponibles = ['Todas', ...new Set(productos.map(p => p.categoria || 'General'))];
 
-  // Cálculo de Margen % y Precio
   const manejarCambioCosto = (costoVal) => {
     setCostoUSD(costoVal);
     const c = parseFloat(costoVal) || 0;
@@ -73,7 +91,8 @@ export default function InventarioModal({
     setPrecioUSD('');
     setMargenGanancia('30');
     setStock('');
-    setCategoria('Víveres');
+    setCategoriaSelect('Víveres');
+    setCategoriaOtra('');
     setEsPesado(false);
     setAplicaMayor(false);
     setPrecioMayorUSD('');
@@ -96,7 +115,15 @@ export default function InventarioModal({
       setMargenGanancia('30');
     }
     setStock(p.stock !== undefined ? String(p.stock) : '0');
-    setCategoria(p.categoria || 'Víveres');
+    
+    if (CATEGORIAS_PREDEFINIDAS.includes(p.categoria)) {
+      setCategoriaSelect(p.categoria);
+      setCategoriaOtra('');
+    } else {
+      setCategoriaSelect('+ Otra Categoría...');
+      setCategoriaOtra(p.categoria || '');
+    }
+
     setEsPesado(Boolean(p.esPesado));
     setAplicaMayor(Boolean(p.aplicaPrecioMayor));
     setPrecioMayorUSD(p.precioMayorUSD ? String(p.precioMayorUSD) : '');
@@ -124,14 +151,18 @@ export default function InventarioModal({
     e.preventDefault();
     if (!nombre.trim()) return alert('El nombre es obligatorio');
 
+    const catFinal = categoriaSelect === '+ Otra Categoría...' 
+      ? (categoriaOtra.trim() || 'General') 
+      : categoriaSelect;
+
     const nuevoProd = {
       id: productoEnEdicion ? String(productoEnEdicion.id) : 'prod_' + Date.now(),
-      codigo: codigo.trim() || 'SIN_CODIGO_' + Date.now().toString().slice(-4),
+      codigo: codigo.trim() || 'PROD-' + Date.now().toString().slice(-6),
       nombre: nombre.trim(),
       costoUSD: parseFloat(costoUSD) || 0,
       precioUSD: parseFloat(precioUSD) || 0,
       stock: parseFloat(stock) || 0,
-      categoria: categoria.trim() || 'General',
+      categoria: catFinal,
       esPesado: Boolean(esPesado),
       aplicaPrecioMayor: Boolean(aplicaMayor),
       precioMayorUSD: parseFloat(precioMayorUSD) || 0,
@@ -167,7 +198,7 @@ export default function InventarioModal({
         ) : <div style={{ width: '32px' }} />}
       </header>
 
-      {/* Buscador de Productos */}
+      {/* Buscador */}
       <div style={styles.barraBusqueda}>
         <div style={styles.cajaInputBusqueda}>
           <Search size={16} color="#64748b" />
@@ -186,7 +217,7 @@ export default function InventarioModal({
         </div>
       </div>
 
-      {/* Filtro por Categorías */}
+      {/* Selector de Categorías Horizontal */}
       <div style={styles.carruselCategorias}>
         {categoriasDisponibles.map((cat, idx) => (
           <button
@@ -261,7 +292,7 @@ export default function InventarioModal({
         )}
       </main>
 
-      {/* MODAL CREAR / EDITAR PRODUCTO */}
+      {/* Modal Formulario */}
       {modalFormAbierto && (
         <div style={styles.overlayModal}>
           <div style={styles.modalBox}>
@@ -327,7 +358,7 @@ export default function InventarioModal({
                 />
               </div>
 
-              {/* Costo, Margen % y Precio de Venta */}
+              {/* Costo, Margen % y Precio */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
                 <div style={styles.campoForm}>
                   <label style={styles.labelForm}>Costo ($)</label>
@@ -365,7 +396,8 @@ export default function InventarioModal({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {/* Stock y Selector de Categorías */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '8px' }}>
                 <div style={styles.campoForm}>
                   <label style={styles.labelForm}>Stock Actual</label>
                   <input
@@ -378,16 +410,32 @@ export default function InventarioModal({
                   />
                 </div>
                 <div style={styles.campoForm}>
-                  <label style={styles.labelForm}>Categoría</label>
-                  <input
-                    type="text"
-                    value={categoria}
-                    onChange={(e) => setCategoria(e.target.value)}
-                    style={styles.inputForm}
-                    placeholder="Víveres"
-                  />
+                  <label style={styles.labelForm}>Categoría del Producto</label>
+                  <select
+                    value={categoriaSelect}
+                    onChange={(e) => setCategoriaSelect(e.target.value)}
+                    style={{ ...styles.inputForm, backgroundColor: '#fff' }}
+                  >
+                    {CATEGORIAS_PREDEFINIDAS.map((cat, i) => (
+                      <option key={i} value={cat}>{cat}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
+
+              {categoriaSelect === '+ Otra Categoría...' && (
+                <div style={styles.campoForm}>
+                  <label style={styles.labelForm}>Escribe la nueva categoría:</label>
+                  <input
+                    type="text"
+                    value={categoriaOtra}
+                    onChange={(e) => setCategoriaOtra(e.target.value)}
+                    style={styles.inputForm}
+                    placeholder="Ej. Artículos de Fiesta"
+                    required
+                  />
+                </div>
+              )}
 
               {/* Casilla Granel */}
               <label style={styles.filaCheckbox}>

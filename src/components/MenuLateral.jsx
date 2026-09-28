@@ -1,148 +1,103 @@
 import React from 'react';
 import { 
-  X, Store, Package, BookOpen, Wallet, History, 
-  TrendingUp, Settings, HelpCircle, LogOut, ShieldCheck, UserCheck, 
-  ChevronRight, Wifi, WifiOff
+  Store, ShoppingCart, Package, CreditCard, Receipt, 
+  TrendingUp, Settings, HelpCircle, LogOut, X, Wifi, WifiOff, ChevronRight
 } from 'lucide-react';
 
-export default function MenuLateral({ 
-  abierto, 
-  alCerrar, 
-  configEmpresa, 
-  usuarioActivo, 
-  cajaActiva, 
-  onlineBackend = false,
+export default function MenuLateral({
+  abierto,
+  alCerrar,
+  configEmpresa,
+  usuarioActivo,
+  cajaActiva,
+  onlineBackend,
   clientesMorosos = 0,
-  alNavegar, 
-  alCerrarSesion 
+  alNavegar,
+  alCerrarSesion
 }) {
   if (!abierto) return null;
 
   const esDueno = usuarioActivo?.rol === 'dueno';
 
   const items = [
-    { id: 'pos', label: 'Punto de Venta (Caja)', icon: Store, color: '#0052cc', bg: '#eff6ff', soloDueno: false },
-    { id: 'inventario', label: 'Inventario de Productos', icon: Package, color: '#0052cc', bg: '#eff6ff', soloDueno: false },
-    { 
-      id: 'creditos', 
-      label: 'Créditos y Deudores', 
-      icon: BookOpen, 
-      color: clientesMorosos > 0 ? '#ea580c' : '#475569', 
-      bg: clientesMorosos > 0 ? '#fff7ed' : '#f8fafc', 
-      badge: clientesMorosos > 0 ? `${clientesMorosos} pendientes` : null,
-      soloDueno: false 
-    },
-    { id: 'caja', label: 'Cierre de Caja (Z)', icon: Wallet, color: '#16a34a', bg: '#f0fdf4', soloDueno: false },
-    { id: 'historial', label: 'Historial de Ventas', icon: History, color: '#9333ea', bg: '#faf5ff', soloDueno: false },
-    { id: 'metricas', label: 'Ganancias y Rendimiento', icon: TrendingUp, color: '#16a34a', bg: '#f0fdf4', soloDueno: true },
-    { id: 'configuracion', label: 'Ajustes y Configuración', icon: Settings, color: '#475569', bg: '#f1f5f9', soloDueno: true },
-    { id: 'soporte', label: 'Centro de Ayuda y Soporte', icon: HelpCircle, color: '#059669', bg: '#ecfdf5', soloDueno: false }
+    { id: 'pos', nombre: 'Punto de Venta (Caja)', icono: ShoppingCart, color: '#0052cc', visible: true },
+    { id: 'inventario', nombre: 'Inventario de Productos', icono: Package, color: '#0284c7', visible: true },
+    { id: 'creditos', nombre: 'Créditos y Deudores', icono: CreditCard, color: '#d97706', badge: clientesMorosos > 0 ? `${clientesMorosos} pendientes` : null, visible: true },
+    { id: 'caja', nombre: 'Cierre de Caja (Z)', icono: Receipt, color: '#00b050', visible: true },
+    { id: 'historial', nombre: 'Historial de Ventas', icono: Receipt, color: '#8b5cf6', visible: true },
+    { id: 'metricas', nombre: 'Ganancias y Rendimiento', icono: TrendingUp, color: '#10b981', visible: esDueno },
+    { id: 'configuracion', nombre: 'Ajustes y Configuración', icono: Settings, color: '#475569', visible: esDueno },
+    { id: 'soporte', nombre: 'Centro de Ayuda y Soporte', icono: HelpCircle, color: '#059669', visible: true }
   ];
-
-  const itemsFiltrados = items.filter(it => !it.soloDueno || esDueno);
 
   return (
     <div style={styles.overlay} onClick={alCerrar} translate="no">
-      <div style={styles.drawer} onClick={(e) => e.stopPropagation()}>
-        {/* Cabecera del Perfil / Negocio */}
-        <div style={styles.perfilHeader}>
-          <div style={styles.perfilInfo}>
-            <div style={{ position: 'relative' }}>
-              {configEmpresa.logo ? (
-                <img src={configEmpresa.logo} alt="Logo" style={styles.avatarLogo} />
+      <div style={styles.menuBox} onClick={(e) => e.stopPropagation()}>
+        {/* Cabecera del Menú con Diseño Corporativo */}
+        <div style={styles.headerMenu}>
+          <div style={styles.brandRow}>
+            <div style={styles.logoContainer}>
+              {configEmpresa?.logo ? (
+                <img src={configEmpresa.logo} alt="Logo" style={styles.logoComercio} />
               ) : (
-                <div style={styles.avatarDefault}>
-                  <Store size={22} color="#0052cc" />
-                </div>
+                <img src="/isotipo_login.png" alt="Facilito" style={styles.logoComercio} />
               )}
-              {/* Punto indicador de conexión sobre el logo */}
-              <span 
-                style={{
-                  ...styles.dotStatus,
-                  backgroundColor: onlineBackend ? '#16a34a' : '#d97706',
-                  boxShadow: onlineBackend ? '0 0 0 2px #fff, 0 0 6px rgba(22, 163, 74, 0.6)' : '0 0 0 2px #fff'
-                }} 
-                title={onlineBackend ? 'Online' : 'Offline'}
-              />
             </div>
 
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <h3 style={styles.nombreNegocio}>{configEmpresa.nombre || 'Mi Negocio'}</h3>
-              <div style={styles.filaBadges}>
-                <span style={esDueno ? styles.badgeRolDueno : styles.badgeRolCajero}>
-                  {esDueno ? <ShieldCheck size={11} /> : <UserCheck size={11} />}
-                  <span>{usuarioActivo?.nombre || 'Usuario'}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h3 style={styles.tituloComercio}>{configEmpresa?.nombre || 'Facilito POS'}</h3>
+              <div style={styles.subInfoRow}>
+                <span style={styles.badgeRol}>
+                  {esDueno ? '✓ Dueño' : 'Cajero'} · {usuarioActivo?.nombre || 'Usuario'}
                 </span>
-                {cajaActiva?.nombre && (
-                  <span style={styles.badgeCaja}>{cajaActiva.nombre}</span>
-                )}
+                <span style={styles.badgeCaja}>{cajaActiva?.nombre || 'Caja 01'}</span>
               </div>
             </div>
+
+            <button type="button" onClick={alCerrar} style={styles.btnCerrar}>
+              <X size={18} />
+            </button>
           </div>
-          <button type="button" onClick={alCerrar} style={styles.btnCerrarDrawer}>
-            <X size={18} />
-          </button>
         </div>
 
         {/* Lista de Navegación */}
-        <nav style={styles.listaNav}>
-          {itemsFiltrados.map((it) => {
-            const Icon = it.icon;
+        <div style={styles.cuerpoNav}>
+          {items.filter(it => it.visible).map((it) => {
+            const Icono = it.icono;
             return (
               <button
                 key={it.id}
                 type="button"
-                onClick={() => {
-                  alNavegar(it.id);
-                  alCerrar();
-                }}
-                style={styles.itemBoton}
+                onClick={() => { alNavegar(it.id); alCerrar(); }}
+                style={styles.itemBtn}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ ...styles.iconoContenedor, backgroundColor: it.bg, color: it.color }}>
-                    <Icon size={18} />
-                  </div>
-                  <div style={{ textAlign: 'left' }}>
-                    <span style={styles.itemLabel}>{it.label}</span>
-                    {it.badge && <span style={styles.itemBadge}>{it.badge}</span>}
-                  </div>
+                <div style={{ ...styles.iconoWrapper, backgroundColor: `${it.color}15` }}>
+                  <Icono size={17} color={it.color} />
                 </div>
-                <ChevronRight size={16} color="#94a3b8" />
+                <span style={styles.textoItem}>{it.nombre}</span>
+
+                {it.badge && <span style={styles.badgeAlerta}>{it.badge}</span>}
+                <ChevronRight size={15} color="#cbd5e1" />
               </button>
             );
           })}
-        </nav>
+        </div>
 
-        {/* Pie del Menú con Estado de Conexión Profesional */}
-        <div style={styles.footerDrawer}>
-          <button
-            type="button"
-            onClick={() => {
-              alCerrar();
-              alCerrarSesion();
-            }}
-            style={styles.btnCerrarTurno}
-          >
-            <LogOut size={16} color="#dc2626" />
+        {/* Pie con Estado del Servidor y Salir */}
+        <div style={styles.footerMenu}>
+          <button type="button" onClick={alCerrarSesion} style={styles.btnSalir}>
+            <LogOut size={16} />
             <span>Cerrar Turno / Salir</span>
           </button>
 
-          {/* Estado de Red / Servidor en el pie */}
-          <div style={styles.cajaEstadoConexion}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span 
-                style={{
-                  width: '7px',
-                  height: '7px',
-                  borderRadius: '50%',
-                  backgroundColor: onlineBackend ? '#16a34a' : '#d97706'
-                }} 
-              />
-              <span style={{ fontSize: '0.68rem', fontWeight: '700', color: onlineBackend ? '#166534' : '#92400e' }}>
-                {onlineBackend ? 'Servidor Online' : 'Modo Offline'}
+          <div style={styles.servidorFila}>
+            <div style={styles.indicadorOnline}>
+              <div style={{ ...styles.puntoOnline, backgroundColor: onlineBackend ? '#00b050' : '#d97706' }} />
+              <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 'bold' }}>
+                {onlineBackend ? 'Servidor Online (Supabase)' : 'Modo Offline (Copia Local)'}
               </span>
             </div>
-            <div style={styles.textoVersion}>Facilito POS Pro · Pantoja Apps</div>
+            <span style={{ fontSize: '0.66rem', color: '#94a3b8' }}>Facilito POS Pro</span>
           </div>
         </div>
       </div>
@@ -153,196 +108,169 @@ export default function MenuLateral({
 const styles = {
   overlay: {
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    inset: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     backdropFilter: 'blur(3px)',
-    zIndex: 99999,
+    zIndex: 99999999,
     display: 'flex'
   },
-  drawer: {
-    width: '82%',
+  menuBox: {
+    width: '84%',
     maxWidth: '320px',
-    backgroundColor: '#fff',
     height: '100%',
+    backgroundColor: '#ffffff',
     display: 'flex',
     flexDirection: 'column',
-    boxShadow: '4px 0 20px rgba(0, 0, 0, 0.15)'
+    boxShadow: '10px 0 30px rgba(0,0,0,0.2)'
   },
-  perfilHeader: {
-    padding: '16px 14px',
-    backgroundColor: '#f8fafc',
-    borderBottom: '1px solid #e2e8f0',
+  headerMenu: {
+    padding: '16px 14px 14px 14px',
+    borderBottom: '1px solid #f1f5f9',
+    backgroundColor: '#f8fafc'
+  },
+  brandRow: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '8px'
+    gap: '10px'
   },
-  perfilInfo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    minWidth: 0,
-    flex: 1
-  },
-  avatarLogo: {
+  logoContainer: {
     width: '42px',
     height: '42px',
     borderRadius: '12px',
-    objectFit: 'contain',
-    border: '1px solid #e2e8f0',
     backgroundColor: '#fff',
-    display: 'block'
-  },
-  avatarDefault: {
-    width: '42px',
-    height: '42px',
-    borderRadius: '12px',
-    backgroundColor: '#eff6ff',
+    border: '1px solid #cbd5e1',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    border: '1px solid #bfdbfe'
+    overflow: 'hidden',
+    flexShrink: 0
   },
-  dotStatus: {
-    position: 'absolute',
-    bottom: '-2px',
-    right: '-2px',
-    width: '10px',
-    height: '10px',
-    borderRadius: '50%'
+  logoComercio: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain'
   },
-  nombreNegocio: {
+  tituloComercio: {
     margin: 0,
-    fontSize: '0.92rem',
-    fontWeight: '800',
-    color: '#0f172a',
+    fontSize: '0.94rem',
+    fontWeight: '900',
+    color: '#0f2a4a',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis'
   },
-  filaBadges: {
+  subInfoRow: {
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: '4px',
-    marginTop: '4px'
-  },
-  badgeRolDueno: {
-    display: 'inline-flex',
     alignItems: 'center',
-    gap: '3px',
-    fontSize: '0.62rem',
-    fontWeight: '700',
-    backgroundColor: '#f0fdf4',
-    color: '#15803d',
-    padding: '2px 6px',
-    borderRadius: '4px'
+    gap: '6px',
+    marginTop: '3px'
   },
-  badgeRolCajero: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '3px',
-    fontSize: '0.62rem',
-    fontWeight: '700',
-    backgroundColor: '#eff6ff',
-    color: '#1d4ed8',
-    padding: '2px 6px',
-    borderRadius: '4px'
+  badgeRol: {
+    fontSize: '0.66rem',
+    fontWeight: 'bold',
+    color: '#00b050'
   },
   badgeCaja: {
     fontSize: '0.62rem',
-    fontWeight: '600',
-    backgroundColor: '#f1f5f9',
-    color: '#475569',
-    padding: '2px 6px',
-    borderRadius: '4px'
+    backgroundColor: '#eff6ff',
+    color: '#0052cc',
+    padding: '1px 5px',
+    borderRadius: '4px',
+    fontWeight: 'bold'
   },
-  btnCerrarDrawer: {
-    width: '32px',
-    height: '32px',
+  btnCerrar: {
+    background: '#f1f5f9',
+    border: 'none',
     borderRadius: '50%',
-    border: '1px solid #e2e8f0',
-    backgroundColor: '#fff',
+    width: '28px',
+    height: '28px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
     color: '#64748b'
   },
-  listaNav: {
+  cuerpoNav: {
     flex: 1,
     overflowY: 'auto',
-    padding: '12px',
+    padding: '10px 12px',
     display: 'flex',
     flexDirection: 'column',
     gap: '4px'
   },
-  itemBoton: {
+  itemBtn: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: '12px',
     padding: '10px 10px',
-    borderRadius: '10px',
+    borderRadius: '12px',
     border: 'none',
     backgroundColor: 'transparent',
     cursor: 'pointer',
-    width: '100%'
+    textAlign: 'left',
+    transition: 'background-color 0.15s ease'
   },
-  iconoContenedor: {
-    width: '36px',
-    height: '36px',
+  iconoWrapper: {
+    width: '34px',
+    height: '34px',
     borderRadius: '10px',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    flexShrink: 0
   },
-  itemLabel: {
-    display: 'block',
+  textoItem: {
+    flex: 1,
     fontSize: '0.84rem',
     fontWeight: '700',
     color: '#1e293b'
   },
-  itemBadge: {
-    display: 'block',
-    fontSize: '0.66rem',
-    color: '#ea580c',
+  badgeAlerta: {
+    backgroundColor: '#fef3c7',
+    color: '#b45309',
+    fontSize: '0.65rem',
     fontWeight: 'bold',
-    marginTop: '1px'
+    padding: '2px 6px',
+    borderRadius: '6px',
+    marginRight: '4px'
   },
-  footerDrawer: {
-    padding: '12px 14px 18px 14px',
-    borderTop: '1px solid #e2e8f0',
-    backgroundColor: '#fff',
+  footerMenu: {
+    padding: '12px 14px',
+    borderTop: '1px solid #f1f5f9',
+    backgroundColor: '#f8fafc',
     display: 'flex',
     flexDirection: 'column',
     gap: '10px'
   },
-  btnCerrarTurno: {
+  btnSalir: {
     width: '100%',
     padding: '10px',
-    borderRadius: '10px',
-    border: '1px solid #fecaca',
     backgroundColor: '#fee2e2',
     color: '#dc2626',
-    fontWeight: 'bold',
+    border: '1px solid #fecaca',
+    borderRadius: '10px',
     fontSize: '0.82rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '8px',
-    cursor: 'pointer'
+    gap: '6px'
   },
-  cajaEstadoConexion: {
+  servidorFila: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '6px 4px 0 4px',
-    borderTop: '1px dashed #e2e8f0'
+    paddingTop: '4px'
   },
-  textoVersion: {
-    fontSize: '0.66rem',
-    color: '#94a3b8'
+  indicadorOnline: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px'
+  },
+  puntoOnline: {
+    width: '7px',
+    height: '7px',
+    borderRadius: '50%'
   }
 };

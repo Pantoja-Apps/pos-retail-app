@@ -209,7 +209,7 @@ export default function App() {
     return () => clearInterval(intervalo);
   }, [cuentaMaster, usuarioActivo]);
 
-  // Manejo de búsqueda y sugerencias automáticas
+  // Manejo de búsqueda en tiempo real
   const manejarCambioBusqueda = (texto) => {
     setBusquedaInput(texto);
     if (!texto.trim()) {
@@ -224,7 +224,7 @@ export default function App() {
     setSugerencias(coincidencias);
   };
 
-  // Agregar al carrito con soporte para Mayor y Granel
+  // Agregar al Carrito
   const agregarAlCarrito = (producto, cantidadManual = null) => {
     if (producto.esPesado && cantidadManual === null) {
       setProductoParaPesar(producto);
@@ -299,7 +299,7 @@ export default function App() {
         return prev.filter((_, i) => i !== index);
       }
 
-      let precioAplicado = item.esPesado ? item.precioUSD : (item.precioUSD);
+      let precioAplicado = item.precioUSD;
       const prodOriginal = productos.find(p => String(p.id) === String(item.id));
       if (prodOriginal && prodOriginal.aplicaPrecioMayor) {
         if (nuevaCant >= (prodOriginal.cantMinimaMayor || 3)) {
@@ -637,7 +637,7 @@ export default function App() {
             </div>
           </section>
 
-          {/* BUSCADOR DE PRODUCTOS CON SUGERENCIAS DESPLEGABLES */}
+          {/* BUSCADOR CON SUGERENCIAS FLOTANTES ROBUSTAS */}
           <section style={styles.seccionBuscador}>
             <form onSubmit={ejecutarBusquedaDirecta} style={{ position: 'relative', flex: 1, display: 'flex', gap: '6px' }}>
               <input
@@ -654,13 +654,20 @@ export default function App() {
               )}
               <button type="submit" style={styles.btnAgregar}>Ingresar</button>
 
-              {/* LISTA FLOTANTE DE SUGERENCIAS */}
+              {/* LISTA FLOTANTE CON ACCIÓN INMEDIATA */}
               {sugerencias.length > 0 && (
                 <div style={styles.desplegableSugerencias}>
                   {sugerencias.map((item) => (
                     <div
                       key={item.id}
-                      onClick={() => agregarAlCarrito(item)}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        agregarAlCarrito(item);
+                      }}
+                      onTouchStart={(e) => {
+                        e.preventDefault();
+                        agregarAlCarrito(item);
+                      }}
                       style={styles.itemSugerencia}
                     >
                       <div style={styles.miniImgSugerencia}>
@@ -675,7 +682,7 @@ export default function App() {
                           {item.nombre}
                         </div>
                         <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                          Cód: {item.codigo} · Stock: {item.stock}
+                          Cód: {item.codigo} · Stock: {item.stock} {item.esPesado && '· (Balanza)'}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
@@ -746,7 +753,7 @@ export default function App() {
         </>
       )}
 
-      {/* MODAL PARA PESAR / GRANEL */}
+      {/* MODAL PESO / GRANEL */}
       {productoParaPesar && (
         <ModalPeso
           producto={productoParaPesar}
