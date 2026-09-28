@@ -16,7 +16,7 @@ export default function TicketModal({
   const cliente = datos.cliente || { nombre: 'Consumidor Final', doc: 'V-00000000', telefono: '' };
   const pagos = Array.isArray(datos.pagos) ? datos.pagos : [];
 
-  // Discriminación matemática: Artículos por unidad vs Peso a granel
+  // Discriminación matemática: Artículos por unidad vs Peso
   let totalPiezasUnid = 0;
   let totalPesoKg = 0;
   let hayUnidades = false;
@@ -81,8 +81,8 @@ export default function TicketModal({
     });
 
     texto += `--------------------------------\n`;
-    if (hayUnidades) texto += `Total Unidades: ${totalPiezasUnid} unids\n`;
-    if (hayPesados) texto += `Peso Total a Granel: ${totalPesoKg.toFixed(3)} KG\n`;
+    if (hayUnidades) texto += `Total Artículos: ${totalPiezasUnid} unids\n`;
+    if (hayPesados) texto += `Peso Total: ${totalPesoKg.toFixed(3)} KG\n`;
     texto += `*TOTAL FACTURA: $${totalUSD.toFixed(2)}*\n`;
     texto += `*TOTAL EN BS: Bs. ${totalBS.toFixed(2)}*\n`;
     texto += `Tasa Oficial BCV: Bs. ${tasa.toFixed(2)}\n`;
@@ -106,7 +106,7 @@ export default function TicketModal({
   return (
     <div style={styles.overlay} translate="no">
       <div style={styles.modalBox}>
-        {/* Barra superior de control */}
+        {/* Barra superior */}
         <div style={styles.barraHeader}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <CheckCircle2 color="#00b050" size={17} />
@@ -168,7 +168,7 @@ export default function TicketModal({
               </div>
             )}
 
-            {/* SECCIÓN FORMAS DE PAGO ORDENADA */}
+            {/* Desglose Limpio de Forma de Pago */}
             <div style={styles.bloqueFormaPago}>
               <div style={styles.filaMeta}>
                 <span style={styles.metaLabel}>FORMA DE PAGO:</span>
@@ -177,7 +177,6 @@ export default function TicketModal({
                 </strong>
               </div>
 
-              {/* Si es Pago Mixto, desglose renglón a renglón con la moneda que corresponde */}
               {pagos.length > 1 && !datos.esCredito && (
                 <div style={styles.cajaDesgloseMixto}>
                   {pagos.map((p, i) => {
@@ -188,7 +187,7 @@ export default function TicketModal({
 
                     return (
                       <div key={i} style={styles.itemFilaPago}>
-                        <span style={styles.metodoItemNombre}>• {p.metodo}</span>
+                        <span style={styles.metodoItemNombre}>• {p.metodo}:</span>
                         <strong style={styles.metodoItemMonto}>{montoTexto}</strong>
                       </div>
                     );
@@ -241,7 +240,7 @@ export default function TicketModal({
 
             {hayPesados && (
               <div style={styles.filaSub}>
-                <span>PESO TOTAL A GRANEL:</span>
+                <span>PESO TOTAL:</span>
                 <strong>{totalPesoKg.toFixed(3)} KG</strong>
               </div>
             )}
