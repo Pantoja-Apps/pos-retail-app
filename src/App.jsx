@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
-  RefreshCw, User, Search, PauseCircle, Store
+  RefreshCw, User, Search, PauseCircle, PlayCircle, Store
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -138,6 +138,16 @@ export default function App() {
     return [];
   });
 
+  // Cuentas en Espera / Pausadas
+  const [pedidosPausados, setPedidosPausados] = useState(() => {
+    try {
+      const g = localStorage.getItem('pos_pedidos_pausados');
+      if (g) return JSON.parse(g);
+    } catch (e) {}
+    return [];
+  });
+  const [modalPausadosAbierto, setModalPausadosAbierto] = useState(false);
+
   const [clienteActual, setClienteActual] = useState(CLIENTES_INICIALES[0]);
   const [tasaCambio, setTasaCambio] = useState(855.66);
   const [carrito, setCarrito] = useState([]);
@@ -160,6 +170,7 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(`pos_txs_${currentNegocioId}`, JSON.stringify(transacciones)); } catch (e) {} }, [transacciones, currentNegocioId]);
   useEffect(() => { try { localStorage.setItem('pos_gastos_caja', JSON.stringify(gastosCaja)); } catch (e) {} }, [gastosCaja]);
   useEffect(() => { try { localStorage.setItem(`pos_historico_${currentNegocioId}`, JSON.stringify(historicoVentasGlobal)); } catch (e) {} }, [historicoVentasGlobal, currentNegocioId]);
+  useEffect(() => { try { localStorage.setItem('pos_pedidos_pausados', JSON.stringify(pedidosPausados)); } catch (e) {} }, [pedidosPausados]);
 
   const sincronizarSilenciosamente = async () => {
     const conectadoSupabase = await dbService.checkConnection();
@@ -209,7 +220,6 @@ export default function App() {
     return () => clearInterval(intervalo);
   }, [cuentaMaster, usuarioActivo]);
 
-  // Manejo de búsqueda en tiempo real
   const manejarCambioBusqueda = (texto) => {
     setBusquedaInput(texto);
     if (!texto.trim()) {
@@ -224,8 +234,8 @@ export default function App() {
     setSugerencias(coincidencias);
   };
 
-  // Agregar al Carrito
   const agregarAlCarrito = (producto, cantidadManual = null) => {
+    // Si es producto pesado y no trae cantidad definida, abrir balanza
     if (producto.esPesado && cantidadManual === null) {
       setProductoParaPesar(producto);
       setSugerencias([]);
@@ -313,6 +323,50 @@ export default function App() {
       copia[index] = { ...item, cantidad: nuevaCant, precioUSD: precioAplicado };
       return copia;
     });
+  };
+
+  // Lógica de Pausa / Reanudar Cuentas
+  const pausarCuentaActual = () => {
+    if (carrito.length === 0) {
+      // Si el carrito está vacío pero hay pausados, abrir el modal de pendientes
+      if (pedidosPausados.length > 0) {
+        setModalPausadosAbierto(true);
+      } else {
+        alert('No hay productos en caja para pausar.');
+      }
+      return;
+    }
+
+    const nuevoPausado = {
+      id: 'pausa_' + Date.now(),
+      fecha: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      cliente: clienteActual,
+      carrito: [...carrito],
+      totalUSD: carrito.reduce((a, b) => a + (b.precioUSD * b.cantidad), 0)
+    };
+
+    setPedidosPausados(prev => [nuevoPausado, ...prev]);
+    setCarrito([]);
+    setClienteActual(CLIENTES_INICIALES[0]);
+    alert('Orden guardada en pausa con éxito.');
+  };
+
+  const reanudarPedido = (pedido) => {
+    if (carrito.length > 0) {
+      if (!confirm('Ya hay productos en la caja actual. ¿Deseas reemplazarlos por esta cuenta en pausa?')) {
+        return;
+      }
+    }
+    setCarrito(pedido.carrito);
+    setClienteActual(pedido.cliente || CLIENTES_INICIALES[0]);
+    setPedidosPausados(prev => prev.filter(p => p.id !== pedido.id));
+    setModalPausadosAbierto(false);
+  };
+
+  const eliminarPedidoPausado = (id) => {
+    if (confirm('¿Eliminar esta orden pausada permanentemente?')) {
+      setPedidosPausados(prev => prev.filter(p => p.id !== id));
+    }
   };
 
   const registrarDueno = async (datos) => {
@@ -637,7 +691,7 @@ export default function App() {
             </div>
           </section>
 
-          {/* BUSCADOR CON SUGERENCIAS FLOTANTES ROBUSTAS */}
+          {/* BUSCADOR CON SUGERENCIAS FLOTANTES */}
           <section style={styles.seccionBuscador}>
             <form onSubmit={ejecutarBusquedaDirecta} style={{ position: 'relative', flex: 1, display: 'flex', gap: '6px' }}>
               <input
@@ -743,8 +797,24 @@ export default function App() {
             </div>
 
             <div style={styles.botonesAccion}>
-              <button type="button" onClick={() => setCarrito([])} style={styles.btnLimpiar}><Trash2 size={17} /></button>
-              <button type="button" style={styles.btnPausar}><PauseCircle size={17} /><span style={{ fontSize: '0.76rem', marginLeft: '3px', fontWeight: 'bold' }}>Pausar</span></button>
+              <button type="button" onClick={() => setCarrito([])} style={styles.btnLimpiar} title="Vaciar"><Trash2 size={17} /></button>
+              
+              {/* Botón de Pausa con contador de pedidos en espera */}
+              <button 
+                type="button" 
+                onClick={pausarCuentaActual} 
+                style={{
+                  ...styles.btnPausar,
+                  backgroundColor: pedidosPausados.length > 0 ? '#ffedd5' : '#fff7ed',
+                  borderColor: pedidosPausados.length > 0 ? '#f97316' : '#fdba74'
+                }}
+              >
+                <PauseCircle size={17} color="#ea580c" />
+                <span style={{ fontSize: '0.76rem', marginLeft: '3px', fontWeight: 'bold', color: '#ea580c' }}>
+                  {pedidosPausados.length > 0 ? `Pausa (${pedidosPausados.length})` : 'Pausar'}
+                </span>
+              </button>
+
               <button type="button" onClick={() => { if (carrito.length === 0) return alert('Carrito vacío'); setModalCobroAbierto(true); }} style={styles.btnCobrar}>
                 <DollarSign size={18} /> Cobrar Orden
               </button>
@@ -753,17 +823,64 @@ export default function App() {
         </>
       )}
 
-      {/* MODAL PESO / GRANEL */}
+      {/* MODAL BALANZA DIGITAL PARA PRODUCTOS PESADOS */}
       {productoParaPesar && (
         <ModalPeso
           producto={productoParaPesar}
           tasaCambio={tasaCambio}
-          alConfirmar={(cant) => {
-            agregarAlCarrito(productoParaPesar, cant);
+          alConfirmar={(pesoKilos) => {
+            agregarAlCarrito(productoParaPesar, pesoKilos);
             setProductoParaPesar(null);
           }}
           alCerrar={() => setProductoParaPesar(null)}
         />
+      )}
+
+      {/* MODAL PARA RECUPERAR PEDIDOS EN PAUSA */}
+      {modalPausadosAbierto && (
+        <div style={styles.overlayPausados}>
+          <div style={styles.boxPausados}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <PauseCircle color="#ea580c" size={20} />
+                <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: '800', color: '#0f2a4a' }}>
+                  Cuentas en Pausa ({pedidosPausados.length})
+                </h3>
+              </div>
+              <button type="button" onClick={() => setModalPausadosAbierto(false)} style={styles.btnCerrarX}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '350px', overflowY: 'auto' }}>
+              {pedidosPausados.map((p) => (
+                <div key={p.id} style={styles.itemPausadoCard}>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ fontSize: '0.84rem', color: '#0f2a4a' }}>
+                      {p.cliente?.nombre || 'Consumidor Final'}
+                    </strong>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                      {p.fecha} · {p.carrito?.length} artículo(s)
+                    </div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: '800', color: '#00b050', marginTop: '2px' }}>
+                      ${p.totalUSD.toFixed(2)}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button type="button" onClick={() => reanudarPedido(p)} style={styles.btnReanudar}>
+                      <PlayCircle size={15} />
+                      <span>Reanudar</span>
+                    </button>
+                    <button type="button" onClick={() => eliminarPedidoPausado(p.id)} style={styles.btnBorrarPausado}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       <ModalCobro 
@@ -831,6 +948,12 @@ const styles = {
   totalUsd: { fontSize: '1.15rem', fontWeight: '900', color: '#00b050' },
   botonesAccion: { display: 'flex', gap: '6px' },
   btnLimpiar: { backgroundColor: '#fee2e2', border: 'none', color: '#dc2626', borderRadius: '8px', padding: '10px 11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  btnPausar: { backgroundColor: '#fff7ed', border: 'none', color: '#ea580c', borderRadius: '8px', padding: '10px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  btnCobrar: { flex: 1, backgroundColor: '#00b050', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px', fontSize: '0.92rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' }
+  btnPausar: { border: '1px solid', borderRadius: '8px', padding: '10px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  btnCobrar: { flex: 1, backgroundColor: '#00b050', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px', fontSize: '0.92rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' },
+  overlayPausados: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 9999999 },
+  boxPausados: { backgroundColor: '#fff', borderRadius: '20px', maxWidth: '360px', width: '100%', padding: '16px', boxShadow: '0 20px 40px rgba(0,0,0,0.3)' },
+  itemPausadoCard: { backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  btnReanudar: { backgroundColor: '#eff6ff', color: '#0052cc', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '6px 10px', fontSize: '0.74rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' },
+  btnBorrarPausado: { backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' },
+  btnCerrarX: { background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b' }
 };

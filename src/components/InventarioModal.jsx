@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ArrowLeft, Search, Plus, Edit2, Trash2, Camera, 
-  Package, Check, X, Image as ImageIcon, Percent, Layers
+  Package, Check, X, Image as ImageIcon, Box
 } from 'lucide-react';
 import { optimizarImagen } from '../utils/imageOptimizer';
 
@@ -21,6 +21,16 @@ const CATEGORIAS_PREDEFINIDAS = [
   'Mascotas',
   'General',
   '+ Otra Categoría...'
+];
+
+const EMPAQUES_COMPRA = [
+  'Unidad suelta',
+  'Bulto',
+  'Caja',
+  'Saco / Costal',
+  'Fardo',
+  'Paila / Galón',
+  'Cesta / Huacal'
 ];
 
 export default function InventarioModal({
@@ -47,14 +57,49 @@ export default function InventarioModal({
   const [categoriaSelect, setCategoriaSelect] = useState('Víveres');
   const [categoriaOtra, setCategoriaOtra] = useState('');
   const [esPesado, setEsPesado] = useState(false);
+  
+  // Presentación de compra (Bulto/Caja/Saco)
+  const [tipoEmpaque, setTipoEmpaque] = useState('Unidad suelta');
+  const [unidadesPorEmpaque, setUnidadesPorEmpaque] = useState('1');
+  const [costoEmpaqueUSD, setCostoEmpaqueUSD] = useState('');
+
+  // Precios al Mayor
   const [aplicaMayor, setAplicaMayor] = useState(false);
   const [precioMayorUSD, setPrecioMayorUSD] = useState('');
   const [cantMinimaMayor, setCantMinimaMayor] = useState('3');
   const [imagen, setImagen] = useState('');
   const [procesandoFoto, setProcesandoFoto] = useState(false);
 
-  // Categorías presentes para la barra de filtro
   const categoriasDisponibles = ['Todas', ...new Set(productos.map(p => p.categoria || 'General'))];
+
+  // Cálculo de Costo Unitario cuando se ingresa Costo por Bulto/Caja
+  const manejarCambioCostoEmpaque = (costoEmpVal) => {
+    setCostoEmpaqueUSD(costoEmpVal);
+    const cTotal = parseFloat(costoEmpVal) || 0;
+    const cant = parseFloat(unidadesPorEmpaque) || 1;
+    if (cTotal > 0 && cant > 0) {
+      const unit = (cTotal / cant).toFixed(2);
+      setCostoUSD(unit);
+      const m = parseFloat(margenGanancia) || 0;
+      if (m > 0) {
+        setPrecioUSD((parseFloat(unit) * (1 + m / 100)).toFixed(2));
+      }
+    }
+  };
+
+  const manejarCambioUnidadesEmpaque = (cantVal) => {
+    setUnidadesPorEmpaque(cantVal);
+    const cant = parseFloat(cantVal) || 1;
+    const cTotal = parseFloat(costoEmpaqueUSD) || 0;
+    if (cTotal > 0 && cant > 0) {
+      const unit = (cTotal / cant).toFixed(2);
+      setCostoUSD(unit);
+      const m = parseFloat(margenGanancia) || 0;
+      if (m > 0) {
+        setPrecioUSD((parseFloat(unit) * (1 + m / 100)).toFixed(2));
+      }
+    }
+  };
 
   const manejarCambioCosto = (costoVal) => {
     setCostoUSD(costoVal);
@@ -94,6 +139,9 @@ export default function InventarioModal({
     setCategoriaSelect('Víveres');
     setCategoriaOtra('');
     setEsPesado(false);
+    setTipoEmpaque('Unidad suelta');
+    setUnidadesPorEmpaque('1');
+    setCostoEmpaqueUSD('');
     setAplicaMayor(false);
     setPrecioMayorUSD('');
     setCantMinimaMayor('3');
@@ -125,6 +173,10 @@ export default function InventarioModal({
     }
 
     setEsPesado(Boolean(p.esPesado));
+    setTipoEmpaque(p.tipoEmpaque || 'Unidad suelta');
+    setUnidadesPorEmpaque(p.unidadesPorEmpaque ? String(p.unidadesPorEmpaque) : '1');
+    setCostoEmpaqueUSD(p.costoEmpaqueUSD ? String(p.costoEmpaqueUSD) : '');
+
     setAplicaMayor(Boolean(p.aplicaPrecioMayor));
     setPrecioMayorUSD(p.precioMayorUSD ? String(p.precioMayorUSD) : '');
     setCantMinimaMayor(p.cantMinimaMayor ? String(p.cantMinimaMayor) : '3');
@@ -164,6 +216,9 @@ export default function InventarioModal({
       stock: parseFloat(stock) || 0,
       categoria: catFinal,
       esPesado: Boolean(esPesado),
+      tipoEmpaque: tipoEmpaque,
+      unidadesPorEmpaque: parseFloat(unidadesPorEmpaque) || 1,
+      costoEmpaqueUSD: parseFloat(costoEmpaqueUSD) || 0,
       aplicaPrecioMayor: Boolean(aplicaMayor),
       precioMayorUSD: parseFloat(precioMayorUSD) || 0,
       cantMinimaMayor: parseFloat(cantMinimaMayor) || 3,
@@ -217,7 +272,7 @@ export default function InventarioModal({
         </div>
       </div>
 
-      {/* Selector de Categorías Horizontal */}
+      {/* Selector de Categorías */}
       <div style={styles.carruselCategorias}>
         {categoriasDisponibles.map((cat, idx) => (
           <button
@@ -264,6 +319,11 @@ export default function InventarioModal({
                     <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '1px' }}>
                       Cód: {p.codigo} · Stock: <strong>{p.stock}</strong> · {p.categoria || 'General'}
                     </div>
+                    {p.tipoEmpaque && p.tipoEmpaque !== 'Unidad suelta' && (
+                      <div style={{ fontSize: '0.64rem', color: '#475569', fontStyle: 'italic' }}>
+                        Compra: {p.tipoEmpaque} ({p.unidadesPorEmpaque} unids/paq)
+                      </div>
+                    )}
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '3px' }}>
                       <span style={styles.precioUSDTag}>${Number(p.precioUSD).toFixed(2)}</span>
                       <span style={styles.precioBSTag}>Bs. {precioBs}</span>
@@ -358,10 +418,56 @@ export default function InventarioModal({
                 />
               </div>
 
-              {/* Costo, Margen % y Precio */}
+              {/* SECCIÓN MAYORISTA: TIPO DE EMPAQUE DE COMPRA */}
+              <div style={{ backgroundColor: '#f8fafc', padding: '8px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#0f2a4a' }}>📦 Presentación de Compra al Proveedor</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px' }}>
+                  <div>
+                    <label style={styles.labelForm}>¿Cómo se compra?</label>
+                    <select
+                      value={tipoEmpaque}
+                      onChange={(e) => setTipoEmpaque(e.target.value)}
+                      style={{ ...styles.inputForm, backgroundColor: '#fff' }}
+                    >
+                      {EMPAQUES_COMPRA.map((emp, i) => (
+                        <option key={i} value={emp}>{emp}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {tipoEmpaque !== 'Unidad suelta' && (
+                    <div>
+                      <label style={styles.labelForm}>Unidades por empaque</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={unidadesPorEmpaque}
+                        onChange={(e) => manejarCambioUnidadesEmpaque(e.target.value)}
+                        style={styles.inputForm}
+                        placeholder="24"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {tipoEmpaque !== 'Unidad suelta' && (
+                  <div>
+                    <label style={styles.labelForm}>Costo Total del {tipoEmpaque} ($)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={costoEmpaqueUSD}
+                      onChange={(e) => manejarCambioCostoEmpaque(e.target.value)}
+                      style={styles.inputForm}
+                      placeholder="Ej. 24.00"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Costo Unitario, Margen % y Precio de Venta */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
                 <div style={styles.campoForm}>
-                  <label style={styles.labelForm}>Costo ($)</label>
+                  <label style={styles.labelForm}>Costo Unit ($)</label>
                   <input
                     type="number"
                     step="any"
@@ -396,7 +502,7 @@ export default function InventarioModal({
                 </div>
               </div>
 
-              {/* Stock y Selector de Categorías */}
+              {/* Stock y Categorías */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '8px' }}>
                 <div style={styles.campoForm}>
                   <label style={styles.labelForm}>Stock Actual</label>
