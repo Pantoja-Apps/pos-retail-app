@@ -106,7 +106,6 @@ export default function MetricasModal({
   let totalPiezasVendidas = 0;
   let totalPesoKgVendido = 0;
 
-  // Medios de pago
   const flujoMedios = {
     usd: 0,
     bs_efectivo: 0,
@@ -121,7 +120,6 @@ export default function MetricasModal({
   ventasFiltradas.forEach(v => {
     ventaBrutaUSD += v.totalUSD;
 
-    // Métodos de pago
     if (v.esCredito) {
       flujoMedios.credito += v.totalUSD;
     } else if (v.pagos && v.pagos.length > 0) {
@@ -141,7 +139,6 @@ export default function MetricasModal({
       else flujoMedios.bs_efectivo += v.totalUSD;
     }
 
-    // Artículos
     v.items.forEach(it => {
       const cant = Number(it.cantidad || 0);
       const costoUnit = Number(it.costoUSD ?? it.costo ?? 0);
@@ -173,7 +170,6 @@ export default function MetricasModal({
     });
   });
 
-  // Gastos del período/turno
   let totalGastosUSD = 0;
   if (vista === 'turno') {
     gastos.forEach(g => {
@@ -181,7 +177,6 @@ export default function MetricasModal({
     });
   }
 
-  // Utilidad Líquida Operativa
   const gananciaBrutaUSD = Math.max(0, ventaBrutaUSD - costoTotalUSD);
   const gananciaNetaUSD = Math.max(0, gananciaBrutaUSD - totalGastosUSD);
   const margenUtilidad = ventaBrutaUSD > 0 ? ((gananciaNetaUSD / ventaBrutaUSD) * 100).toFixed(1) : '0.0';
@@ -197,7 +192,6 @@ export default function MetricasModal({
   });
   const gananciaProyectadaInventario = Math.max(0, valorInventarioVentaUSD - valorInventarioCostoUSD);
 
-  // Rankings
   const rankingProductos = Object.values(conteoProductos)
     .sort((a, b) => b.totalUSD - a.totalUSD)
     .slice(0, 5);
@@ -206,7 +200,6 @@ export default function MetricasModal({
     .map(([cat, data]) => ({ categoria: cat, ...data }))
     .sort((a, b) => b.totalUSD - a.totalUSD);
 
-  // Formateador monetario según switch
   const formatMonto = (montoUSD) => {
     if (moneda === 'BS') {
       return `Bs. ${(Number(montoUSD) * tasa).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -214,7 +207,6 @@ export default function MetricasModal({
     return `$${Number(montoUSD).toFixed(2)}`;
   };
 
-  // EXPORTAR CSV AUDITABLE
   const exportarCSV = () => {
     if (ventasFiltradas.length === 0) return alert('No hay ventas registradas en esta vista.');
 
@@ -264,31 +256,31 @@ export default function MetricasModal({
   };
 
   const compartirReporteEjecutivoWhatsApp = () => {
-    let t = `*📈 INFORME FINANCIERO Y RENDIMIENTO*\n`;
+    let t = `*📈 INFORME FINANCIERO Y AUDITORÍA*\n`;
     t += `*${(configEmpresa?.nombre || 'FACILITO POS').toUpperCase()}*\n`;
     if (configEmpresa?.rif) t += `RIF: ${configEmpresa.rif}\n`;
     t += `================================\n`;
     t += `Período: ${vista === 'turno' ? 'Turno Actual' : periodoFiltro.toUpperCase()}\n`;
-    t += `Fecha de Emisión: ${new Date().toLocaleString()}\n`;
-    t += `Total Operaciones: ${ventasFiltradas.length} ticket(s)\n`;
+    t += `Fecha: ${new Date().toLocaleString()}\n`;
+    t += `Operaciones: ${ventasFiltradas.length} ticket(s)\n`;
     t += `Ticket Promedio: $${ticketPromedioUSD.toFixed(2)} (Bs. ${(ticketPromedioUSD * tasa).toFixed(2)})\n`;
     t += `================================\n`;
-    t += `*RESULTADOS FINANCIEROS:*\n`;
-    t += `  • Venta Bruta Facturada: $${ventaBrutaUSD.toFixed(2)} (Bs. ${(ventaBrutaUSD * tasa).toFixed(2)})\n`;
-    t += `  • Costo de Mercancía:    $${costoTotalUSD.toFixed(2)}\n`;
-    if (totalGastosUSD > 0) t += `  • Salidas y Gastos:      -$${totalGastosUSD.toFixed(2)}\n`;
-    t += `  • *GANANCIA NETA REAL:*  +$${gananciaNetaUSD.toFixed(2)} (Bs. ${(gananciaNetaUSD * tasa).toFixed(2)})\n`;
-    t += `  • *Margen de Utilidad:*   ${margenUtilidad}%\n`;
+    t += `*ESTADO DE RESULTADOS:*\n`;
+    t += `  • Venta Bruta: $${ventaBrutaUSD.toFixed(2)} (Bs. ${(ventaBrutaUSD * tasa).toFixed(2)})\n`;
+    t += `  • Costo Mercancía (CMV): $${costoTotalUSD.toFixed(2)}\n`;
+    if (totalGastosUSD > 0) t += `  • Gastos Operativos: -$${totalGastosUSD.toFixed(2)}\n`;
+    t += `  • *UTILIDAD NETA REAL:* +$${gananciaNetaUSD.toFixed(2)} (Bs. ${(gananciaNetaUSD * tasa).toFixed(2)})\n`;
+    t += `  • Margen de Ganancia: ${margenUtilidad}%\n`;
     t += `--------------------------------\n`;
-    t += `*FLUJO DE CAJA POR MÉTODO:*\n`;
-    t += `  • Efectivo Divisas ($): $${flujoMedios.usd.toFixed(2)}\n`;
-    t += `  • Pago Móvil:          Bs. ${(flujoMedios.pago_movil * tasa).toFixed(2)}\n`;
-    t += `  • Punto Débito:        Bs. ${(flujoMedios.punto * tasa).toFixed(2)}\n`;
-    t += `  • Efectivo Bolívares:  Bs. ${(flujoMedios.bs_efectivo * tasa).toFixed(2)}\n`;
-    if (flujoMedios.credito > 0) t += `  • Cuentas por Cobrar:  $${flujoMedios.credito.toFixed(2)}\n`;
+    t += `*COBROS POR MÉTODO:*\n`;
+    t += `  • Divisas ($): $${flujoMedios.usd.toFixed(2)}\n`;
+    t += `  • Pago Móvil: Bs. ${(flujoMedios.pago_movil * tasa).toFixed(2)}\n`;
+    t += `  • Punto Débito: Bs. ${(flujoMedios.punto * tasa).toFixed(2)}\n`;
+    t += `  • Efectivo Bs: Bs. ${(flujoMedios.bs_efectivo * tasa).toFixed(2)}\n`;
+    if (flujoMedios.credito > 0) t += `  • Créditos / Por Cobrar: $${flujoMedios.credito.toFixed(2)}\n`;
     t += `================================\n`;
     t += `Tasa BCV Oficial: Bs. ${tasa.toFixed(2)} / USD\n`;
-    t += `Informe auditado por Facilito POS\n`;
+    t += `Auditoría emitida por Facilito POS\n`;
 
     const url = `https://wa.me/?text=${encodeURIComponent(t)}`;
     window.open(url, '_blank');
@@ -308,7 +300,7 @@ export default function MetricasModal({
           </small>
         </div>
 
-        {/* Switch de Moneda Maestro */}
+        {/* Switch de Moneda */}
         <div style={styles.switchMonedaBox}>
           <button
             type="button"
@@ -550,7 +542,7 @@ export default function MetricasModal({
           </div>
         </div>
 
-        {/* Barra de Acciones de Exportación Premium */}
+        {/* Barra de Acciones */}
         <div style={styles.cajaExportacionPremium}>
           <button type="button" onClick={() => setModalReporteEjecutivo(true)} style={styles.btnReporteFormal}>
             <Printer size={15} />
@@ -622,7 +614,7 @@ export default function MetricasModal({
         </div>
       </main>
 
-      {/* MODAL INFORME EJECUTIVO AUDITABLE IMPRIMIBLE / WHATSAPP */}
+      {/* MODAL INFORME EJECUTIVO AUDITABLE */}
       {modalReporteEjecutivo && (
         <div style={styles.overlayModal}>
           <div style={styles.modalBoxInforme}>
@@ -638,9 +630,9 @@ export default function MetricasModal({
               </button>
             </div>
 
-            {/* Documento Imprimible */}
+            {/* Documento Imprimible con márgenes corregidos y scroll libre */}
             <div id="area-informe-financiero" style={styles.papelInforme}>
-              <div style={{ textAlign: 'center', lineHeight: 1.35 }}>
+              <div style={{ textAlign: 'center', lineHeight: 1.35, paddingTop: '6px' }}>
                 {configEmpresa?.logo && (
                   <img src={configEmpresa.logo} alt="Logo" style={styles.logoInforme} />
                 )}
@@ -747,17 +739,17 @@ export default function MetricasModal({
 
               <div style={styles.lineaDobleCorte} />
 
-              <div style={{ textAlign: 'center', fontSize: '0.64rem', color: '#64748b' }}>
+              <div style={{ textAlign: 'center', fontSize: '0.64rem', color: '#64748b', paddingBottom: '10px' }}>
                 <ShieldCheck size={13} color="#00b050" style={{ verticalAlign: 'middle', marginRight: '4px' }} />
                 <span>Documento Financiero Certificado para Auditoría y Contabilidad</span>
               </div>
             </div>
 
-            {/* Acciones */}
+            {/* Acciones fijas en el fondo */}
             <div style={styles.accionesInformeFila}>
               <button type="button" onClick={() => window.print()} style={styles.btnImprimirInforme}>
                 <Printer size={15} />
-                <span>Imprimir Informe</span>
+                <span>Imprimir</span>
               </button>
               <button type="button" onClick={compartirReporteEjecutivoWhatsApp} style={styles.btnWhatsAppInforme}>
                 <Share2 size={15} />
@@ -1171,7 +1163,7 @@ const styles = {
     flex: 1,
     overflowY: 'auto',
     backgroundColor: '#ffffff',
-    padding: '14px 14px 20px 14px',
+    padding: '16px 14px 24px 14px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: '0.72rem',
     color: '#0f172a'
@@ -1187,14 +1179,14 @@ const styles = {
     fontSize: '0.64rem',
     color: '#0f2a4a',
     fontWeight: '900',
-    marginTop: '4px',
+    marginTop: '6px',
     backgroundColor: '#eff6ff',
-    padding: '2px 8px',
+    padding: '3px 8px',
     borderRadius: '6px'
   },
   lineaDobleCorte: {
     borderTop: '2px dashed #94a3b8',
-    margin: '8px 0'
+    margin: '9px 0'
   },
   lineaFina: {
     borderTop: '1px solid #e2e8f0',
