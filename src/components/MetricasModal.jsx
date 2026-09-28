@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   ArrowLeft, TrendingUp, DollarSign, Download, Calendar, 
-  Package, PieChart, Star, Layers, FileSpreadsheet, CheckCircle2
+  Package, PieChart, Star, Layers, FileSpreadsheet, CheckCircle2,
+  Filter, ChevronDown
 } from 'lucide-react';
 
 export default function MetricasModal({
@@ -12,22 +13,56 @@ export default function MetricasModal({
   alVolver
 }) {
   const [vista, setVista] = useState('turno'); // 'turno' | 'historico'
+  const [periodoFiltro, setPeriodoFiltro] = useState('todos'); // 'todos' | 'hoy' | 'ayer' | 'semana' | 'mes' | 'custom'
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
+
   const tasa = Number(tasaCambio) || 1;
 
-  // Filtrar ventas no anuladas según la vista seleccionada
-  const ventasActivas = (vista === 'turno' ? transaccionesTurno : historicoGlobal).filter(t => !t.anulada);
+  // 1. Filtrado estricto por vista (Turno abierto vs Histórico)
+  const ventasBase = vista === 'turno'
+    ? transaccionesTurno.filter(t => !t.anulada && !t.cerradoEnTurno)
+    : historicoGlobal.filter(t => !t.anulada);
 
-  // 1. CÁLCULO DE INGRESOS, COSTOS Y UTILIDAD
+  // 2. Filtrado por período de fechas
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  const ayer = new Date();
+  ayer.setDate(ayer.getDate() - 1);
+  const ayerStr = ayer.toISOString().slice(0, 10);
+
+  const sieteDiasAtras = new Date();
+  sieteDiasAtras.setDate(sieteDiasAtras.getDate() - 7);
+
+  const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+  const ventasFiltradas = ventasBase.filter(v => {
+    if (vista === 'turno') return true; // En turno actual muestra únicamente lo activo del turno
+
+    const fechaV = (v.fecha || '').slice(0, 10);
+    const fechaObj = new Date(v.fecha || Date.now());
+
+    if (periodoFiltro === 'hoy') return fechaV === hoyStr;
+    if (periodoFiltro === 'ayer') return fechaV === ayerStr;
+    if (periodoFiltro === 'semana') return fechaObj >= sieteDiasAtras;
+    if (periodoFiltro === 'mes') return fechaObj >= inicioMes;
+    if (periodoFiltro === 'custom') {
+      if (fechaInicio && fechaV < fechaInicio) return false;
+      if (fechaFin && fechaV > fechaFin) return false;
+      return true;
+    }
+    return true;
+  });
+
+  // 3. CÁLCULO DE INGRESOS, COSTOS Y UTILIDAD REAL
   let ventaBrutaUSD = 0;
   let costoTotalUSD = 0;
   let totalPiezasVendidas = 0;
   let totalPesoKgVendido = 0;
 
-  // Contadores para productos estrella y categorías
   const conteoProductos = {};
   const conteoCategorias = {};
 
-  ventasActivas.forEach(v => {
+  ventasFiltradas.forEach(v => {
     const totalVenta = Number(v.totalUSD || v.total_usd || 0);
     ventaBrutaUSD += totalVenta;
 
@@ -37,17 +72,14 @@ export default function MetricasModal({
       const costoUnit = Number(it.costoUSD || it.costo || 0);
       const precioUnit = Number(it.precioUSD || it.precio || 0);
 
-      // Costo acumulado
       costoTotalUSD += (costoUnit * cant);
 
-      // Cantidades
       if (it.esPesado || (cant % 1 !== 0)) {
         totalPesoKgVendido += cant;
       } else {
         totalPiezasVendidas += Math.round(cant);
       }
 
-      // Conteo para ranking de productos
       const prodNombre = it.nombre || 'Producto';
       if (!conteoProductos[prodNombre]) {
         conteoProductos[prodNombre] = {
@@ -60,7 +92,6 @@ export default function MetricasModal({
       conteoProductos[prodNombre].cantidad += cant;
       conteoProductos[prodNombre].totalUSD += (precioUnit * cant);
 
-      // Categorías
       const cat = it.categoria || 'Víveres';
       if (!conteoCategorias[cat]) {
         conteoCategorias[cat] = { totalUSD: 0, cantidad: 0 };
@@ -75,40 +106,53 @@ export default function MetricasModal({
   const ventaBrutaBS = ventaBrutaUSD * tasa;
   const margenUtilidad = ventaBrutaUSD > 0 ? ((gananciaNetaUSD / ventaBrutaUSD) * 100).toFixed(1) : '0.0';
 
-  // Ordenar productos estrella (Top 5 más vendidos)
   const rankingProductos = Object.values(conteoProductos)
     .sort((a, b) => b.totalUSD - a.totalUSD)
     .slice(0, 5);
 
-  // Ordenar categorías
   const rankingCategorias = Object.entries(conteoCategorias)
     .map(([cat, data]) => ({ categoria: cat, ...data }))
     .sort((a, b) => b.totalUSD - a.totalUSD);
 
-  // FUNCIÓN PARA EXPORTAR REPORTE A EXCEL (CSV)
-  const exportarReporteCSV = () => {
-    if (ventasActivas.length === 0) return alert('No hay ventas registradas para exportar.');
+  // DESCARGA DE REPORTE COMPLETO CON DETALLES EN CSV / EXCEL
+  const exportarReporteCompleto = () => {
+    if (ventasFiltradas.length === 0) return alert('No hay ventas registradas en el período seleccionado.');
 
-    let csvContent = 'data:text/csv;charset=utf-8,\uFEFF';
-    csvContent += 'Ticket,Fecha,Cliente,Cedula,Forma de Pago,Total USD,Total BS,Tasa BCV,Cajero\n';
+    let csv = 'data:text/csv;charset=utf-8,\uFEFF';
+    // Encabezados contables
+    csv += 'Nro Ticket,Fecha y Hora,Cliente,Cedula/RIF,Telefono,Forma de Pago,Articulos Vendidos,Total Venta (USD),Costo Mercancia (USD),Ganancia Neta (USD),Margen Utilidad (%),Total Venta (BS),Tasa BCV,Cajero,Caja\n';
 
-    ventasActivas.forEach(v => {
+    ventasFiltradas.forEach(v => {
       const ticket = v.correlativo ? `#${v.correlativo}` : `#${String(v.id).slice(-6)}`;
-      const fecha = (v.fechaFormateada || v.fecha || '').replace(',', '');
-      const cliente = (v.cliente?.nombre || v.cliente_nombre || 'Consumidor Final').replace(',', '');
-      const cedula = (v.cliente?.doc || v.cliente_doc || 'V-00000000').replace(',', '');
-      const pago = (v.metodoPago || 'Efectivo').replace(',', '');
-      const usd = Number(v.totalUSD || 0).toFixed(2);
-      const bs = Number(v.totalBS || (Number(v.totalUSD || 0) * tasa)).toFixed(2);
-      const cajero = (v.cajero || 'Angel Pantoja').replace(',', '');
+      const fecha = `"${(v.fechaFormateada || v.fecha || '').replace(/"/g, '""')}"`;
+      const cliente = `"${(v.cliente?.nombre || v.cliente_nombre || 'Consumidor Final').replace(/"/g, '""')}"`;
+      const doc = v.cliente?.doc || v.cliente_doc || 'V-00000000';
+      const telf = v.cliente?.telefono || '';
+      const pago = `"${(v.metodoPago || 'Efectivo').replace(/"/g, '""')}"`;
+      
+      const items = Array.isArray(v.items) ? v.items : (v.detalles?.items || []);
+      const itemsResumen = `"${items.map(it => `${it.nombre} (${it.cantidad}${it.esPesado ? 'kg' : 'u'})`).join('; ').replace(/"/g, '""')}"`;
 
-      csvContent += `${ticket},${fecha},${cliente},${cedula},${pago},${usd},${bs},${tasa.toFixed(2)},${cajero}\n`;
+      const vUSD = Number(v.totalUSD || 0);
+      const vBS = Number(v.totalBS || (vUSD * tasa));
+      
+      let costoVenta = 0;
+      items.forEach(it => {
+        costoVenta += (Number(it.costoUSD || it.costo || 0) * Number(it.cantidad || 0));
+      });
+
+      const utilidad = Math.max(0, vUSD - costoVenta);
+      const margen = vUSD > 0 ? ((utilidad / vUSD) * 100).toFixed(1) : '0.0';
+      const cajero = `"${(v.cajero || 'Angel Pantoja').replace(/"/g, '""')}"`;
+      const caja = v.caja || 'Caja 01';
+
+      csv += `${ticket},${fecha},${cliente},${doc},${telf},${pago},${itemsResumen},${vUSD.toFixed(2)},${costoVenta.toFixed(2)},${utilidad.toFixed(2)},${margen}%,${vBS.toFixed(2)},${tasa.toFixed(2)},${cajero},${caja}\n`;
     });
 
-    const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Reporte_Ventas_${vista.toUpperCase()}_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('href', encodeURI(csv));
+    const nombreArchivo = `Reporte_Contable_${vista === 'turno' ? 'TurnoActual' : periodoFiltro.toUpperCase()}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.setAttribute('download', nombreArchivo);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -124,16 +168,16 @@ export default function MetricasModal({
         <div style={{ flex: 1, textAlign: 'center' }}>
           <h2 style={styles.tituloHeader}>Rendimiento y Ganancias</h2>
           <small style={{ color: '#64748b', fontSize: '0.72rem' }}>
-            Métricas contables y utilidad neta · BCV: <strong>Bs. {tasa.toFixed(2)}</strong>
+            Auditoría financiera y margen de utilidad · BCV: <strong>Bs. {tasa.toFixed(2)}</strong>
           </small>
         </div>
-        <button type="button" onClick={exportarReporteCSV} style={styles.btnExportarTop} title="Descargar Excel / CSV">
+        <button type="button" onClick={exportarReporteCompleto} style={styles.btnExportarTop} title="Descargar Reporte en Excel">
           <Download size={14} />
           <span>Excel</span>
         </button>
       </header>
 
-      {/* Tabs Turno Actual vs Histórico Total */}
+      {/* Tabs Principales: Turno Actual vs Histórico Total */}
       <div style={styles.tabsFila}>
         <button
           type="button"
@@ -163,12 +207,66 @@ export default function MetricasModal({
       </div>
 
       <main style={styles.cuerpo}>
+        {/* FILTROS POR FECHA (Solo visible en Histórico Global) */}
+        {vista === 'historico' && (
+          <div style={styles.bloqueFiltroFechas}>
+            <div style={styles.filaBotonesPeriodo}>
+              {[
+                { id: 'todos', label: 'Todo' },
+                { id: 'hoy', label: 'Hoy' },
+                { id: 'ayer', label: 'Ayer' },
+                { id: 'semana', label: '7 Días' },
+                { id: 'mes', label: 'Este Mes' },
+                { id: 'custom', label: 'Rango' }
+              ].map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPeriodoFiltro(p.id)}
+                  style={{
+                    ...styles.btnPeriodoChip,
+                    backgroundColor: periodoFiltro === p.id ? '#0f2a4a' : '#ffffff',
+                    color: periodoFiltro === p.id ? '#ffffff' : '#475569',
+                    borderColor: periodoFiltro === p.id ? '#0f2a4a' : '#e2e8f0'
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Rango de Fechas Personalizado */}
+            {periodoFiltro === 'custom' && (
+              <div style={styles.gridRangoPersonalizado}>
+                <div>
+                  <small style={styles.labelFechaMini}>Desde:</small>
+                  <input
+                    type="date"
+                    value={fechaInicio}
+                    onChange={(e) => setFechaInicio(e.target.value)}
+                    style={styles.inputFecha}
+                  />
+                </div>
+                <div>
+                  <small style={styles.labelFechaMini}>Hasta:</small>
+                  <input
+                    type="date"
+                    value={fechaFin}
+                    onChange={(e) => setFechaFin(e.target.value)}
+                    style={styles.inputFecha}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tarjeta Principal: Ganancia Neta */}
         <div style={styles.tarjetaGananciaPrincipal}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
             <TrendingUp size={16} color="#00b050" />
             <span style={styles.etiquetaGanancia}>
-              GANANCIA NETA ({vista === 'turno' ? 'EN EL TURNO' : 'ACUMULADA'})
+              GANANCIA NETA ({vista === 'turno' ? 'EN EL TURNO' : 'EN EL PERÍODO'})
             </span>
           </div>
 
@@ -197,15 +295,15 @@ export default function MetricasModal({
           </div>
         </div>
 
-        {/* Botón de Exportación Rápida */}
+        {/* Botón de Descarga del Reporte Completo */}
         <div style={styles.cajaDescargaReporte}>
           <div style={{ flex: 1 }}>
-            <strong style={{ fontSize: '0.8rem', color: '#0f2a4a' }}>Descargar Libro de Ventas</strong>
+            <strong style={{ fontSize: '0.8rem', color: '#0f2a4a' }}>Descargar Reporte Detallado</strong>
             <small style={{ fontSize: '0.66rem', color: '#64748b', display: 'block' }}>
-              Exporta la lista de facturas de esta vista en formato Excel / CSV
+              Incluye costos, utilidades, clientes y formas de pago ({ventasFiltradas.length} registros)
             </small>
           </div>
-          <button type="button" onClick={exportarReporteCSV} style={styles.btnDescargarExcel}>
+          <button type="button" onClick={exportarReporteCompleto} style={styles.btnDescargarExcel}>
             <FileSpreadsheet size={15} />
             <span>Descargar CSV</span>
           </button>
@@ -219,7 +317,7 @@ export default function MetricasModal({
           </div>
 
           {rankingProductos.length === 0 ? (
-            <div style={styles.vacioText}>Sin ventas registradas en esta vista.</div>
+            <div style={styles.vacioText}>Sin ventas registradas en esta vista o período.</div>
           ) : (
             <div style={styles.listaRanking}>
               {rankingProductos.map((p, idx) => (
@@ -246,7 +344,7 @@ export default function MetricasModal({
           </div>
 
           {rankingCategorias.length === 0 ? (
-            <div style={styles.vacioText}>Sin ventas clasificadas en esta vista.</div>
+            <div style={styles.vacioText}>Sin ventas clasificadas en esta vista o período.</div>
           ) : (
             <div style={styles.listaRanking}>
               {rankingCategorias.map((c, idx) => {
@@ -260,7 +358,6 @@ export default function MetricasModal({
                         <small style={{ color: '#64748b', fontSize: '0.66rem', marginLeft: '6px' }}>({porcentajeCat}%)</small>
                       </div>
                     </div>
-                    {/* Barra de progreso */}
                     <div style={styles.barraFondo}>
                       <div style={{ ...styles.barraProgreso, width: `${porcentajeCat}%` }} />
                     </div>
@@ -350,6 +447,53 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '10px'
+  },
+  bloqueFiltroFechas: {
+    backgroundColor: '#ffffff',
+    borderRadius: '12px',
+    padding: '8px',
+    border: '1px solid #e2e8f0',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px'
+  },
+  filaBotonesPeriodo: {
+    display: 'flex',
+    gap: '4px',
+    overflowX: 'auto',
+    padding: '2px 0'
+  },
+  btnPeriodoChip: {
+    flex: 1,
+    whiteSpace: 'nowrap',
+    padding: '5px 8px',
+    borderRadius: '8px',
+    border: '1px solid',
+    fontSize: '0.7rem',
+    fontWeight: 'bold',
+    cursor: 'pointer'
+  },
+  gridRangoPersonalizado: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '6px',
+    marginTop: '4px'
+  },
+  labelFechaMini: {
+    fontSize: '0.64rem',
+    fontWeight: 'bold',
+    color: '#64748b',
+    display: 'block'
+  },
+  inputFecha: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '5px 8px',
+    borderRadius: '6px',
+    border: '1px solid #cbd5e1',
+    fontSize: '0.74rem',
+    outline: 'none',
+    backgroundColor: '#f8fafc'
   },
   tarjetaGananciaPrincipal: {
     backgroundColor: '#0f2a4a',
