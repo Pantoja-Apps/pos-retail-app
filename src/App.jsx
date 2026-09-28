@@ -200,6 +200,16 @@ export default function App() {
           mensajePie: negData.mensaje_pie || prev.mensajePie
         }));
       }
+
+      // Sincronizar ventas desde Supabase
+      const ventasSupabase = await dbService.getVentas(negId);
+      if (Array.isArray(ventasSupabase) && ventasSupabase.length > 0) {
+        setTransacciones(actuales => {
+          const idsExistentes = new Set(actuales.map(v => String(v.id)));
+          const nuevas = ventasSupabase.filter(v => !idsExistentes.has(String(v.id)));
+          return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
+        });
+      }
     }
   };
 
@@ -235,7 +245,6 @@ export default function App() {
   };
 
   const agregarAlCarrito = (producto, cantidadManual = null) => {
-    // Si es producto pesado y no trae cantidad definida, abrir balanza
     if (producto.esPesado && cantidadManual === null) {
       setProductoParaPesar(producto);
       setSugerencias([]);
@@ -325,10 +334,9 @@ export default function App() {
     });
   };
 
-  // Lógica de Pausa / Reanudar Cuentas
+  // Pausar y Reanudar
   const pausarCuentaActual = () => {
     if (carrito.length === 0) {
-      // Si el carrito está vacío pero hay pausados, abrir el modal de pendientes
       if (pedidosPausados.length > 0) {
         setModalPausadosAbierto(true);
       } else {
@@ -367,6 +375,85 @@ export default function App() {
     if (confirm('¿Eliminar esta orden pausada permanentemente?')) {
       setPedidosPausados(prev => prev.filter(p => p.id !== id));
     }
+  };
+
+  // Guardar o Actualizar Cliente
+  const guardarClienteEnDB = (cli) => {
+    setClientes(prev => {
+      const idx = prev.findIndex(c => c.doc?.toUpperCase().trim() === cli.doc?.toUpperCase().trim());
+      if (idx >= 0) {
+        const cp = [...prev];
+        cp[idx] = { ...cp[idx], ...cli };
+        return cp;
+      }
+      return [...prev, { id: Date.now(), ...cli, saldoPendienteUSD: 0, historialCreditos: [], historialAbonos: [] }];
+    });
+  };
+
+  // FINALIZAR VENTA COMPLETA: Caja, Historial, Inventario, Supabase y Ticket
+  const alFinalizarVenta = async (datosVenta) => {
+    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+    const ahora = new Date();
+
+    const ventaCompleta = {
+      id: datosVenta.id || 'vta_' + Date.now(),
+      correlativo: (transacciones.length + 1).toString().padStart(5, '0'),
+      fecha: ahora.toISOString(),
+      fechaFormateada: ahora.toLocaleDateString() + ' ' + ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      negocio_id: negId,
+      cajero: usuarioActivo?.nombre || 'Cajero',
+      caja: cajaActiva?.nombre || 'Caja 01',
+      cliente: datosVenta.cliente || clienteActual,
+      items: datosVenta.items || [...carrito],
+      totalUSD: parseFloat(datosVenta.totalUSD || totalUSD),
+      totalBS: parseFloat(datosVenta.totalBS || totalBS),
+      tasaCambio: parseFloat(tasaCambio),
+      pagos: datosVenta.pagos || [],
+      vueltoUSD: parseFloat(datosVenta.vueltoUSD || 0),
+      vueltoBS: parseFloat(datosVenta.vueltoBS || 0),
+      descuento: datosVenta.descuento || 0
+    };
+
+    // 1. Guardar en Transacciones (Caja e Historial)
+    setTransacciones(prev => [ventaCompleta, ...prev]);
+    setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
+
+    // 2. Descontar Stock de los productos vendidos
+    setProductos(prevProds => {
+      const copia = [...prevProds];
+      ventaCompleta.items.forEach(itemVendido => {
+        const idx = copia.findIndex(p => String(p.id) === String(itemVendido.id));
+        if (idx >= 0) {
+          const stockActual = parseFloat(copia[idx].stock) || 0;
+          const cantVendida = parseFloat(itemVendido.cantidad) || 1;
+          const nuevoStock = Math.max(0, stockActual - cantVendida);
+          copia[idx] = { ...copia[idx], stock: parseFloat(nuevoStock.toFixed(3)) };
+          dbService.upsertProducto(copia[idx], negId);
+        }
+      });
+      return copia;
+    });
+
+    // 3. Subir la venta a Supabase
+    await dbService.registrarVenta({
+      id: ventaCompleta.id,
+      negocio_id: negId,
+      fecha: ventaCompleta.fecha,
+      total_usd: ventaCompleta.totalUSD,
+      total_bs: ventaCompleta.totalBS,
+      tasa_cambio: ventaCompleta.tasaCambio,
+      cliente_nombre: ventaCompleta.cliente?.nombre || 'Consumidor Final',
+      cliente_doc: ventaCompleta.cliente?.doc || 'V-00000000',
+      cajero_nombre: ventaCompleta.cajero,
+      caja_nombre: ventaCompleta.caja,
+      detalles: ventaCompleta
+    });
+
+    // 4. Limpiar caja y mostrar el Ticket
+    setCarrito([]);
+    setClienteActual(CLIENTES_INICIALES[0]);
+    setModalCobroAbierto(false);
+    setTicketModalData(ventaCompleta);
   };
 
   const registrarDueno = async (datos) => {
@@ -515,7 +602,7 @@ export default function App() {
         alCerrarSesion={cerrarSesion}
       />
 
-      {/* VISTAS */}
+      {/* VISTAS MODALES */}
       {vistaActual === 'soporte' && (
         <SoporteModal nombreNegocio={configEmpresa.nombre} alVolver={() => setVistaActual('pos')} />
       )}
@@ -602,9 +689,13 @@ export default function App() {
           tasaCambio={tasaCambio}
           configEmpresa={configEmpresa}
           usuarioActivo={usuarioActivo}
-          alRegistrarGasto={() => {}}
-          alEliminarGasto={() => {}}
-          alCerrarTurno={() => {}}
+          alRegistrarGasto={(g) => setGastosCaja(prev => [g, ...prev])}
+          alEliminarGasto={(id) => setGastosCaja(prev => prev.filter(g => g.id !== id))}
+          alCerrarTurno={() => {
+            alert('Turno cerrado exitosamente.');
+            setTransacciones([]);
+            setGastosCaja([]);
+          }}
           alVolver={() => setVistaActual('pos')}
         />
       )}
@@ -616,7 +707,11 @@ export default function App() {
           usuarioActivo={usuarioActivo}
           cajaActiva={cajaActiva}
           alVerTicket={(t) => setTicketModalData(t)}
-          alAnularVenta={() => {}}
+          alAnularVenta={(id) => {
+            if (confirm('¿Anular esta venta?')) {
+              setTransacciones(prev => prev.filter(t => t.id !== id));
+            }
+          }}
           alVolver={() => setVistaActual('pos')}
         />
       )}
@@ -708,7 +803,6 @@ export default function App() {
               )}
               <button type="submit" style={styles.btnAgregar}>Ingresar</button>
 
-              {/* LISTA FLOTANTE CON ACCIÓN INMEDIATA */}
               {sugerencias.length > 0 && (
                 <div style={styles.desplegableSugerencias}>
                   {sugerencias.map((item) => (
@@ -799,7 +893,6 @@ export default function App() {
             <div style={styles.botonesAccion}>
               <button type="button" onClick={() => setCarrito([])} style={styles.btnLimpiar} title="Vaciar"><Trash2 size={17} /></button>
               
-              {/* Botón de Pausa con contador de pedidos en espera */}
               <button 
                 type="button" 
                 onClick={pausarCuentaActual} 
@@ -883,6 +976,7 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL COBRO CONECTADO COMPLETAMENTE */}
       <ModalCobro 
         abierto={modalCobroAbierto}
         alCerrar={() => setModalCobroAbierto(false)}
@@ -892,9 +986,19 @@ export default function App() {
         clienteActual={clienteActual}
         setClienteActual={setClienteActual}
         clientes={clientes}
-        guardarClienteEnDB={() => {}}
-        alFinalizarVenta={() => { setCarrito([]); setModalCobroAbierto(false); }}
+        guardarClienteEnDB={guardarClienteEnDB}
+        alFinalizarVenta={alFinalizarVenta}
       />
+
+      {/* MODAL TICKET DIGITAL CON OPCIÓN IMPRIMIR Y WHATSAPP */}
+      {ticketModalData && (
+        <TicketModal
+          datos={ticketModalData}
+          config={configEmpresa}
+          tasaCambio={tasaCambio}
+          alCerrar={() => setTicketModalData(null)}
+        />
+      )}
 
       <ScannerModal 
         abierto={camaraAbierta}
