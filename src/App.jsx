@@ -781,7 +781,7 @@ export default function App() {
       )}
 
       {vistaActual === 'inventario' && (
-        <InventarioModal proveedores={proveedores} 
+        <InventarioModal proveedores={proveedores} proveedores={proveedores} 
           productos={productos}
           tasaCambio={tasaCambio}
           esDueno={esDueno}
