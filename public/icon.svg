@@ -1,45 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
-  <!-- Fondo Solido Premium para Android -->
-  <rect width="512" height="512" rx="115" fill="#0a1d37"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="100%" height="100%">
+  <!-- Fondo Solido Blanco Puro / Safe Canvas -->
+  <rect width="1000" height="1000" rx="220" fill="#ffffff"/>
   
-  <g transform="translate(68, 60) scale(0.72)">
-    <!-- Nube Tecnológica Superior -->
-    <path d="M 180 140 C 130 140 90 180 90 230 C 90 235 91 240 93 245 C 60 255 35 285 35 325 C 35 375 75 415 125 415 L 260 415 L 260 140 Z" fill="#00b050"/>
-    <path d="M 260 140 L 260 415 L 395 415 C 445 415 485 375 485 325 C 485 285 460 255 427 245 C 429 240 430 235 430 230 C 430 180 390 140 340 140 C 315 140 292 150 275 168 C 258 150 235 140 180 140 Z" fill="#ffffff" opacity="0.9"/>
+  <g transform="translate(190, 160) scale(0.62)">
+    <!-- Nube Superior -->
+    <!-- Mitad Izquierda Verde -->
+    <path d="M 330 180 C 260 180 200 230 200 300 C 200 308 202 316 205 324 C 160 338 125 380 125 435 C 125 505 180 560 250 560 L 500 560 L 500 180 Z" fill="#00b050"/>
+    <!-- Mitad Derecha Azul Petróleo -->
+    <path d="M 500 180 L 500 560 L 750 560 C 820 560 875 505 875 435 C 875 380 840 338 795 324 C 798 316 800 308 800 300 C 800 230 740 180 670 180 C 635 180 600 195 575 220 C 550 195 515 180 500 180 Z" fill="#0f2a4a"/>
     
-    <!-- Circuitos en la Nube -->
-    <circle cx="170" cy="280" r="14" fill="#ffffff"/>
-    <path d="M 170 294 L 170 415 L 140 455" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    <circle cx="230" cy="225" r="14" fill="#ffffff"/>
-    <path d="M 230 239 L 230 415 L 185 475" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    <circle cx="310" cy="275" r="14" fill="#0a1d37"/>
-    <path d="M 310 289 L 310 415 L 265 475" stroke="#0a1d37" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Pistas de Conexión de la Nube -->
+    <circle cx="370" cy="380" r="28" fill="#ffffff"/>
+    <path d="M 370 408 L 370 560 L 320 635" stroke="#ffffff" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <circle cx="500" cy="285" r="28" fill="#ffffff"/>
+    <path d="M 500 313 L 500 560 L 415 685" stroke="#ffffff" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <circle cx="630" cy="380" r="28" fill="#ffffff"/>
+    <path d="M 630 408 L 630 560 L 545 685" stroke="#ffffff" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     
-    <!-- Bucle Infinito Exterior Blanco/Cian Claro -->
-    <path d="M 160 430 C 60 430 5 500 5 580 C 5 660 60 730 160 730 C 240 730 300 680 340 620 C 380 680 440 730 520 730 C 620 730 675 660 675 580 C 675 500 620 430 520 430 C 440 430 380 480 340 540 C 300 480 240 430 160 430 Z" fill="none" stroke="#ffffff" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Bucle Infinito Exterior (Azul Marino) -->
+    <path d="M 330 620 C 140 620 10 770 10 930 C 10 1090 140 1240 330 1240 C 470 1240 570 1150 650 1030 C 730 1150 830 1240 970 1240 C 1160 1240 1290 1090 1290 930 C 1290 770 1160 620 970 620 C 830 620 730 710 650 830 C 570 710 470 620 330 620 Z" fill="none" stroke="#0f2a4a" stroke-width="75" stroke-linecap="round" stroke-linejoin="round"/>
     
-    <!-- Bucle Infinito Interior Verde Neón Esmeralda -->
-    <path d="M 160 470 C 85 470 45 520 45 580 C 45 640 85 690 160 690 C 220 690 270 650 310 595 L 370 510 C 410 455 460 470 520 470 C 595 470 635 520 635 580 C 635 640 595 690 520 690 C 460 690 410 650 370 595" fill="none" stroke="#00b050" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Bucle Infinito Interior (Verde Esmeralda) -->
+    <path d="M 330 700 C 190 700 90 805 90 930 C 90 1055 190 1160 330 1160 C 440 1160 520 1080 590 985 C 650 890 700 830 770 765 C 830 705 900 700 970 700 C 1110 700 1210 805 1210 930 C 1210 1055 1110 1160 970 1160 C 900 1160 830 1120 770 1055 L 530 790 C 470 730 400 700 330 700 Z" fill="none" stroke="#00b050" stroke-width="68" stroke-linecap="round" stroke-linejoin="round"/>
     
-    <!-- POS Terminal (Izquierda) -->
-    <g transform="translate(90, 500) rotate(-16)">
-      <rect x="0" y="0" width="85" height="135" rx="18" fill="#ffffff"/>
-      <rect x="10" y="10" width="65" height="48" rx="8" fill="#0a1d37"/>
-      <!-- Check en pantallita -->
-      <path d="M 24 34 L 36 45 L 60 22" fill="none" stroke="#00b050" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-      <!-- Botones -->
-      <circle cx="23" cy="76" r="6" fill="#0a1d37"/>
-      <circle cx="43" cy="76" r="6" fill="#0a1d37"/>
-      <circle cx="63" cy="76" r="6" fill="#0a1d37"/>
-      <circle cx="23" cy="96" r="6" fill="#0a1d37"/>
-      <circle cx="43" cy="96" r="6" fill="#0a1d37"/>
-      <circle cx="63" cy="96" r="6" fill="#0a1d37"/>
-      <circle cx="23" cy="116" r="6" fill="#00b050"/>
-      <circle cx="43" cy="116" r="6" fill="#00b050"/>
-      <circle cx="63" cy="116" r="6" fill="#00b050"/>
+    <!-- POS Datáfono Inclinado -->
+    <g transform="translate(195, 780) rotate(-16)">
+      <rect x="0" y="0" width="165" height="255" rx="36" fill="#0f2a4a"/>
+      <rect x="20" y="20" width="125" height="95" rx="16" fill="#ffffff"/>
+      <path d="M 45 68 L 68 88 L 120 42" fill="none" stroke="#00b050" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="45" cy="148" r="12" fill="#ffffff"/>
+      <circle cx="83" cy="148" r="12" fill="#ffffff"/>
+      <circle cx="120" cy="148" r="12" fill="#ffffff"/>
+      <circle cx="45" cy="185" r="12" fill="#ffffff"/>
+      <circle cx="83" cy="185" r="12" fill="#ffffff"/>
+      <circle cx="120" cy="185" r="12" fill="#ffffff"/>
+      <circle cx="45" cy="222" r="12" fill="#00b050"/>
+      <circle cx="83" cy="222" r="12" fill="#00b050"/>
+      <circle cx="120" cy="222" r="12" fill="#00b050"/>
     </g>
     
-    <!-- Checkmark Grande (Derecha) -->
-    <path d="M 455 570 L 505 620 L 595 510" fill="none" stroke="#00b050" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Checkmark Grande Derecho -->
+    <path d="M 850 920 L 940 1010 L 1120 810" fill="none" stroke="#00b050" stroke-width="85" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>
