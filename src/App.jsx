@@ -117,7 +117,11 @@ export default function App() {
   const [transacciones, setTransacciones] = useState(() => {
     try {
       const g = localStorage.getItem(`pos_txs_${currentNegocioId}`);
-      if (g) return JSON.parse(g);
+      if (g) {
+        const arr = JSON.parse(g);
+        // Filtrar facturas corruptas en 0 sin items
+        return arr.filter(t => Number(t.totalUSD || 0) > 0 || (t.items && t.items.length > 0));
+      }
     } catch (e) {}
     return [];
   });
@@ -200,11 +204,19 @@ export default function App() {
         }));
       }
 
+      // Sincronizar sin sobrescribir el cierre local del turno
       const ventasSupabase = await dbService.getVentas(negId);
       if (Array.isArray(ventasSupabase) && ventasSupabase.length > 0) {
         setTransacciones(actuales => {
           const idsExistentes = new Set(actuales.map(v => String(v.id)));
-          const nuevas = ventasSupabase.filter(v => !idsExistentes.has(String(v.id)));
+          const nuevas = ventasSupabase
+            .filter(v => !idsExistentes.has(String(v.id)) && Number(v.totalUSD || v.total_usd || 0) > 0)
+            .map(v => ({
+              ...v,
+              totalUSD: Number(v.totalUSD || v.total_usd || 0),
+              totalBS: Number(v.totalBS || v.total_bs || 0),
+              cerradoEnTurno: Boolean(v.cerradoEnTurno)
+            }));
           return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
         });
       }
@@ -409,12 +421,12 @@ export default function App() {
       metodoPago: datosVenta.metodoPago || 'Efectivo ($)',
       pagos: datosVenta.pagos || [],
       esCredito: Boolean(datosVenta.esCredito),
+      cerradoEnTurno: false,
       montoRecibido: parseFloat(datosVenta.montoRecibido || datosVenta.totalUSD || totalUSD),
       vueltoUSD: parseFloat(datosVenta.vueltoUSD || 0),
       vueltoBS: parseFloat(datosVenta.vueltoBS || 0)
     };
 
-    // Si es crédito, registrar deuda
     if (ventaCompleta.esCredito) {
       setClientes(prev => {
         const docBuscado = (ventaCompleta.cliente?.doc || '').replace(/[^0-9]/g, '');
@@ -451,11 +463,9 @@ export default function App() {
       });
     }
 
-    // Guardar en Transacciones
     setTransacciones(prev => [ventaCompleta, ...prev]);
     setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
 
-    // Descontar Stock
     setProductos(prevProds => {
       const copia = [...prevProds];
       ventaCompleta.items.forEach(itemVendido => {
@@ -471,7 +481,6 @@ export default function App() {
       return copia;
     });
 
-    // Subir a Supabase
     await dbService.registrarVenta({
       id: ventaCompleta.id,
       negocio_id: negId,
@@ -492,14 +501,13 @@ export default function App() {
     setTicketModalData(ventaCompleta);
   };
 
-  // ANULAR FACTURA CON REVERSIÓN DE STOCK
+  // ANULAR FACTURA
   const anularFactura = async (ventaId, motivo) => {
     const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
     const ventaTarget = transacciones.find(t => String(t.id) === String(ventaId));
 
     if (!ventaTarget) return;
 
-    // Reponer Stock de los artículos
     if (Array.isArray(ventaTarget.items)) {
       setProductos(prevProds => {
         const copia = [...prevProds];
@@ -516,7 +524,6 @@ export default function App() {
       });
     }
 
-    // Marcar como anulada en Transacciones
     const actualizarLista = (prev) => prev.map(t => {
       if (String(t.id) === String(ventaId)) {
         return {
@@ -531,8 +538,14 @@ export default function App() {
 
     setTransacciones(actualizarLista);
     setHistoricoVentasGlobal(actualizarLista);
+    alert(`Factura #${ventaTarget.correlativo || ventaTarget.id} anulada.`);
+  };
 
-    alert(`Factura #${ventaTarget.correlativo || ventaTarget.id} anulada con éxito y stock reincorporado.`);
+  // CIERRE DE TURNO: Limpia el turno actual y marca las ventas como cerradas
+  const cerrarTurnoActual = () => {
+    setTransacciones(prev => prev.map(t => ({ ...t, cerradoEnTurno: true })));
+    setGastosCaja([]);
+    alert('Turno cerrado exitosamente. La caja ha quedado en $0.00 para el nuevo turno.');
   };
 
   const registrarDueno = async (datos) => {
@@ -780,6 +793,7 @@ export default function App() {
         />
       )}
 
+      {/* CAJA Y CUADRE Z */}
       {vistaActual === 'caja' && (
         <CajaModal 
           transacciones={transacciones}
@@ -790,16 +804,12 @@ export default function App() {
           cajaActiva={cajaActiva}
           alRegistrarGasto={(g) => setGastosCaja(prev => [g, ...prev])}
           alEliminarGasto={(id) => setGastosCaja(prev => prev.filter(g => g.id !== id))}
-          alCerrarTurno={() => {
-            alert('Turno cerrado exitosamente.');
-            setTransacciones([]);
-            setGastosCaja([]);
-          }}
+          alCerrarTurno={cerrarTurnoActual}
           alVolver={() => setVistaActual('pos')}
         />
       )}
 
-      {/* HISTORIAL GLOBAL DE VENTAS CON ANULACIONES */}
+      {/* HISTORIAL GLOBAL */}
       {vistaActual === 'historial' && (
         <HistorialModal 
           transacciones={transacciones}
@@ -888,7 +898,7 @@ export default function App() {
             </div>
           </section>
 
-          {/* BUSCADOR CON SUGERENCIAS */}
+          {/* BUSCADOR */}
           <section style={styles.seccionBuscador}>
             <form onSubmit={ejecutarBusquedaDirecta} style={{ position: 'relative', flex: 1, display: 'flex', gap: '6px' }}>
               <input

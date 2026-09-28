@@ -16,19 +16,18 @@ export default function CajaModal({
   alCerrarTurno,
   alVolver
 }) {
-  const [pestana, setPestana] = useState('arqueo'); // 'arqueo' | 'gastos'
+  const [pestana, setPestana] = useState('arqueo');
   const [modalGastoAbierto, setModalGastoAbierto] = useState(false);
   const [reporteZGenerado, setReporteZGenerado] = useState(null);
 
-  // Formulario de Gasto
   const [descripcionGasto, setDescripcionGasto] = useState('');
-  const [origenGasto, setOrigenGasto] = useState('efectivo_bs'); // 'efectivo_bs' | 'efectivo_usd' | 'pago_movil'
+  const [origenGasto, setOrigenGasto] = useState('efectivo_bs');
   const [montoGasto, setMontoGasto] = useState('');
 
   const tasa = Number(tasaCambio) || 1;
 
-  // Filtrar ventas del turno actual (no anuladas)
-  const ventasTurno = transacciones.filter(t => !t.anulada);
+  // Filtrar ventas del turno actual no anuladas
+  const ventasTurno = transacciones.filter(t => !t.anulada && !t.cerradoEnTurno);
 
   // Totales de Ventas del Turno
   let totalVentasUSD = 0;
@@ -66,7 +65,7 @@ export default function CajaModal({
     }
   });
 
-  // Gastos discriminados por origen de fondo real
+  // Gastos del turno actual
   let gastosEfectivoUSD = 0;
   let gastosEfectivoBS = 0;
   let gastosPagoMovilBS = 0;
@@ -94,7 +93,7 @@ export default function CajaModal({
     e.preventDefault();
     const val = parseFloat(montoGasto) || 0;
     if (val <= 0 || !descripcionGasto.trim()) {
-      return alert('Ingresa una descripción y un monto válido mayor a 0');
+      return alert('Ingresa una descripción y un monto válido');
     }
 
     const nuevoGasto = {
@@ -133,6 +132,7 @@ export default function CajaModal({
       pagoMovilNetoBS,
       ventasCount: ventasTurno.length,
       gastosCount: gastos.length,
+      gastosDetalle: [...gastos],
       tasa
     };
 
@@ -143,10 +143,11 @@ export default function CajaModal({
     if (!reporteZGenerado) return;
     const r = reporteZGenerado;
 
-    let t = `*📊 REPORTE DE CIERRE DE CAJA (Z)*\n`;
+    let t = `*📊 REPORTE DE CIERRE DE CAJA (CORTE Z)*\n`;
     t += `*${(configEmpresa?.nombre || 'FACILITO POS').toUpperCase()}*\n`;
+    if (configEmpresa?.rif) t += `RIF: ${configEmpresa.rif}\n`;
     t += `--------------------------------\n`;
-    t += `Fecha: ${r.fechaHora}\n`;
+    t += `Fecha/Hora: ${r.fechaHora}\n`;
     t += `Responsable: ${r.cajero} · ${r.caja}\n`;
     t += `Total Ventas: ${r.ventasCount} ticket(s)\n`;
     t += `--------------------------------\n`;
@@ -154,17 +155,26 @@ export default function CajaModal({
     t += `  • Total USD: $${r.totalVentasUSD.toFixed(2)}\n`;
     t += `  • Total Bs:  Bs. ${r.totalVentasBS.toFixed(2)}\n`;
     t += `--------------------------------\n`;
-    t += `*EFECTIVO FÍSICO EN GAVETA (NETO):*\n`;
-    t += `  • Dólares ($):   $${r.efectivoNetoUSD.toFixed(2)}\n`;
+    t += `*EFECTIVO EN GAVETA (NETO):*\n`;
+    t += `  • Dólares ($):    $${r.efectivoNetoUSD.toFixed(2)}\n`;
     t += `  • Bolívares (Bs): Bs. ${r.efectivoNetoBS.toFixed(2)}\n`;
     t += `--------------------------------\n`;
-    t += `*RECAUDO BANCARIO (DIGITAL):*\n`;
+    t += `*BANCO / DIGITAL (NETO):*\n`;
     t += `  • Pago Móvil:    Bs. ${r.pagoMovilNetoBS.toFixed(2)}\n`;
     t += `  • Punto Débito:  Bs. ${r.ventasPuntoBS.toFixed(2)}\n`;
+
+    if (r.gastosDetalle && r.gastosDetalle.length > 0) {
+      t += `--------------------------------\n`;
+      t += `*DETALLE DE GASTOS / SALIDAS:*\n`;
+      r.gastosDetalle.forEach(g => {
+        const m = g.origen === 'efectivo_usd' ? `$${Number(g.monto).toFixed(2)}` : `Bs. ${Number(g.monto).toFixed(2)}`;
+        t += `  • ${g.descripcion}: -${m}\n`;
+      });
+    }
+
     t += `--------------------------------\n`;
-    t += `Salidas / Gastos del turno: ${r.gastosCount}\n`;
     t += `Tasa BCV de Cierre: Bs. ${r.tasa.toFixed(2)}\n`;
-    t += `--------------------------------\n`;
+    t += `Auditoría completada exitosamente.\n`;
 
     const url = `https://wa.me/?text=${encodeURIComponent(t)}`;
     window.open(url, '_blank');
@@ -252,18 +262,16 @@ export default function CajaModal({
               </div>
 
               <div style={styles.gridGaveta}>
-                {/* Dólares Físicos */}
                 <div style={styles.tarjetaGaveta}>
                   <small style={{ color: '#64748b', fontSize: '0.68rem' }}>Dólares en Efectivo ($)</small>
                   <strong style={{ fontSize: '1.25rem', color: '#00b050', display: 'block', margin: '2px 0' }}>
                     ${efectivoNetoUSD.toFixed(2)}
                   </strong>
                   <div style={{ fontSize: '0.62rem', color: '#94a3b8' }}>
-                    Cobrado: ${ventasEfectivoUSD.toFixed(2)} \vert{} Gastos: -${gastosEfectivoUSD.toFixed(2)}
+                    Cobrado: ${ventasEfectivoUSD.toFixed(2)} | Gastos: -${gastosEfectivoUSD.toFixed(2)}
                   </div>
                 </div>
 
-                {/* Bolívares Físicos */}
                 <div style={styles.tarjetaGaveta}>
                   <small style={{ color: '#64748b', fontSize: '0.68rem' }}>Bolívares en Efectivo (Bs)</small>
                   <strong style={{ fontSize: '1.25rem', color: '#0052cc', display: 'block', margin: '2px 0' }}>
@@ -340,7 +348,7 @@ export default function CajaModal({
                     <div style={{ flex: 1 }}>
                       <strong style={{ fontSize: '0.82rem', color: '#0f2a4a' }}>{g.descripcion}</strong>
                       <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                        {g.hora} · Retirado de: <strong>{origenTexto}</strong>
+                        {g.hora} · Origen: <strong>{origenTexto}</strong>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -362,7 +370,7 @@ export default function CajaModal({
         )}
       </main>
 
-      {/* MODAL REGISTRAR GASTO DISCRIMINADO */}
+      {/* MODAL REGISTRAR GASTO */}
       {modalGastoAbierto && (
         <div style={styles.overlayModal}>
           <div style={styles.modalBoxGasto}>
@@ -383,7 +391,7 @@ export default function CajaModal({
                 <label style={styles.labelCampo}>Concepto / Motivo del Gasto *</label>
                 <input
                   type="text"
-                  placeholder="Ej: Compra de bolsas, almuerzo, pago hielo..."
+                  placeholder="Ej: Compra de bolsas, almuerzo, hielo..."
                   value={descripcionGasto}
                   onChange={(e) => setDescripcionGasto(e.target.value)}
                   style={styles.inputModal}
@@ -391,7 +399,6 @@ export default function CajaModal({
                 />
               </div>
 
-              {/* Origen del dinero: SIN PUNTO DE VENTA */}
               <div>
                 <label style={styles.labelCampo}>¿De dónde se retira el dinero? *</label>
                 <select
@@ -433,7 +440,7 @@ export default function CajaModal({
         </div>
       )}
 
-      {/* MODAL REPORTE DE CIERRE Z CON OPCIÓN IMPRIMIR Y WHATSAPP */}
+      {/* MODAL REPORTE DE CIERRE Z CON LOGO Y DETALLE PROFESIONAL */}
       {reporteZGenerado && (
         <div style={styles.overlayModal}>
           <div style={styles.modalBoxReporteZ}>
@@ -441,7 +448,7 @@ export default function CajaModal({
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <CheckCircle2 size={18} color="#00b050" />
                 <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f2a4a' }}>
-                  Cierre de Turno Z Generado
+                  Cierre de Turno Z
                 </h3>
               </div>
               <button type="button" onClick={() => setReporteZGenerado(null)} style={styles.btnCerrarX}>
@@ -449,46 +456,67 @@ export default function CajaModal({
               </button>
             </div>
 
-            {/* Recibo Térmico del Cierre Z */}
+            {/* Recibo Térmico del Cierre Z con Logo */}
             <div id="area-ticket-cierre-z" style={styles.papelReporteZ}>
               <div style={{ textAlign: 'center', lineHeight: 1.35 }}>
+                {configEmpresa?.logo && (
+                  <img src={configEmpresa.logo} alt="Logo" style={styles.logoTicketZ} />
+                )}
                 <h3 style={{ margin: '0 0 2px 0', fontSize: '0.94rem', fontWeight: '900', color: '#0f2a4a' }}>
                   {(configEmpresa?.nombre || 'FACILITO POS').toUpperCase()}
                 </h3>
-                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                  REPORTE DE CIERRE DE CAJA (CORTE Z)
+                {configEmpresa?.rif && <div style={{ fontSize: '0.66rem', color: '#475569' }}>RIF: {configEmpresa.rif}</div>}
+                <div style={{ fontSize: '0.68rem', color: '#0052cc', fontWeight: 'bold', marginTop: '2px' }}>
+                  REPORTE FISCAL Y CONTABLE DE CIERRE (CORTE Z)
                 </div>
               </div>
 
               <div style={styles.lineaDobleCorte} />
 
               <div style={styles.infoReporteZ}>
-                <div>FECHA: {reporteZGenerado.fechaHora}</div>
-                <div>RESPONSABLE: {reporteZGenerado.cajero} · {reporteZGenerado.caja}</div>
-                <div>TOTAL VENTAS REALIZADAS: <strong>{reporteZGenerado.ventasCount} ticket(s)</strong></div>
-                <div>TOTAL GASTOS: <strong>{reporteZGenerado.gastosCount} salida(s)</strong></div>
-                <div>TASA BCV: Bs. {reporteZGenerado.tasa.toFixed(2)}</div>
+                <div style={styles.filaZMeta}>
+                  <span>FECHA / HORA:</span>
+                  <strong>{reporteZGenerado.fechaHora}</strong>
+                </div>
+                <div style={styles.filaZMeta}>
+                  <span>RESPONSABLE:</span>
+                  <strong>{reporteZGenerado.cajero}</strong>
+                </div>
+                <div style={styles.filaZMeta}>
+                  <span>CAJA / TERMINAL:</span>
+                  <strong>{reporteZGenerado.caja}</strong>
+                </div>
+                <div style={styles.filaZMeta}>
+                  <span>VENTAS REALIZADAS:</span>
+                  <strong>{reporteZGenerado.ventasCount} ticket(s)</strong>
+                </div>
+                <div style={styles.filaZMeta}>
+                  <span>TASA BCV DE CIERRE:</span>
+                  <strong>Bs. {reporteZGenerado.tasa.toFixed(2)}</strong>
+                </div>
               </div>
 
               <div style={styles.lineaDobleCorte} />
 
+              {/* Bloque 1: Ventas Totales */}
               <div style={styles.seccionDesgloseZ}>
-                <strong style={{ fontSize: '0.72rem', color: '#0f2a4a', display: 'block', marginBottom: '4px' }}>
-                  VENTAS TOTALES DEL TURNO
+                <strong style={{ fontSize: '0.72rem', color: '#0f2a4a', display: 'block', marginBottom: '3px' }}>
+                  1. VENTAS TOTALES FACTURADAS
                 </strong>
                 <div style={styles.filaZ}>
-                  <span>Total Ventas ($):</span>
-                  <strong>${reporteZGenerado.totalVentasUSD.toFixed(2)}</strong>
+                  <span>Total en Divisas ($):</span>
+                  <strong style={{ color: '#00b050' }}>${reporteZGenerado.totalVentasUSD.toFixed(2)}</strong>
                 </div>
                 <div style={styles.filaZ}>
-                  <span>Total Ventas (Bs):</span>
-                  <strong>Bs. {reporteZGenerado.totalVentasBS.toFixed(2)}</strong>
+                  <span>Total en Bolívares (Bs):</span>
+                  <strong style={{ color: '#0052cc' }}>Bs. {reporteZGenerado.totalVentasBS.toFixed(2)}</strong>
                 </div>
 
                 <div style={styles.lineaFinaZ} />
 
-                <strong style={{ fontSize: '0.72rem', color: '#0f2a4a', display: 'block', margin: '4px 0' }}>
-                  EFECTIVO FÍSICO EN GAVETA (NETO)
+                {/* Bloque 2: Efectivo en Gaveta */}
+                <strong style={{ fontSize: '0.72rem', color: '#0f2a4a', display: 'block', margin: '4px 0 2px 0' }}>
+                  2. EFECTIVO FÍSICO EN GAVETA (NETO)
                 </strong>
                 <div style={styles.filaZ}>
                   <span>Dólares en Efectivo ($):</span>
@@ -501,8 +529,9 @@ export default function CajaModal({
 
                 <div style={styles.lineaFinaZ} />
 
-                <strong style={{ fontSize: '0.72rem', color: '#0f2a4a', display: 'block', margin: '4px 0' }}>
-                  RECAUDO BANCARIO (DIGITAL)
+                {/* Bloque 3: Bancos */}
+                <strong style={{ fontSize: '0.72rem', color: '#0f2a4a', display: 'block', margin: '4px 0 2px 0' }}>
+                  3. RECAUDO BANCARIO (DIGITAL)
                 </strong>
                 <div style={styles.filaZ}>
                   <span>Pago Móvil Recibido:</span>
@@ -512,13 +541,32 @@ export default function CajaModal({
                   <span>Punto Débito (Tarjetas):</span>
                   <strong>Bs. {reporteZGenerado.ventasPuntoBS.toFixed(2)}</strong>
                 </div>
+
+                {/* Bloque 4: Gastos Detallados */}
+                {reporteZGenerado.gastosDetalle && reporteZGenerado.gastosDetalle.length > 0 && (
+                  <>
+                    <div style={styles.lineaFinaZ} />
+                    <strong style={{ fontSize: '0.72rem', color: '#dc2626', display: 'block', margin: '4px 0 2px 0' }}>
+                      4. SALIDAS Y GASTOS DEL TURNO ({reporteZGenerado.gastosDetalle.length})
+                    </strong>
+                    {reporteZGenerado.gastosDetalle.map((g, idx) => {
+                      const montoTxt = g.origen === 'efectivo_usd' ? `$${Number(g.monto).toFixed(2)}` : `Bs. ${Number(g.monto).toFixed(2)}`;
+                      return (
+                        <div key={idx} style={styles.filaZ}>
+                          <span style={{ fontSize: '0.66rem', color: '#475569' }}>• {g.descripcion}:</span>
+                          <strong style={{ fontSize: '0.68rem', color: '#dc2626' }}>-{montoTxt}</strong>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
 
               <div style={styles.lineaDobleCorte} />
 
               <div style={{ textAlign: 'center', fontSize: '0.64rem', color: '#64748b' }}>
                 <ShieldCheck size={13} color="#00b050" style={{ verticalAlign: 'middle', marginRight: '4px' }} />
-                <span>Auditoría de Turno Completada Satisfactoriamente</span>
+                <span>Auditoría de Turno Completada y Verificada</span>
               </div>
             </div>
 
@@ -526,7 +574,7 @@ export default function CajaModal({
             <div style={styles.accionesReporteZFila}>
               <button type="button" onClick={() => window.print()} style={styles.btnImprimirZ}>
                 <Printer size={15} />
-                <span>Imprimir Reporte Z</span>
+                <span>Imprimir</span>
               </button>
               <button type="button" onClick={compartirReporteWhatsApp} style={styles.btnWhatsAppZ}>
                 <Share2 size={15} />
@@ -816,6 +864,12 @@ const styles = {
     fontSize: '0.72rem',
     color: '#0f172a'
   },
+  logoTicketZ: {
+    maxHeight: '44px',
+    maxWidth: '120px',
+    objectFit: 'contain',
+    marginBottom: '4px'
+  },
   lineaDobleCorte: {
     borderTop: '2px dashed #94a3b8',
     margin: '8px 0'
@@ -825,9 +879,16 @@ const styles = {
     margin: '6px 0'
   },
   infoReporteZ: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
     fontSize: '0.68rem',
-    lineHeight: 1.45,
     color: '#1e293b'
+  },
+  filaZMeta: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'baseline'
   },
   seccionDesgloseZ: {
     display: 'flex',
