@@ -89,9 +89,9 @@ export default function LoginModal({
       <div style={styles.orbe3} />
 
       <div style={styles.tarjetaLogin}>
-        {/* Cabecera del Logo con espacio y equilibrio */}
+        {/* Cabecera con la imagen oficial real */}
         <div style={styles.logoHeader}>
-          <img src="/logo.svg" alt="Facilito POS Logo" style={styles.logoImg} />
+          <img src="/logo_oficial_real.png" alt="Facilito POS Logo" style={styles.logoImg} />
           <span style={styles.tagline}>Sistema Integral de Facturación</span>
         </div>
 
@@ -342,7 +342,7 @@ const styles = {
     borderRadius: '28px',
     maxWidth: '380px',
     width: '100%',
-    padding: '32px 22px 24px 22px', // Más holgura arriba para evitar el corte
+    padding: '28px 22px 24px 22px',
     boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)',
     display: 'flex',
     flexDirection: 'column',
@@ -352,11 +352,11 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    marginBottom: '20px'
+    marginBottom: '18px'
   },
   logoImg: {
-    height: '52px',
-    maxWidth: '210px',
+    height: '56px',
+    maxWidth: '230px',
     objectFit: 'contain'
   },
   tagline: {
