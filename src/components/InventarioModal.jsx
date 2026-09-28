@@ -25,6 +25,7 @@ const CATEGORIAS_PREDEFINIDAS = [
 
 const EMPAQUES_COMPRA = [
   'Unidad suelta',
+  'Paquete',
   'Bulto',
   'Caja',
   'Saco / Costal',
@@ -58,7 +59,7 @@ export default function InventarioModal({
   const [categoriaOtra, setCategoriaOtra] = useState('');
   const [esPesado, setEsPesado] = useState(false);
   
-  // Presentación de compra (Bulto/Caja/Saco)
+  // Presentación de compra (Paquete/Bulto/Caja/Saco)
   const [tipoEmpaque, setTipoEmpaque] = useState('Unidad suelta');
   const [unidadesPorEmpaque, setUnidadesPorEmpaque] = useState('1');
   const [costoEmpaqueUSD, setCostoEmpaqueUSD] = useState('');
@@ -72,7 +73,7 @@ export default function InventarioModal({
 
   const categoriasDisponibles = ['Todas', ...new Set(productos.map(p => p.categoria || 'General'))];
 
-  // Cálculo de Costo Unitario cuando se ingresa Costo por Bulto/Caja
+  // Cálculo de Costo Unitario cuando se ingresa Costo por Paquete/Bulto/Caja
   const manejarCambioCostoEmpaque = (costoEmpVal) => {
     setCostoEmpaqueUSD(costoEmpVal);
     const cTotal = parseFloat(costoEmpVal) || 0;
@@ -321,7 +322,7 @@ export default function InventarioModal({
                     </div>
                     {p.tipoEmpaque && p.tipoEmpaque !== 'Unidad suelta' && (
                       <div style={{ fontSize: '0.64rem', color: '#475569', fontStyle: 'italic' }}>
-                        Compra: {p.tipoEmpaque} ({p.unidadesPorEmpaque} unids/paq)
+                        Compra: {p.tipoEmpaque} ({p.unidadesPorEmpaque} unids/empaque)
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '3px' }}>
@@ -402,7 +403,7 @@ export default function InventarioModal({
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
                   style={styles.inputForm}
-                  placeholder="Ej. Harina PAN Blanca 1kg"
+                  placeholder="Ej. Pepito 25g / Queso Llanero"
                   required
                 />
               </div>
@@ -420,7 +421,7 @@ export default function InventarioModal({
 
               {/* SECCIÓN MAYORISTA: TIPO DE EMPAQUE DE COMPRA */}
               <div style={{ backgroundColor: '#f8fafc', padding: '8px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#0f2a4a' }}>📦 Presentación de Compra al Proveedor</span>
+                <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#0f2a4a' }}>📦 Presentación de Compra al Mayorista / Proveedor</span>
                 <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px' }}>
                   <div>
                     <label style={styles.labelForm}>¿Cómo se compra?</label>
@@ -436,14 +437,14 @@ export default function InventarioModal({
                   </div>
                   {tipoEmpaque !== 'Unidad suelta' && (
                     <div>
-                      <label style={styles.labelForm}>Unidades por empaque</label>
+                      <label style={styles.labelForm}>Unids por {tipoEmpaque}</label>
                       <input
                         type="number"
                         step="any"
                         value={unidadesPorEmpaque}
                         onChange={(e) => manejarCambioUnidadesEmpaque(e.target.value)}
                         style={styles.inputForm}
-                        placeholder="24"
+                        placeholder="Ej. 12 o 24"
                       />
                     </div>
                   )}
@@ -458,7 +459,7 @@ export default function InventarioModal({
                       value={costoEmpaqueUSD}
                       onChange={(e) => manejarCambioCostoEmpaque(e.target.value)}
                       style={styles.inputForm}
-                      placeholder="Ej. 24.00"
+                      placeholder="Ej. 12.00"
                     />
                   </div>
                 )}
@@ -551,7 +552,7 @@ export default function InventarioModal({
                   onChange={(e) => setEsPesado(e.target.checked)}
                 />
                 <span style={{ fontSize: '0.78rem', color: '#334155', fontWeight: '600' }}>
-                  Es producto pesado / Granel (Pide KG o Gramos)
+                  Es producto pesado / Granel (Pide KG, Gramos, $ o Bs)
                 </span>
               </label>
 
