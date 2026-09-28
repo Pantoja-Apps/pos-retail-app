@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  Store, User, Lock, ArrowRight, ShieldCheck, 
-  QrCode, KeyRound, Monitor, Smartphone, RefreshCw, AlertCircle
+  User, ShieldCheck, ArrowRight, RefreshCw, AlertCircle
 } from 'lucide-react';
 
 export default function LoginModal({
@@ -10,16 +9,12 @@ export default function LoginModal({
   cajaActiva,
   alRegistrarDueno,
   alIniciarSesionDueno,
-  alIniciarSesionCajero,
-  alVincularTerminalPorQR,
-  alVincularTerminalPorCodigo,
-  alDesvincularTerminal,
-  alActualizarCajerosLista
+  alIniciarSesionCajero
 }) {
   const [pestana, setPestana] = useState('cajeros'); // 'cajeros' | 'dueno'
   const [esRegistro, setEsRegistro] = useState(!cuentaMaster);
 
-  // Estados formulario dueño
+  // Estados dueño
   const [nombreDueno, setNombreDueno] = useState('');
   const [nombreNegocio, setNombreNegocio] = useState('');
   const [correo, setCorreo] = useState('');
@@ -88,11 +83,16 @@ export default function LoginModal({
 
   return (
     <div style={styles.contenedor} translate="no">
+      {/* Elementos Decorativos Animados de Fondo */}
+      <div style={styles.orbe1} />
+      <div style={styles.orbe2} />
+      <div style={styles.orbe3} />
+
       <div style={styles.tarjetaLogin}>
         {/* Logo Oficial de Facilito POS */}
         <div style={styles.logoHeader}>
           <img src="/logo.svg" alt="Facilito POS Logo" style={styles.logoImg} />
-          <span style={styles.tagline}>Sistema Integral de Punto de Venta</span>
+          <span style={styles.tagline}>Sistema Integral de Facturación</span>
         </div>
 
         {/* Selector de Pestaña: Cajeros vs Dueño */}
@@ -128,13 +128,13 @@ export default function LoginModal({
           <div style={styles.cuerpoCajeros}>
             {!cajeroSeleccionado ? (
               <>
-                <p style={styles.subtituloGuia}>Selecciona tu usuario para iniciar turno:</p>
+                <p style={styles.subtituloGuia}>Selecciona tu perfil para iniciar turno:</p>
                 <div style={styles.listaCajerosGrid}>
                   {cajeros.length === 0 ? (
                     <div style={styles.cajaSinCajeros}>
                       <AlertCircle size={24} color="#d97706" />
                       <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#92400e' }}>
-                        No hay cajeros registrados aún. Inicia sesión como dueño para registrar personal.
+                        No hay cajeros registrados aún. Inicia sesión como dueño para crear personal.
                       </p>
                     </div>
                   ) : (
@@ -157,7 +157,7 @@ export default function LoginModal({
               </>
             ) : (
               <div style={styles.contenedorTecladoPin}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '10px' }}>
                   <button type="button" onClick={() => { setCajeroSeleccionado(null); setPinIngresado(''); }} style={styles.btnVolverCajeros}>
                     ← Cambiar
                   </button>
@@ -269,6 +269,17 @@ export default function LoginModal({
           </form>
         )}
       </div>
+
+      <style>{`
+        @keyframes floatSlow1 {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(30px, -40px) scale(1.1); }
+        }
+        @keyframes floatSlow2 {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(-35px, 30px) scale(1.08); }
+        }
+      `}</style>
     </div>
   );
 }
@@ -280,23 +291,62 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#0f2a4a',
+    backgroundColor: '#071529',
+    backgroundImage: 'radial-gradient(at 10% 20%, rgba(0, 176, 80, 0.18) 0px, transparent 50%), radial-gradient(at 90% 80%, rgba(15, 42, 74, 0.8) 0px, transparent 50%)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     padding: '16px',
     zIndex: 999999,
-    fontFamily: 'system-ui, -apple-system, sans-serif'
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    overflow: 'hidden'
+  },
+  orbe1: {
+    position: 'absolute',
+    top: '-80px',
+    left: '-80px',
+    width: '320px',
+    height: '320px',
+    borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(0, 176, 80, 0.35) 0%, rgba(0, 176, 80, 0) 70%)',
+    filter: 'blur(40px)',
+    animation: 'floatSlow1 12s ease-in-out infinite',
+    pointerEvents: 'none'
+  },
+  orbe2: {
+    position: 'absolute',
+    bottom: '-100px',
+    right: '-100px',
+    width: '380px',
+    height: '380px',
+    borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(16, 185, 129, 0.25) 0%, rgba(15, 42, 74, 0) 70%)',
+    filter: 'blur(50px)',
+    animation: 'floatSlow2 14s ease-in-out infinite',
+    pointerEvents: 'none'
+  },
+  orbe3: {
+    position: 'absolute',
+    top: '40%',
+    right: '15%',
+    width: '200px',
+    height: '200px',
+    borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(0, 82, 204, 0.25) 0%, transparent 70%)',
+    filter: 'blur(45px)',
+    pointerEvents: 'none'
   },
   tarjetaLogin: {
-    backgroundColor: '#fff',
-    borderRadius: '24px',
+    position: 'relative',
+    backgroundColor: '#ffffff',
+    borderRadius: '26px',
     maxWidth: '380px',
     width: '100%',
-    padding: '24px 20px',
-    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
+    padding: '26px 22px',
+    boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)',
     display: 'flex',
-    flexDirection: 'column'
+    flexDirection: 'column',
+    zIndex: 1
   },
   logoHeader: {
     display: 'flex',
@@ -305,14 +355,14 @@ const styles = {
     marginBottom: '16px'
   },
   logoImg: {
-    height: '60px',
+    height: '62px',
     maxWidth: '220px',
     objectFit: 'contain'
   },
   tagline: {
     fontSize: '0.7rem',
     color: '#64748b',
-    fontWeight: '600',
+    fontWeight: '700',
     marginTop: '4px'
   },
   tabsContainer: {
@@ -494,7 +544,8 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '6px',
-    marginTop: '6px'
+    marginTop: '6px',
+    boxShadow: '0 4px 12px rgba(0, 176, 80, 0.35)'
   },
   btnToggleRegistro: {
     background: 'none',

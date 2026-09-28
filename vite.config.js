@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg', 'favicon.ico'],
+      includeAssets: ['icon.svg', 'logo.svg', 'favicon.ico'],
       manifestFilename: 'manifest.json',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json}']
@@ -16,8 +16,8 @@ export default defineConfig({
         name: 'Facilito POS Pro',
         short_name: 'FacilitoPOS',
         description: 'Punto de Venta Profesional para Comercios',
-        theme_color: '#0052cc',
-        background_color: '#f8fafc',
+        theme_color: '#0a1d37',
+        background_color: '#0a1d37',
         display: 'standalone',
         start_url: '/',
         orientation: 'portrait',
