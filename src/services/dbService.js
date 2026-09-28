@@ -1,258 +1,187 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || 'https://tu-proyecto.supabase.co';
+const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || 'tu-anon-key';
 
-let supabaseInstance = null;
-try {
-  if (SUPABASE_URL && SUPABASE_KEY) {
-    supabaseInstance = createClient(SUPABASE_URL, SUPABASE_KEY);
-  }
-} catch (err) {
-  console.warn('Supabase no inicializado:', err);
-}
-
-export const supabase = supabaseInstance;
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export const dbService = {
   async checkConnection() {
-    if (!supabase) return false;
     try {
-      const { error } = await supabase.from('negocios').select('id').limit(1);
+      const { data, error } = await supabase.from('negocios').select('id').limit(1);
       return !error;
     } catch {
       return false;
     }
   },
 
-  async registrarNegocio(negocio, dueno) {
-    if (!supabase) return false;
+  async registrarNegocio(negocio, usuario) {
     try {
-      await supabase.from('negocios').upsert([{
-        id: negocio.id,
-        nombre: negocio.nombre
-      }]);
-      await supabase.from('usuarios').upsert([{
-        id: dueno.id,
-        negocio_id: negocio.id,
-        nombre: dueno.nombre,
-        correo: (dueno.correo || '').toLowerCase().trim(),
-        password: dueno.password,
-        rol: 'dueno'
-      }]);
+      await supabase.from('negocios').insert([negocio]);
+      await supabase.from('usuarios').insert([usuario]);
       return true;
-    } catch (e) {
-      console.error('Error registrando negocio:', e);
+    } catch {
       return false;
     }
   },
 
   async loginDueno(correo, password) {
-    if (!supabase) return null;
     try {
-      const correoLimpio = (correo || '').toLowerCase().trim();
-      
-      const { data: usuario, error: errUser } = await supabase
+      const { data, error } = await supabase
         .from('usuarios')
-        .select('*')
-        .eq('correo', correoLimpio)
+        .select('*, negocios(*)')
+        .eq('correo', correo)
         .eq('password', password)
-        .eq('rol', 'dueno')
-        .maybeSingle();
-
-      if (errUser || !usuario) return null;
-
-      let negocio = { id: usuario.negocio_id || 'neg_local', nombre: 'Mi Negocio' };
-      if (usuario.negocio_id) {
-        const { data: negData } = await supabase
-          .from('negocios')
-          .select('*')
-          .eq('id', usuario.negocio_id)
-          .maybeSingle();
-        if (negData) negocio = negData;
-      }
-
-      return { usuario, negocio };
-    } catch (e) {
-      console.error('Error en login:', e);
+        .single();
+      if (error || !data) return null;
+      return { usuario: data, negocio: data.negocios };
+    } catch {
       return null;
     }
   },
 
   async getNegocio(negocioId) {
-    if (!supabase || !negocioId) return null;
     try {
-      const { data, error } = await supabase
-        .from('negocios')
-        .select('*')
-        .eq('id', negocioId)
-        .maybeSingle();
-
-      if (error || !data) return null;
+      const { data } = await supabase.from('negocios').select('*').eq('id', negocioId).single();
       return data;
-    } catch (e) {
+    } catch {
       return null;
     }
   },
 
-  async actualizarConfigNegocio(negocioId, datosConfig) {
-    if (!supabase || !negocioId) return false;
+  async actualizarConfigNegocio(negocioId, config) {
     try {
-      const updateData = {
-        nombre: datosConfig.nombre,
-        rif: datosConfig.rif || null,
-        direccion: datosConfig.direccion || null,
-        telefono: datosConfig.telefono || null,
-        logo: datosConfig.logo || null,
-        mensaje_pie: datosConfig.mensajePie || null
-      };
-
-      const { error } = await supabase
-        .from('negocios')
-        .update(updateData)
-        .eq('id', negocioId);
-
-      return !error;
-    } catch (e) {
+      await supabase.from('negocios').update({
+        nombre: config.nombre,
+        rif: config.rif,
+        direccion: config.direccion,
+        telefono: config.telefono,
+        logo: config.logo,
+        mensaje_pie: config.mensajePie
+      }).eq('id', negocioId);
+      return true;
+    } catch {
       return false;
     }
   },
 
   async getCajeros(negocioId) {
-    if (!supabase || !negocioId) return [];
     try {
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('*')
-        .eq('negocio_id', negocioId)
-        .eq('rol', 'cajero');
-
-      return Array.isArray(data) ? data : [];
-    } catch (e) {
+      const { data } = await supabase.from('cajeros').select('*').eq('negocio_id', negocioId);
+      return data || [];
+    } catch {
       return [];
     }
   },
 
   async upsertCajero(cajero) {
-    if (!supabase) return null;
     try {
-      const { error } = await supabase
-        .from('usuarios')
-        .upsert([{
-          id: String(cajero.id),
-          negocio_id: cajero.negocio_id,
-          nombre: cajero.nombre,
-          pin: String(cajero.pin),
-          rol: 'cajero'
-        }]);
-      return !error;
-    } catch (e) {
+      await supabase.from('cajeros').upsert([cajero]);
+      return true;
+    } catch {
       return false;
     }
   },
 
   async eliminarCajero(cajeroId) {
-    if (!supabase) return false;
     try {
-      const { error } = await supabase
-        .from('usuarios')
-        .delete()
-        .eq('id', String(cajeroId));
-      return !error;
-    } catch (e) {
+      await supabase.from('cajeros').delete().eq('id', cajeroId);
+      return true;
+    } catch {
       return false;
     }
   },
 
   async getProductos(negocioId) {
-    if (!supabase || !negocioId) return [];
     try {
-      const { data, error } = await supabase
-        .from('productos')
-        .select('*')
-        .eq('negocio_id', negocioId);
-
-      if (error || !data) return [];
+      const { data } = await supabase.from('productos').select('*').eq('negocio_id', negocioId);
+      if (!data) return [];
       return data.map(p => ({
-        id: String(p.id),
-        codigo: p.codigo_barras || '',
+        id: p.id,
+        codigo: p.codigo_barras || p.codigo,
         nombre: p.nombre,
+        categoria: p.departamento || p.categoria || 'Víveres',
         costoUSD: Number(p.costo_usd || 0),
         precioUSD: Number(p.precio_usd || 0),
+        stock: Number(p.stock || 0),
         esPesado: Boolean(p.es_pesado),
         aplicaPrecioMayor: Boolean(p.aplica_precio_mayor),
         precioMayorUSD: Number(p.precio_mayor_usd || 0),
         cantMinimaMayor: Number(p.cant_minima_mayor || 3),
-        stock: Number(p.stock || 0),
-        categoria: p.departamento || 'General',
-        imagen: p.imagen || ''
+        imagen: p.imagen || '',
+        // IVA y Proveedor recuperados
+        ivaTipo: p.iva_tipo || (p.exento_iva === false ? '16' : 'exento'),
+        exentoIVA: p.exento_iva !== false,
+        proveedorId: p.proveedor_id || '',
+        proveedorNombre: p.proveedor_nombre || '',
+        tipoEmpaque: p.tipo_empaque || 'Bulto',
+        undsPorEmpaque: Number(p.unds_por_empaque || 1),
+        costoEmpaqueUSD: Number(p.costo_empaque_usd || p.costo_usd || 0)
       }));
-    } catch (e) {
+    } catch {
       return [];
     }
   },
 
   async upsertProducto(prod, negocioId) {
-    if (!supabase || !negocioId) return false;
     try {
       const payload = {
         id: String(prod.id),
         negocio_id: negocioId,
-        codigo_barras: String(prod.codigo || '').trim(),
+        codigo_barras: prod.codigo,
         nombre: prod.nombre,
-        costo_usd: Number(prod.costoUSD || 0),
-        precio_usd: Number(prod.precioUSD || 0),
-        es_pesado: Boolean(prod.esPesado),
-        aplica_precio_mayor: Boolean(prod.aplicaPrecioMayor),
-        precio_mayor_usd: Number(prod.precioMayorUSD || 0),
-        cant_minima_mayor: Number(prod.cantMinimaMayor || 3),
-        stock: Number(prod.stock || 0),
-        departamento: prod.categoria || 'General',
-        imagen: prod.imagen || ''
+        costo_usd: prod.costoUSD,
+        precio_usd: prod.precioUSD,
+        stock: prod.stock,
+        es_pesado: prod.esPesado,
+        aplica_precio_mayor: prod.aplicaPrecioMayor,
+        precio_mayor_usd: prod.precioMayorUSD,
+        cant_minima_mayor: prod.cantMinimaMayor,
+        departamento: prod.categoria,
+        imagen: prod.imagen || '',
+        // Campos persistentes de IVA y Proveedor
+        iva_tipo: prod.ivaTipo || (prod.exentoIVA ? 'exento' : '16'),
+        exento_iva: prod.ivaTipo === 'exento' || prod.exentoIVA === true,
+        proveedor_id: prod.proveedorId || null,
+        proveedor_nombre: prod.proveedorNombre || null,
+        tipo_empaque: prod.tipoEmpaque || 'Bulto',
+        unds_por_empaque: prod.undsPorEmpaque || 1,
+        costo_empaque_usd: prod.costoEmpaqueUSD || prod.costoUSD
       };
-
-      const { error } = await supabase.from('productos').upsert([payload]);
-      return !error;
-    } catch (e) {
+      await supabase.from('productos').upsert([payload]);
+      return true;
+    } catch {
       return false;
     }
   },
 
-  async eliminarProducto(id, negocioId) {
-    if (!supabase || !negocioId) return false;
+  async eliminarProducto(prodId, negocioId) {
     try {
-      const { error } = await supabase
-        .from('productos')
-        .delete()
-        .eq('id', String(id))
-        .eq('negocio_id', negocioId);
-      return !error;
-    } catch (e) {
+      await supabase.from('productos').delete().eq('id', prodId).eq('negocio_id', negocioId);
+      return true;
+    } catch {
       return false;
     }
   },
 
   async registrarVenta(venta) {
-    if (!supabase) return null;
     try {
-      const { error } = await supabase.from('ventas').insert([venta]);
-      return !error;
-    } catch (e) {
+      await supabase.from('ventas').insert([venta]);
+      return true;
+    } catch {
       return false;
     }
   },
 
   async getVentas(negocioId) {
-    if (!supabase || !negocioId) return [];
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('ventas')
         .select('*')
         .eq('negocio_id', negocioId)
         .order('fecha', { ascending: false });
-
-      return Array.isArray(data) ? data : [];
-    } catch (e) {
+      return data || [];
+    } catch {
       return [];
     }
   }

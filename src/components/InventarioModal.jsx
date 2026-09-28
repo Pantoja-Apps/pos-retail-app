@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   ArrowLeft, Search, Plus, Trash2, Edit3, Barcode, 
   Camera, Package, DollarSign, X, CheckCircle2, Truck,
-  Boxes, Percent, HelpCircle
+  Boxes, Percent
 } from 'lucide-react';
 
 export default function InventarioModal({
@@ -27,12 +27,12 @@ export default function InventarioModal({
   const [proveedorId, setProveedorId] = useState('');
   const [ivaTipo, setIvaTipo] = useState('exento'); // 'exento' | '16'
 
-  // Presentación de Compra (Empaque, Unidades y Costo)
-  const [tipoEmpaque, setTipoEmpaque] = useState('Bulto'); // 'Bulto' | 'Caja' | 'Fardo' | 'Saco' | 'Pieza / Unidad'
+  // Presentación de Compra
+  const [tipoEmpaque, setTipoEmpaque] = useState('Bulto');
   const [undsPorEmpaque, setUndsPorEmpaque] = useState('1');
   const [costoEmpaqueUSD, setCostoEmpaqueUSD] = useState('');
   
-  // Costos, Margen y Precio de Venta
+  // Costos y Precios
   const [costoUnitUSD, setCostoUnitUSD] = useState('');
   const [margenPorcentaje, setMargenPorcentaje] = useState('20');
   const [precioVentaUSD, setPrecioVentaUSD] = useState('');
@@ -57,47 +57,49 @@ export default function InventarioModal({
     );
   });
 
-  // Recalcular Costo Unitario y Precio de Venta según Costo Empaque y Unidades
+  // Recálculo automático desde Empaque y Unidades
   const recalcularDesdeEmpaque = (nuevoCostoEmpaque, nuevasUnds, nuevoMargen) => {
-    const cEmpaque = parseFloat(nuevoCostoEmpaque) || 0;
-    const uEmpaque = parseFloat(nuevasUnds) || 1;
+    const cEmp = parseFloat(nuevoCostoEmpaque) || 0;
+    const uEmp = parseFloat(nuevasUnds) || 1;
     const mPorc = parseFloat(nuevoMargen) || 0;
 
-    if (uEmpaque > 0 && cEmpaque > 0) {
-      const cUnit = cEmpaque / uEmpaque;
+    if (uEmp > 0 && cEmp > 0) {
+      const cUnit = cEmp / uEmp;
       setCostoUnitUSD(cUnit.toFixed(2));
       const pVenta = cUnit * (1 + (mPorc / 100));
       setPrecioVentaUSD(pVenta.toFixed(2));
     }
   };
 
-  const manejarCambioUnds = (valor) => {
-    setUndsPorEmpaque(valor);
-    recalcularDesdeEmpaque(costoEmpaqueUSD, valor, margenPorcentaje);
+  const manejarCambioUnds = (e) => {
+    const val = e.target.value.replace(/[^0-9.]/g, '');
+    setUndsPorEmpaque(val);
+    recalcularDesdeEmpaque(costoEmpaqueUSD, val, margenPorcentaje);
   };
 
-  const manejarCambioCostoEmpaque = (valor) => {
-    setCostoEmpaqueUSD(valor);
-    recalcularDesdeEmpaque(valor, undsPorEmpaque, margenPorcentaje);
+  const manejarCambioCostoEmpaque = (e) => {
+    const val = e.target.value;
+    setCostoEmpaqueUSD(val);
+    recalcularDesdeEmpaque(val, undsPorEmpaque, margenPorcentaje);
   };
 
-  const manejarCambioMargen = (valor) => {
-    setMargenPorcentaje(valor);
+  const manejarCambioMargen = (e) => {
+    const val = e.target.value;
+    setMargenPorcentaje(val);
     const cUnit = parseFloat(costoUnitUSD) || 0;
-    const m = parseFloat(valor) || 0;
+    const m = parseFloat(val) || 0;
     if (cUnit > 0) {
-      const pVenta = cUnit * (1 + (m / 100));
-      setPrecioVentaUSD(pVenta.toFixed(2));
+      setPrecioVentaUSD((cUnit * (1 + (m / 100))).toFixed(2));
     }
   };
 
-  const manejarCambioPrecioVenta = (valor) => {
-    setPrecioVentaUSD(valor);
-    const pVenta = parseFloat(valor) || 0;
+  const manejarCambioPrecioVenta = (e) => {
+    const val = e.target.value;
+    setPrecioVentaUSD(val);
+    const pVenta = parseFloat(val) || 0;
     const cUnit = parseFloat(costoUnitUSD) || 0;
     if (cUnit > 0 && pVenta > cUnit) {
-      const nuevoMargen = (((pVenta - cUnit) / cUnit) * 100).toFixed(1);
-      setMargenPorcentaje(nuevoMargen);
+      setMargenPorcentaje((((pVenta - cUnit) / cUnit) * 100).toFixed(1));
     }
   };
 
@@ -130,14 +132,15 @@ export default function InventarioModal({
     setNombre(p.nombre || '');
     setCategoria(p.categoria || 'Víveres');
     setProveedorId(p.proveedorId || '');
-    setIvaTipo(p.ivaTipo || (p.exentoIVA ? 'exento' : (p.iva === 16 ? '16' : 'exento')));
-    
-    // Presentación empaque
+
+    // Detección estricta de IVA guardado
+    const esExento = p.ivaTipo === 'exento' || p.exentoIVA === true || p.iva === 0 || !p.ivaTipo;
+    setIvaTipo(esExento ? 'exento' : '16');
+
     setTipoEmpaque(p.tipoEmpaque || 'Bulto');
     setUndsPorEmpaque(p.undsPorEmpaque ? String(p.undsPorEmpaque) : '1');
     setCostoEmpaqueUSD(p.costoEmpaqueUSD !== undefined ? String(p.costoEmpaqueUSD) : (p.costoUSD ? String(p.costoUSD) : ''));
-    
-    // Costo unitario y precio
+
     const cUnit = p.costoUSD !== undefined ? Number(p.costoUSD) : 0;
     const pVenta = p.precioUSD !== undefined ? Number(p.precioUSD) : 0;
     setCostoUnitUSD(cUnit > 0 ? String(cUnit) : '');
@@ -172,7 +175,8 @@ export default function InventarioModal({
       categoria: categoria || 'Víveres',
       proveedorId: proveedorId || '',
       proveedorNombre: provObj ? provObj.nombre : (productoEditando?.proveedorNombre || ''),
-      ivaTipo: ivaTipo, // 'exento' | '16'
+      // IVA explícito garantizado
+      ivaTipo: ivaTipo,
       exentoIVA: ivaTipo === 'exento',
       tipoEmpaque: tipoEmpaque,
       undsPorEmpaque: parseFloat(undsPorEmpaque) || 1,
@@ -242,7 +246,9 @@ export default function InventarioModal({
           <div style={styles.listaGrid}>
             {productosFiltrados.map((p) => {
               const precioBs = (Number(p.precioUSD || 0) * tasa).toFixed(2);
-              const esRealmenteExento = p.ivaTipo === 'exento' || p.exentoIVA === true;
+              
+              // Validación inequívoca: Si es exento o no está marcado como 16, es Exento
+              const esGravable16 = p.ivaTipo === '16' || p.iva === 16;
 
               return (
                 <div key={p.id} style={styles.cardProducto}>
@@ -251,11 +257,12 @@ export default function InventarioModal({
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                         <strong style={styles.nombreProd}>{p.nombre}</strong>
                         {p.esPesado && <span style={styles.badgePesado}>Balanza (KG)</span>}
-                        {/* BADGE DE IVA SINCRONIZADO */}
-                        {esRealmenteExento ? (
-                          <span style={styles.badgeExento}>Exento (0%)</span>
-                        ) : (
+
+                        {/* BADGE DINÁMICO EXACTO */}
+                        {esGravable16 ? (
                           <span style={styles.badgeIva16}>IVA 16%</span>
+                        ) : (
+                          <span style={styles.badgeExento}>Exento (0%)</span>
                         )}
                       </div>
 
@@ -357,7 +364,7 @@ export default function InventarioModal({
                 </div>
               </div>
 
-              {/* Proveedor e Impuesto (IVA) */}
+              {/* Proveedor Habitual e Impuesto (IVA) */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px' }}>
                 <div>
                   <label style={styles.labelForm}>Proveedor Habitual</label>
@@ -390,7 +397,7 @@ export default function InventarioModal({
                 </div>
               </div>
 
-              {/* SECCIÓN PRESENTACIÓN DE COMPRA TOTALMENTE EDITABLE */}
+              {/* SECCIÓN PRESENTACIÓN DE COMPRA 100% DESBLOQUEADA */}
               <div style={styles.bloquePresentacionCompra}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '6px' }}>
                   <Boxes size={14} color="#0052cc" />
@@ -416,12 +423,11 @@ export default function InventarioModal({
                   <div>
                     <small style={styles.labelMiniEmpaque}>Unds x Empaque *</small>
                     <input
-                      type="number"
-                      step="any"
-                      min="1"
-                      placeholder="1"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Ej: 20"
                       value={undsPorEmpaque}
-                      onChange={(e) => manejarCambioUnds(e.target.value)}
+                      onChange={manejarCambioUnds}
                       style={{ ...styles.inputEmpaque, backgroundColor: '#ffffff', fontWeight: 'bold' }}
                       required
                     />
@@ -434,14 +440,14 @@ export default function InventarioModal({
                       step="any"
                       placeholder="0.00"
                       value={costoEmpaqueUSD}
-                      onChange={(e) => manejarCambioCostoEmpaque(e.target.value)}
+                      onChange={manejarCambioCostoEmpaque}
                       style={{ ...styles.inputEmpaque, backgroundColor: '#ffffff' }}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Costo Unitario, Margen y Precio de Venta Calculados */}
+              {/* Costos y Margen */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '6px' }}>
                 <div>
                   <label style={styles.labelForm}>Costo Unit ($)</label>
@@ -467,7 +473,7 @@ export default function InventarioModal({
                     step="any"
                     placeholder="20"
                     value={margenPorcentaje}
-                    onChange={(e) => manejarCambioMargen(e.target.value)}
+                    onChange={manejarCambioMargen}
                     style={styles.inputModal}
                   />
                 </div>
@@ -479,14 +485,14 @@ export default function InventarioModal({
                     step="any"
                     placeholder="0.00"
                     value={precioVentaUSD}
-                    onChange={(e) => manejarCambioPrecioVenta(e.target.value)}
+                    onChange={manejarCambioPrecioVenta}
                     style={{ ...styles.inputModal, fontWeight: 'bold', color: '#00b050', backgroundColor: '#f0fdf4' }}
                     required
                   />
                 </div>
               </div>
 
-              {/* Stock y Granel */}
+              {/* Stock */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px' }}>
                 <div>
                   <label style={styles.labelForm}>Stock Actual en Anaquel</label>
