@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ShieldCheck, User, ArrowRight, RefreshCw, AlertCircle, 
-  Smartphone, QrCode, KeyRound, Monitor, CheckCircle2, X
+  Smartphone, KeyRound, Monitor, CheckCircle2, X
 } from 'lucide-react';
 
 export default function LoginModal({
@@ -15,7 +15,6 @@ export default function LoginModal({
   alVincularTerminalPorCodigo,
   alDesvincularTerminal
 }) {
-  // Por defecto 'dueno', o si ya hay cajeros guardados puede alternar
   const [pestana, setPestana] = useState(() => (cajeros.length > 0 ? 'cajeros' : 'dueno'));
   const [esRegistro, setEsRegistro] = useState(!cuentaMaster);
 
@@ -27,7 +26,7 @@ export default function LoginModal({
   const [errorLogin, setErrorLogin] = useState('');
   const [cargando, setCargando] = useState(false);
 
-  // Estados Cajero PIN
+  // Estados Cajero PIN (6 DÍGITOS)
   const [cajeroSeleccionado, setCajeroSeleccionado] = useState(null);
   const [pinIngresado, setPinIngresado] = useState('');
   const [errorPin, setErrorPin] = useState(false);
@@ -64,11 +63,11 @@ export default function LoginModal({
   };
 
   const pulsarNumeroPin = (num) => {
-    if (pinIngresado.length < 4) {
+    if (pinIngresado.length < 6) {
       const nuevoPin = pinIngresado + num;
       setPinIngresado(nuevoPin);
       setErrorPin(false);
-      if (nuevoPin.length === 4) {
+      if (nuevoPin.length === 6) {
         verificarPin(nuevoPin);
       }
     }
@@ -126,7 +125,7 @@ export default function LoginModal({
           <span style={styles.tagline}>Sistema Integral de Facturación</span>
         </div>
 
-        {/* Pestañas de Selección en Orden Lógico: 1. Acceso Dueño | 2. Turno Cajeros */}
+        {/* Pestañas de Selección: 1. Acceso Dueño | 2. Turno Cajeros */}
         <div style={styles.tabsContainer}>
           <button
             type="button"
@@ -155,7 +154,7 @@ export default function LoginModal({
           </button>
         </div>
 
-        {/* VISTA 1: ACCESO DUEÑO / ADMINISTRADOR */}
+        {/* VISTA 1: ACCESO DUEÑO */}
         {pestana === 'dueno' && (
           <form onSubmit={manejarSubmitDueno} style={styles.formularioDueno}>
             {errorLogin && <div style={styles.alertaError}>{errorLogin}</div>}
@@ -226,7 +225,7 @@ export default function LoginModal({
           </form>
         )}
 
-        {/* VISTA 2: TURNO CAJEROS CON TECLADO PIN */}
+        {/* VISTA 2: TURNO CAJEROS CON 6 DÍGITOS */}
         {pestana === 'cajeros' && (
           <div style={styles.cuerpoCajeros}>
             {!cajeroSeleccionado ? (
@@ -260,7 +259,7 @@ export default function LoginModal({
               </>
             ) : (
               <div style={styles.contenedorTecladoPin}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '8px' }}>
                   <button type="button" onClick={() => { setCajeroSeleccionado(null); setPinIngresado(''); }} style={styles.btnVolverCajeros}>
                     ← Cambiar
                   </button>
@@ -268,8 +267,9 @@ export default function LoginModal({
                   <div style={{ width: '50px' }} />
                 </div>
 
+                {/* 6 Indicadores de PIN */}
                 <div style={styles.indicadoresPinFila}>
-                  {[0, 1, 2, 3].map((idx) => (
+                  {[0, 1, 2, 3, 4, 5].map((idx) => (
                     <div 
                       key={idx} 
                       style={{
@@ -280,7 +280,7 @@ export default function LoginModal({
                     />
                   ))}
                 </div>
-                {errorPin && <small style={styles.textoPinInvalido}>PIN Incorrecto</small>}
+                {errorPin && <small style={styles.textoPinInvalido}>PIN Incorrecto (6 dígitos)</small>}
 
                 <div style={styles.tecladoNumerico}>
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
@@ -301,7 +301,7 @@ export default function LoginModal({
           </div>
         )}
 
-        {/* SECCIÓN INFERIOR: VINCULACIÓN DE TERMINAL SECUNDARIA */}
+        {/* PIE CON INFORMACIÓN DE CAJA Y VINCULACIÓN */}
         <div style={styles.footerVinculacion}>
           <div style={styles.cajaInfoTerminalActual}>
             <Smartphone size={14} color="#64748b" />
@@ -321,7 +321,7 @@ export default function LoginModal({
         </div>
       </div>
 
-      {/* MODAL DE VINCULACIÓN POR CÓDIGO O QR */}
+      {/* MODAL DE VINCULACIÓN POR CÓDIGO */}
       {modalVincularAbierto && (
         <div style={styles.overlayModal} translate="no">
           <div style={styles.cajaModalVinculo}>
@@ -342,7 +342,7 @@ export default function LoginModal({
             </div>
 
             <p style={{ margin: '0 0 14px 0', fontSize: '0.76rem', color: '#64748b', lineHeight: 1.45 }}>
-              Ingresa el código de 6 dígitos que se genera en el panel de <strong>Configuración &gt; Terminales</strong> del teléfono principal:
+              Ingresa el código de 6 dígitos configurado en la terminal principal:
             </p>
 
             {errorVincular && <div style={styles.alertaError}>{errorVincular}</div>}
@@ -565,12 +565,12 @@ const styles = {
   },
   indicadoresPinFila: {
     display: 'flex',
-    gap: '12px',
-    margin: '12px 0 6px 0'
+    gap: '10px',
+    margin: '10px 0 6px 0'
   },
   dotPin: {
-    width: '16px',
-    height: '16px',
+    width: '14px',
+    height: '14px',
     borderRadius: '50%',
     border: '2px solid'
   },
@@ -586,7 +586,7 @@ const styles = {
     gap: '8px',
     width: '100%',
     maxWidth: '240px',
-    marginTop: '10px'
+    marginTop: '8px'
   },
   btnTecla: {
     backgroundColor: '#f8fafc',
