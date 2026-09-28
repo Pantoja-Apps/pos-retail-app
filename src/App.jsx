@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   RefreshCw, User, Search, PauseCircle, PlayCircle, Store, Tag, Percent,
-  Cloud, CloudOff, AlertOctagon, PhoneCall, CheckCircle2, Sparkles, ShieldCheck, UserCheck
+  AlertOctagon, PhoneCall, CheckCircle2, Sparkles
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -865,6 +865,7 @@ export default function App() {
         configEmpresa={configEmpresa}
         usuarioActivo={usuarioActivo}
         cajaActiva={cajaActiva}
+        onlineBackend={onlineBackend}
         clientesMorosos={clientesMorosos}
         alNavegar={(vista) => setVistaActual(vista)}
         alCerrarSesion={cerrarSesion}
@@ -1083,15 +1084,7 @@ export default function App() {
                   <div style={styles.avatarHeaderBox}><Store size={18} color="#0052cc" /></div>
                 )}
                 <div style={styles.infoNegocio}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
-                    <span 
-                      style={onlineBackend ? styles.badgeOnlineIcon : styles.badgeOfflineIcon}
-                      title={onlineBackend ? "Conectado a la Nube" : "Modo Local"}
-                    >
-                      {onlineBackend ? <Cloud size={11} color="#15803d" /> : <CloudOff size={11} color="#b45309" />}
-                    </span>
-                  </div>
+                  <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
                   <div style={styles.subtextHeader}>
                     {esDueno ? (
                       <span style={{ color: '#15803d', fontWeight: 'bold' }}>
@@ -1471,11 +1464,8 @@ const styles = {
   avatarHeaderBox: { width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #bfdbfe' },
   
   infoNegocio: { display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 },
-  nombreNegocio: { margin: 0, fontSize: '0.94rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  nombreNegocio: { margin: 0, fontSize: '0.96rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   subtextHeader: { fontSize: '0.72rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  
-  badgeOnlineIcon: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#dcfce7', flexShrink: 0, marginLeft: '6px' },
-  badgeOfflineIcon: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#fef3c7', flexShrink: 0, marginLeft: '6px' },
   
   tasaChip: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc', padding: '5px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
   btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },

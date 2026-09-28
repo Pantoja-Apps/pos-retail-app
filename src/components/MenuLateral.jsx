@@ -1,7 +1,8 @@
 import React from 'react';
 import { 
   X, Store, Package, BookOpen, Wallet, History, 
-  TrendingUp, Settings, HelpCircle, LogOut, ShieldCheck, UserCheck, ChevronRight
+  TrendingUp, Settings, HelpCircle, LogOut, ShieldCheck, UserCheck, 
+  ChevronRight, Cloud, CloudOff
 } from 'lucide-react';
 
 export default function MenuLateral({ 
@@ -10,6 +11,7 @@ export default function MenuLateral({
   configEmpresa, 
   usuarioActivo, 
   cajaActiva, 
+  onlineBackend = false,
   clientesMorosos = 0,
   alNavegar, 
   alCerrarSesion 
@@ -59,9 +61,16 @@ export default function MenuLateral({
                   {esDueno ? <ShieldCheck size={11} /> : <UserCheck size={11} />}
                   <span>{usuarioActivo?.nombre || 'Usuario'}</span>
                 </span>
+                
                 {cajaActiva?.nombre && (
                   <span style={styles.badgeCaja}>{cajaActiva.nombre}</span>
                 )}
+
+                {/* Estado de sincronización en la nube */}
+                <span style={onlineBackend ? styles.badgeOnlineMenu : styles.badgeOfflineMenu}>
+                  {onlineBackend ? <Cloud size={10} /> : <CloudOff size={10} />}
+                  <span>{onlineBackend ? 'Nube' : 'Local'}</span>
+                </span>
               </div>
             </div>
           </div>
@@ -187,7 +196,7 @@ const styles = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: '4px',
-    marginTop: '4px'
+    marginTop: '5px'
   },
   badgeRolDueno: {
     display: 'inline-flex',
@@ -197,7 +206,7 @@ const styles = {
     fontWeight: '700',
     backgroundColor: '#f0fdf4',
     color: '#15803d',
-    padding: '1px 6px',
+    padding: '2px 6px',
     borderRadius: '4px'
   },
   badgeRolCajero: {
@@ -208,7 +217,7 @@ const styles = {
     fontWeight: '700',
     backgroundColor: '#eff6ff',
     color: '#1d4ed8',
-    padding: '1px 6px',
+    padding: '2px 6px',
     borderRadius: '4px'
   },
   badgeCaja: {
@@ -216,7 +225,29 @@ const styles = {
     fontWeight: '600',
     backgroundColor: '#f1f5f9',
     color: '#475569',
-    padding: '1px 6px',
+    padding: '2px 6px',
+    borderRadius: '4px'
+  },
+  badgeOnlineMenu: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    fontSize: '0.62rem',
+    fontWeight: 'bold',
+    backgroundColor: '#dcfce7',
+    color: '#15803d',
+    padding: '2px 6px',
+    borderRadius: '4px'
+  },
+  badgeOfflineMenu: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    fontSize: '0.62rem',
+    fontWeight: 'bold',
+    backgroundColor: '#fef3c7',
+    color: '#b45309',
+    padding: '2px 6px',
     borderRadius: '4px'
   },
   btnCerrarDrawer: {
