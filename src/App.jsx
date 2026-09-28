@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   RefreshCw, User, Search, PauseCircle, PlayCircle, Store, Tag, Percent,
-  Cloud, CloudOff, AlertOctagon, PhoneCall, CheckCircle2, Sparkles
+  Cloud, CloudOff, AlertOctagon, PhoneCall, CheckCircle2, Sparkles, ShieldCheck, UserCheck
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -1083,7 +1083,7 @@ export default function App() {
                   <div style={styles.avatarHeaderBox}><Store size={18} color="#0052cc" /></div>
                 )}
                 <div style={styles.infoNegocio}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
                     <span 
                       style={onlineBackend ? styles.badgeOnlineIcon : styles.badgeOfflineIcon}
@@ -1466,7 +1466,7 @@ const styles = {
   topHeader: { padding: '8px 12px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   headerFila1: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '10px' },
   
-  logoTriggerClickable: { display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1, cursor: 'pointer' },
+  logoTriggerClickable: { display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1, cursor: 'pointer' },
   logoHeaderImg: { width: '38px', height: '38px', borderRadius: '10px', objectFit: 'contain', border: '1px solid #cbd5e1', flexShrink: 0, backgroundColor: '#fff' },
   avatarHeaderBox: { width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #bfdbfe' },
   
@@ -1474,8 +1474,8 @@ const styles = {
   nombreNegocio: { margin: 0, fontSize: '0.94rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   subtextHeader: { fontSize: '0.72rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   
-  badgeOnlineIcon: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '17px', height: '17px', borderRadius: '50%', backgroundColor: '#dcfce7', flexShrink: 0 },
-  badgeOfflineIcon: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '17px', height: '17px', borderRadius: '50%', backgroundColor: '#fef3c7', flexShrink: 0 },
+  badgeOnlineIcon: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#dcfce7', flexShrink: 0, marginLeft: '6px' },
+  badgeOfflineIcon: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#fef3c7', flexShrink: 0, marginLeft: '6px' },
   
   tasaChip: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc', padding: '5px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
   btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
