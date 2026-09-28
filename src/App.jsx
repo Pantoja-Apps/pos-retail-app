@@ -138,7 +138,6 @@ export default function App() {
     return [];
   });
 
-  // Cuentas en Espera / Pausadas
   const [pedidosPausados, setPedidosPausados] = useState(() => {
     try {
       const g = localStorage.getItem('pos_pedidos_pausados');
@@ -201,7 +200,6 @@ export default function App() {
         }));
       }
 
-      // Sincronizar ventas desde Supabase
       const ventasSupabase = await dbService.getVentas(negId);
       if (Array.isArray(ventasSupabase) && ventasSupabase.length > 0) {
         setTransacciones(actuales => {
@@ -334,7 +332,6 @@ export default function App() {
     });
   };
 
-  // Pausar y Reanudar
   const pausarCuentaActual = () => {
     if (carrito.length === 0) {
       if (pedidosPausados.length > 0) {
@@ -377,7 +374,6 @@ export default function App() {
     }
   };
 
-  // Guardar o Actualizar Cliente
   const guardarClienteEnDB = (cli) => {
     setClientes(prev => {
       const idx = prev.findIndex(c => c.doc?.toUpperCase().trim() === cli.doc?.toUpperCase().trim());
@@ -414,7 +410,7 @@ export default function App() {
       descuento: datosVenta.descuento || 0
     };
 
-    // 1. Guardar en Transacciones (Caja e Historial)
+    // 1. Guardar en Transacciones (Caja e Historial local)
     setTransacciones(prev => [ventaCompleta, ...prev]);
     setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
 
@@ -916,7 +912,7 @@ export default function App() {
         </>
       )}
 
-      {/* MODAL BALANZA DIGITAL PARA PRODUCTOS PESADOS */}
+      {/* MODAL BALANZA DIGITAL */}
       {productoParaPesar && (
         <ModalPeso
           producto={productoParaPesar}
@@ -929,7 +925,7 @@ export default function App() {
         />
       )}
 
-      {/* MODAL PARA RECUPERAR PEDIDOS EN PAUSA */}
+      {/* MODAL CUENTAS EN PAUSA */}
       {modalPausadosAbierto && (
         <div style={styles.overlayPausados}>
           <div style={styles.boxPausados}>
@@ -976,7 +972,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL COBRO CONECTADO COMPLETAMENTE */}
+      {/* MODAL COBRO */}
       <ModalCobro 
         abierto={modalCobroAbierto}
         alCerrar={() => setModalCobroAbierto(false)}
@@ -990,7 +986,7 @@ export default function App() {
         alFinalizarVenta={alFinalizarVenta}
       />
 
-      {/* MODAL TICKET DIGITAL CON OPCIÓN IMPRIMIR Y WHATSAPP */}
+      {/* MODAL TICKET */}
       {ticketModalData && (
         <TicketModal
           datos={ticketModalData}
