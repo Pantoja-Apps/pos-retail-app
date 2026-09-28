@@ -14,7 +14,23 @@ export default function TicketModal({
   const totalBS = Number(datos.totalBS || (totalUSD * tasa));
   const items = datos.items || [];
   const cliente = datos.cliente || { nombre: 'Consumidor Final', doc: 'V-00000000', telefono: '' };
-  const cantidadTotalPiezas = items.reduce((acc, it) => acc + Number(it.cantidad || 0), 0);
+
+  // Cálculo discriminado: Unidades vs Kilogramos
+  let totalPiezasUnid = 0;
+  let totalPesoKg = 0;
+  let hayUnidades = false;
+  let hayPesados = false;
+
+  items.forEach(it => {
+    const cant = Number(it.cantidad || 0);
+    if (it.esPesado) {
+      totalPesoKg += cant;
+      hayPesados = true;
+    } else {
+      totalPiezasUnid += cant;
+      hayUnidades = true;
+    }
+  });
 
   const imprimir = () => {
     window.print();
@@ -26,7 +42,7 @@ export default function TicketModal({
     if (config?.rif) texto += `RIF: ${config.rif}\n`;
     if (config?.telefono) texto += `TEL: ${config.telefono}\n`;
     texto += `--------------------------------\n`;
-    texto += `TICKET #: ${datos.correlativo || datos.id}\n`;
+    texto += `CONTROL #: ${datos.correlativo || datos.id}\n`;
     texto += `FECHA: ${datos.fechaFormateada || new Date().toLocaleString()}\n`;
     texto += `CLIENTE: ${cliente.nombre}\n`;
     texto += `CÉDULA / RIF: ${cliente.doc}\n`;
@@ -36,11 +52,14 @@ export default function TicketModal({
 
     items.forEach(it => {
       const sub = (it.precioUSD * it.cantidad).toFixed(2);
-      texto += `${it.nombre}\n`;
-      texto += `  ${it.cantidad} ${it.esPesado ? 'KG' : 'UNID'} x $${Number(it.precioUSD).toFixed(2)} = $${sub}\n`;
+      const unidadMedida = it.esPesado ? `${it.cantidad} kg` : `${it.cantidad} unid`;
+      texto += `• ${it.nombre}\n`;
+      texto += `  ${unidadMedida} x $${Number(it.precioUSD).toFixed(2)} = $${sub}\n`;
     });
 
     texto += `--------------------------------\n`;
+    if (hayUnidades) texto += `Total Unidades: ${totalPiezasUnid} unids\n`;
+    if (hayPesados) texto += `Peso Total: ${totalPesoKg.toFixed(3)} KG\n`;
     texto += `*TOTAL FACTURA: $${totalUSD.toFixed(2)}*\n`;
     texto += `*TOTAL EN BS: Bs. ${totalBS.toFixed(2)}*\n`;
     texto += `Tasa Oficial BCV: Bs. ${tasa.toFixed(2)}\n`;
@@ -64,7 +83,7 @@ export default function TicketModal({
   return (
     <div style={styles.overlay} translate="no">
       <div style={styles.modalBox}>
-        {/* Barra superior de control */}
+        {/* Barra superior */}
         <div style={styles.barraHeader}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <CheckCircle2 color="#00b050" size={17} />
@@ -77,7 +96,7 @@ export default function TicketModal({
           </button>
         </div>
 
-        {/* CUERPO DEL TICKET */}
+        {/* TICKET FORMAL ESTRUCTURADO */}
         <div id="area-ticket-impresion" style={styles.ticketCuerpo}>
           {/* Logo y Encabezado */}
           <div style={styles.encabezadoFiscal}>
@@ -109,12 +128,12 @@ export default function TicketModal({
 
           <div style={styles.separadorLineas} />
 
-          {/* Tabla de Artículos */}
+          {/* Cabecera de la Tabla */}
           <div style={styles.tablaHeader}>
-            <span style={{ flex: 1.8 }}>DESCRIPCIÓN</span>
-            <span style={{ width: '42px', textAlign: 'center' }}>CANT</span>
-            <span style={{ width: '48px', textAlign: 'right' }}>P.U</span>
-            <span style={{ width: '56px', textAlign: 'right' }}>TOTAL</span>
+            <span style={{ flex: 1.7 }}>DESCRIPCIÓN</span>
+            <span style={{ width: '56px', textAlign: 'center' }}>CANT/PESO</span>
+            <span style={{ width: '46px', textAlign: 'right' }}>P.U</span>
+            <span style={{ width: '54px', textAlign: 'right' }}>TOTAL</span>
           </div>
 
           <div style={styles.lineaFina} />
@@ -124,7 +143,9 @@ export default function TicketModal({
             {items.map((it, idx) => (
               <div key={idx} style={styles.itemFila}>
                 <div style={styles.colNombre}>{it.nombre}</div>
-                <div style={styles.colCant}>{it.cantidad}{it.esPesado ? 'kg' : ''}</div>
+                <div style={styles.colCant}>
+                  {it.esPesado ? `${Number(it.cantidad).toFixed(3)}kg` : `${it.cantidad} unid`}
+                </div>
                 <div style={styles.colPu}>${Number(it.precioUSD).toFixed(2)}</div>
                 <div style={styles.colTotal}>${(it.precioUSD * it.cantidad).toFixed(2)}</div>
               </div>
@@ -133,12 +154,21 @@ export default function TicketModal({
 
           <div style={styles.separadorLineas} />
 
-          {/* Desglose de Totales */}
+          {/* Desglose de Totales: Diferencia unidades vs peso */}
           <div style={styles.seccionDesglose}>
-            <div style={styles.filaSub}>
-              <span>TOTAL ARTÍCULOS:</span>
-              <strong>{cantidadTotalPiezas.toFixed(cantidadTotalPiezas % 1 === 0 ? 0 : 3)} unids</strong>
-            </div>
+            {hayUnidades && (
+              <div style={styles.filaSub}>
+                <span>TOTAL ARTÍCULOS:</span>
+                <strong>{totalPiezasUnid} unids</strong>
+              </div>
+            )}
+
+            {hayPesados && (
+              <div style={styles.filaSub}>
+                <span>PESO TOTAL A GRANEL:</span>
+                <strong>{totalPesoKg.toFixed(3)} KG</strong>
+              </div>
+            )}
 
             <div style={styles.filaSub}>
               <span>BASE IMPONIBLE (EXENTO):</span>
@@ -290,7 +320,7 @@ const styles = {
   tablaHeader: {
     display: 'flex',
     fontWeight: '800',
-    fontSize: '0.66rem',
+    fontSize: '0.64rem',
     color: '#0f2a4a',
     padding: '2px 0'
   },
@@ -309,7 +339,7 @@ const styles = {
     fontSize: '0.7rem'
   },
   colNombre: {
-    flex: 1.8,
+    flex: 1.7,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -317,17 +347,18 @@ const styles = {
     color: '#0f2a4a'
   },
   colCant: {
-    width: '42px',
+    width: '56px',
     textAlign: 'center',
-    color: '#475569'
+    color: '#475569',
+    fontSize: '0.66rem'
   },
   colPu: {
-    width: '48px',
+    width: '46px',
     textAlign: 'right',
     color: '#475569'
   },
   colTotal: {
-    width: '56px',
+    width: '54px',
     textAlign: 'right',
     fontWeight: 'bold',
     color: '#0f2a4a'
