@@ -14,8 +14,6 @@ export default function TicketModal({
   const totalBS = Number(datos.totalBS || (totalUSD * tasa));
   const items = datos.items || [];
   const cliente = datos.cliente || { nombre: 'Consumidor Final', doc: 'V-00000000', telefono: '' };
-
-  // Cantidad total de artículos vendidos
   const cantidadTotalPiezas = items.reduce((acc, it) => acc + Number(it.cantidad || 0), 0);
 
   const imprimir = () => {
@@ -43,7 +41,7 @@ export default function TicketModal({
     });
 
     texto += `--------------------------------\n`;
-    texto += `*TOTAL A PAGAR: $${totalUSD.toFixed(2)}*\n`;
+    texto += `*TOTAL FACTURA: $${totalUSD.toFixed(2)}*\n`;
     texto += `*TOTAL EN BS: Bs. ${totalBS.toFixed(2)}*\n`;
     texto += `Tasa Oficial BCV: Bs. ${tasa.toFixed(2)}\n`;
     if (datos.vueltoUSD > 0) {
@@ -79,7 +77,7 @@ export default function TicketModal({
           </button>
         </div>
 
-        {/* TICKET FORMAL ESTRUCTURADO */}
+        {/* CUERPO DEL TICKET */}
         <div id="area-ticket-impresion" style={styles.ticketCuerpo}>
           {/* Logo y Encabezado */}
           <div style={styles.encabezadoFiscal}>
@@ -111,7 +109,7 @@ export default function TicketModal({
 
           <div style={styles.separadorLineas} />
 
-          {/* Tabla de Artículos Estructurada con Cabecera */}
+          {/* Tabla de Artículos */}
           <div style={styles.tablaHeader}>
             <span style={{ flex: 1.8 }}>DESCRIPCIÓN</span>
             <span style={{ width: '42px', textAlign: 'center' }}>CANT</span>
@@ -135,7 +133,7 @@ export default function TicketModal({
 
           <div style={styles.separadorLineas} />
 
-          {/* Desglose de Totales y Monedas */}
+          {/* Desglose de Totales */}
           <div style={styles.seccionDesglose}>
             <div style={styles.filaSub}>
               <span>TOTAL ARTÍCULOS:</span>
@@ -171,7 +169,7 @@ export default function TicketModal({
 
           <div style={styles.separadorLineas} />
 
-          {/* Pie de Ticket y Código de Barras */}
+          {/* Pie de Ticket */}
           <div style={styles.pieFiscal}>
             <p style={styles.mensajePie}>{config?.mensajePie || '¡Gracias por su compra!'}</p>
             
@@ -215,18 +213,20 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '8px',
+    padding: '16px 12px',
+    boxSizing: 'border-box',
     zIndex: 999999999
   },
   modalBox: {
     backgroundColor: '#ffffff',
-    borderRadius: '20px',
+    borderRadius: '24px',
     width: '100%',
     maxWidth: '380px',
-    maxHeight: '96vh',
+    maxHeight: '92vh',
     overflowY: 'auto',
-    padding: '14px',
-    boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
+    padding: '16px',
+    boxSizing: 'border-box',
+    boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
     display: 'flex',
     flexDirection: 'column'
   },
@@ -240,8 +240,8 @@ const styles = {
     background: '#f1f5f9',
     border: 'none',
     borderRadius: '50%',
-    width: '26px',
-    height: '26px',
+    width: '28px',
+    height: '28px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -250,7 +250,7 @@ const styles = {
   },
   ticketCuerpo: {
     backgroundColor: '#ffffff',
-    borderRadius: '12px',
+    borderRadius: '14px',
     padding: '14px 12px',
     border: '1px solid #cbd5e1',
     boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
@@ -406,7 +406,7 @@ const styles = {
   },
   btnImprimir: {
     flex: 1,
-    padding: '9px',
+    padding: '10px',
     backgroundColor: '#0f2a4a',
     color: '#fff',
     border: 'none',
@@ -421,7 +421,7 @@ const styles = {
   },
   btnWhatsApp: {
     flex: 1.3,
-    padding: '9px',
+    padding: '10px',
     backgroundColor: '#00b050',
     color: '#fff',
     border: 'none',
@@ -435,7 +435,7 @@ const styles = {
     gap: '4px'
   },
   btnListo: {
-    padding: '9px 12px',
+    padding: '10px 14px',
     backgroundColor: '#f1f5f9',
     color: '#0f2a4a',
     border: '1px solid #cbd5e1',

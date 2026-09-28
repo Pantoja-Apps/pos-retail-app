@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { 
   DollarSign, Smartphone, CreditCard, Banknote, CheckCircle2, 
-  X, User, Phone, BookOpen, AlertCircle
+  X, User, Phone, BookOpen, ArrowRight, Zap
 } from 'lucide-react';
+
+const BILLETES_USD = [1, 2, 5, 10, 20, 50, 100];
 
 export default function ModalCobro({
   abierto,
@@ -22,16 +24,16 @@ export default function ModalCobro({
   const tasaNum = parseFloat(tasaCambio) || 1;
   const totalBSNum = totalUSDNum * tasaNum;
 
+  // Cliente
   const [docCliente, setDocCliente] = useState(clienteActual?.doc === 'V-00000000' ? '' : (clienteActual?.doc || ''));
   const [nombreCliente, setNombreCliente] = useState(clienteActual?.nombre || 'Consumidor Final');
   const [telefonoCliente, setTelefonoCliente] = useState(clienteActual?.telefono || '');
   const [sugerencias, setSugerencias] = useState([]);
 
-  const [montoUSD, setMontoUSD] = useState('');
-  const [montoEfectivoBS, setMontoEfectivoBS] = useState('');
-  const [montoPagoMovilBS, setMontoPagoMovilBS] = useState('');
-  const [montoPuntoBS, setMontoPuntoBS] = useState('');
-  const [esCredito, setEsCredito] = useState(false);
+  // Método y Monto ingresado
+  const [metodo, setMetodo] = useState('efectivo_usd');
+  const [montoIngresado, setMontoIngresado] = useState('');
+  const [referencia, setReferencia] = useState('');
 
   const manejarCambioDoc = (doc) => {
     setDocCliente(doc);
@@ -62,44 +64,64 @@ export default function ModalCobro({
     setSugerencias([]);
   };
 
-  const numUSD = parseFloat(montoUSD) || 0;
-  const numEfBS = parseFloat(montoEfectivoBS) || 0;
-  const numPMBS = parseFloat(montoPagoMovilBS) || 0;
-  const numPTBS = parseFloat(montoPuntoBS) || 0;
-
-  const totalAbonadoUSD = numUSD + (numEfBS / tasaNum) + (numPMBS / tasaNum) + (numPTBS / tasaNum);
-  const totalAbonadoBS = totalAbonadoUSD * tasaNum;
-
-  const diferenciaUSD = totalAbonadoUSD - totalUSDNum;
-  const vueltoUSD = diferenciaUSD > 0.005 ? diferenciaUSD : 0;
-  const vueltoBS = vueltoUSD * tasaNum;
-
-  const saldoRestanteUSD = Math.max(0, totalUSDNum - totalAbonadoUSD);
-  const saldoRestanteBS = saldoRestanteUSD * tasaNum;
-
-  const pagarTodoEn = (metodo) => {
-    setEsCredito(false);
-    setMontoUSD('');
-    setMontoEfectivoBS('');
-    setMontoPagoMovilBS('');
-    setMontoPuntoBS('');
-
-    if (metodo === 'usd') setMontoUSD(totalUSDNum.toFixed(2));
-    else if (metodo === 'efectivo_bs') setMontoEfectivoBS(totalBSNum.toFixed(2));
-    else if (metodo === 'pago_movil') setMontoPagoMovilBS(totalBSNum.toFixed(2));
-    else if (metodo === 'punto') setMontoPuntoBS(totalBSNum.toFixed(2));
+  // Teclado táctil
+  const pulsarTecla = (t) => {
+    if (t === '.' && montoIngresado.includes('.')) return;
+    if (montoIngresado.length < 9) {
+      setMontoIngresado(prev => prev + t);
+    }
   };
 
-  const procesarVenta = (e) => {
+  const borrarTecla = () => {
+    setMontoIngresado(prev => prev.slice(0, -1));
+  };
+
+  const pagarTodo = () => {
+    if (metodo === 'efectivo_usd') {
+      setMontoIngresado(totalUSDNum.toFixed(2));
+    } else {
+      setMontoIngresado(totalBSNum.toFixed(2));
+    }
+  };
+
+  const montoNum = parseFloat(montoIngresado) || 0;
+
+  // Cálculos de Vuelto / Faltante
+  let vueltoUSD = 0;
+  let vueltoBS = 0;
+  let saldoFaltanteUSD = 0;
+
+  if (metodo === 'efectivo_usd') {
+    if (montoNum > totalUSDNum) {
+      vueltoUSD = montoNum - totalUSDNum;
+      vueltoBS = vueltoUSD * tasaNum;
+    } else if (montoNum > 0 && montoNum < totalUSDNum) {
+      saldoFaltanteUSD = totalUSDNum - montoNum;
+    }
+  } else if (metodo !== 'credito') {
+    // Pagos en Bolívares
+    const montoEquivUSD = tasaNum > 0 ? (montoNum / tasaNum) : 0;
+    if (montoNum > totalBSNum) {
+      vueltoBS = montoNum - totalBSNum;
+      vueltoUSD = tasaNum > 0 ? (vueltoBS / tasaNum) : 0;
+    } else if (montoEquivUSD > 0 && montoEquivUSD < totalUSDNum) {
+      saldoFaltanteUSD = totalUSDNum - montoEquivUSD;
+    }
+  }
+
+  const procesarCobro = (e) => {
     if (e) e.preventDefault();
 
-    if (esCredito) {
+    if (metodo === 'credito') {
       if (!docCliente.trim() || docCliente === 'V-00000000' || nombreCliente === 'Consumidor Final') {
         return alert('Para fiar o vender a crédito debes registrar la Cédula y Nombre del cliente.');
       }
     } else {
-      if (totalAbonadoUSD < (totalUSDNum - 0.01)) {
-        return alert(`Faltan $${saldoRestanteUSD.toFixed(2)} (Bs. ${saldoRestanteBS.toFixed(2)}) para completar el monto.`);
+      const pagadoRealUSD = metodo === 'efectivo_usd' ? montoNum : (montoNum / tasaNum);
+      if (montoNum <= 0 && !montoIngresado) {
+        // Si no tocó la calculadora, asume pago exacto
+      } else if (pagadoRealUSD < (totalUSDNum - 0.01)) {
+        return alert(`Monto incompleto. Faltan $${saldoFaltanteUSD.toFixed(2)}.`);
       }
     }
 
@@ -112,15 +134,7 @@ export default function ModalCobro({
     if (guardarClienteEnDB) guardarClienteEnDB(clienteFinal);
     if (setClienteActual) setClienteActual(clienteFinal);
 
-    const pagosDesglose = [];
-    if (numUSD > 0) pagosDesglose.push({ metodo: 'Efectivo ($)', montoUSD: numUSD, montoBS: numUSD * tasaNum });
-    if (numEfBS > 0) pagosDesglose.push({ metodo: 'Efectivo (Bs)', montoUSD: numEfBS / tasaNum, montoBS: numEfBS });
-    if (numPMBS > 0) pagosDesglose.push({ metodo: 'Pago Móvil', montoUSD: numPMBS / tasaNum, montoBS: numPMBS });
-    if (numPTBS > 0) pagosDesglose.push({ metodo: 'Punto Débito', montoUSD: numPTBS / tasaNum, montoBS: numPTBS });
-
-    const metodoPrincipal = esCredito ? 'credito' : (
-      pagosDesglose.length > 1 ? 'Mixto' : (pagosDesglose[0]?.metodo || 'Efectivo ($)')
-    );
+    const valorCobrado = montoNum > 0 ? montoNum : (metodo === 'efectivo_usd' ? totalUSDNum : totalBSNum);
 
     const ventaFinal = {
       id: 'vta_' + Date.now(),
@@ -129,12 +143,16 @@ export default function ModalCobro({
       totalUSD: totalUSDNum,
       totalBS: totalBSNum,
       tasaCambio: tasaNum,
-      metodoPago: metodoPrincipal,
-      pagos: pagosDesglose,
-      esCredito: esCredito,
-      montoRecibido: totalAbonadoUSD,
+      metodoPago: metodo === 'credito' ? 'credito' : (
+        metodo === 'efectivo_usd' ? 'Efectivo ($)' : 
+        metodo === 'pago_movil' ? 'Pago Móvil' :
+        metodo === 'punto_venta' ? 'Punto Débito' : 'Efectivo (Bs)'
+      ),
+      esCredito: metodo === 'credito',
+      montoRecibido: valorCobrado,
       vueltoUSD: parseFloat(vueltoUSD.toFixed(2)),
-      vueltoBS: parseFloat(vueltoBS.toFixed(2))
+      vueltoBS: parseFloat(vueltoBS.toFixed(2)),
+      referencia: referencia.trim()
     };
 
     if (alFinalizarVenta) {
@@ -145,7 +163,7 @@ export default function ModalCobro({
   return (
     <div style={styles.overlay} translate="no">
       <div style={styles.modalBox}>
-        {/* Cabecera Corporativa */}
+        {/* Cabecera */}
         <div style={styles.header}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={styles.iconoBox}>
@@ -161,19 +179,19 @@ export default function ModalCobro({
           </button>
         </div>
 
-        {/* Tarjeta de Total con Colores Corporativos */}
+        {/* Tarjeta de Total Principal */}
         <div style={styles.tarjetaTotal}>
           <span style={styles.etiquetaTotal}>TOTAL A COBRAR</span>
           <div style={styles.cifraUSD}>${totalUSDNum.toFixed(2)}</div>
           <div style={styles.cifraBS}>Bs. {totalBSNum.toFixed(2)}</div>
         </div>
 
-        {/* Datos del Cliente */}
+        {/* Datos Cliente */}
         <div style={styles.seccionCliente}>
-          <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1.1fr 1.4fr', gap: '6px' }}>
+          <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '6px' }}>
             <input
               type="text"
-              placeholder="Cédula cliente..."
+              placeholder="Cédula (Ej: 22033378)"
               value={docCliente}
               onChange={(e) => manejarCambioDoc(e.target.value)}
               style={styles.inputCliente}
@@ -200,10 +218,12 @@ export default function ModalCobro({
           </div>
 
           <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <div style={styles.iconoInputBox}><Phone size={13} color="#64748b" /></div>
+            <div style={{ width: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Phone size={13} color="#64748b" />
+            </div>
             <input
               type="text"
-              placeholder="Teléfono (WhatsApp para enviar ticket)..."
+              placeholder="Teléfono móvil (WhatsApp)..."
               value={telefonoCliente}
               onChange={(e) => setTelefonoCliente(e.target.value)}
               style={styles.inputCliente}
@@ -211,166 +231,119 @@ export default function ModalCobro({
           </div>
         </div>
 
-        {/* Botón Fiar / A Crédito */}
-        <div 
-          onClick={() => {
-            setEsCredito(!esCredito);
-            if (!esCredito) {
-              setMontoUSD('');
-              setMontoEfectivoBS('');
-              setMontoPagoMovilBS('');
-              setMontoPuntoBS('');
-            }
-          }}
-          style={{
-            ...styles.cardFiar,
-            backgroundColor: esCredito ? '#fef2f2' : '#ffffff',
-            borderColor: esCredito ? '#ef4444' : '#e2e8f0'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <BookOpen size={16} color={esCredito ? '#dc2626' : '#64748b'} />
-            <div>
-              <strong style={{ fontSize: '0.8rem', color: esCredito ? '#dc2626' : '#0f2a4a', display: 'block' }}>
-                Vender a Crédito / Fiar Pedido
-              </strong>
-              <small style={{ fontSize: '0.66rem', color: '#64748b' }}>
-                Se sumará a la cuenta pendiente del cliente en Créditos
-              </small>
-            </div>
-          </div>
-          <input
-            type="checkbox"
-            checked={esCredito}
-            onChange={() => {}}
-            style={{ width: '16px', height: '16px', accentColor: '#dc2626', cursor: 'pointer' }}
-          />
+        {/* Selector de Métodos de Pago */}
+        <div style={styles.gridMetodos}>
+          {[
+            { id: 'efectivo_usd', label: 'Efectivo ($)', icon: Banknote, color: '#00b050' },
+            { id: 'pago_movil', label: 'Pago Móvil', icon: Smartphone, color: '#0052cc' },
+            { id: 'punto_venta', label: 'Punto Débito', icon: CreditCard, color: '#7c3aed' },
+            { id: 'efectivo_bs', label: 'Efectivo (Bs)', icon: Banknote, color: '#d97706' },
+            { id: 'credito', label: 'Fiar / A Crédito', icon: BookOpen, color: '#dc2626' }
+          ].map(m => {
+            const Icon = m.icon;
+            const activo = metodo === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => { setMetodo(m.id); setMontoIngresado(''); }}
+                style={{
+                  ...styles.btnMetodo,
+                  gridColumn: m.id === 'credito' ? 'span 2' : 'span 1',
+                  backgroundColor: activo ? '#0f2a4a' : '#f8fafc',
+                  color: activo ? '#ffffff' : '#334155',
+                  borderColor: activo ? '#0f2a4a' : '#e2e8f0'
+                }}
+              >
+                <Icon size={14} color={activo ? '#00b050' : m.color} />
+                <span>{m.label}</span>
+              </button>
+            );
+          })}
         </div>
 
-        {/* Métodos de Pago con Pagar Todo */}
-        {!esCredito && (
-          <div style={styles.gridPagos}>
-            {/* Divisas $ */}
-            <div style={styles.cajaPagoMetodo}>
-              <div style={styles.filaMetodoTop}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <DollarSign size={14} color="#00b050" />
-                  <strong style={styles.labelMetodo}>Divisas ($):</strong>
-                </div>
-                <button type="button" onClick={() => pagarTodoEn('usd')} style={styles.btnPagarTodoPill}>
-                  Pagar Todo
-                </button>
-              </div>
-              <input
-                type="number"
-                step="any"
-                placeholder="0.00"
-                value={montoUSD}
-                onChange={(e) => setMontoUSD(e.target.value)}
-                style={styles.inputMetodo}
-              />
-            </div>
-
-            {/* Efectivo Bs */}
-            <div style={styles.cajaPagoMetodo}>
-              <div style={styles.filaMetodoTop}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <Banknote size={14} color="#00b050" />
-                  <strong style={styles.labelMetodo}>Efectivo (Bs):</strong>
-                </div>
-                <button type="button" onClick={() => pagarTodoEn('efectivo_bs')} style={styles.btnPagarTodoPill}>
-                  Pagar Todo
-                </button>
-              </div>
-              <input
-                type="number"
-                step="any"
-                placeholder="0.00"
-                value={montoEfectivoBS}
-                onChange={(e) => setMontoEfectivoBS(e.target.value)}
-                style={styles.inputMetodo}
-              />
-            </div>
-
-            {/* Pago Móvil */}
-            <div style={styles.cajaPagoMetodo}>
-              <div style={styles.filaMetodoTop}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <Smartphone size={14} color="#0052cc" />
-                  <strong style={styles.labelMetodo}>Pago Móvil (Bs):</strong>
-                </div>
-                <button type="button" onClick={() => pagarTodoEn('pago_movil')} style={styles.btnPagarTodoPill}>
-                  Pagar Todo
-                </button>
-              </div>
-              <input
-                type="number"
-                step="any"
-                placeholder="0.00"
-                value={montoPagoMovilBS}
-                onChange={(e) => setMontoPagoMovilBS(e.target.value)}
-                style={styles.inputMetodo}
-              />
-            </div>
-
-            {/* Punto Débito */}
-            <div style={styles.cajaPagoMetodo}>
-              <div style={styles.filaMetodoTop}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <CreditCard size={14} color="#7c3aed" />
-                  <strong style={styles.labelMetodo}>Punto Débito (Bs):</strong>
-                </div>
-                <button type="button" onClick={() => pagarTodoEn('punto')} style={styles.btnPagarTodoPill}>
-                  Pagar Todo
-                </button>
-              </div>
-              <input
-                type="number"
-                step="any"
-                placeholder="0.00"
-                value={montoPuntoBS}
-                onChange={(e) => setMontoPuntoBS(e.target.value)}
-                style={styles.inputMetodo}
-              />
+        {/* Área de Cobro o Fiar */}
+        {metodo === 'credito' ? (
+          <div style={styles.alertaCredito}>
+            <BookOpen size={18} color="#dc2626" />
+            <div style={{ fontSize: '0.74rem', color: '#991b1b', lineHeight: 1.35 }}>
+              Esta cuenta por <strong>${totalUSDNum.toFixed(2)}</strong> se cargará al saldo pendiente de <strong>{nombreCliente}</strong> en la libreta de Créditos.
             </div>
           </div>
+        ) : (
+          <>
+            {/* Pantalla del Monto Pagado con Botón Pagar Todo */}
+            <div style={styles.tarjetaVisorPago}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 'bold' }}>
+                  MONTO PAGADO ({metodo === 'efectivo_usd' ? 'USD $' : 'BS.'}):
+                </span>
+                <button type="button" onClick={pagarTodo} style={styles.btnPagarTodoDirecto}>
+                  <Zap size={12} />
+                  <span>Pagar Todo</span>
+                </button>
+              </div>
+
+              <div style={styles.cifraMontoIngresado}>
+                {montoIngresado ? (
+                  <span>{metodo === 'efectivo_usd' ? '$' : 'Bs. '}{montoIngresado}</span>
+                ) : (
+                  <span style={{ color: '#94a3b8' }}>
+                    {metodo === 'efectivo_usd' ? `$${totalUSDNum.toFixed(2)} (Exacto)` : `Bs. ${totalBSNum.toFixed(2)} (Exacto)`}
+                  </span>
+                )}
+              </div>
+
+              {/* Vuelto o Faltante */}
+              {vueltoUSD > 0.005 ? (
+                <div style={styles.filaVueltoTag}>
+                  <span>Cambio / Vuelto:</span>
+                  <strong>${vueltoUSD.toFixed(2)} (Bs. {vueltoBS.toFixed(2)})</strong>
+                </div>
+              ) : saldoFaltanteUSD > 0.01 && (
+                <div style={styles.filaFaltanteTag}>
+                  <span>Faltan:</span>
+                  <strong>${saldoFaltanteUSD.toFixed(2)}</strong>
+                </div>
+              )}
+            </div>
+
+            {/* Billetes rápidos en $ */}
+            {metodo === 'efectivo_usd' && (
+              <div style={styles.filaBilletes}>
+                {BILLETES_USD.map(b => (
+                  <button key={b} type="button" onClick={() => setMontoIngresado(String(b))} style={styles.btnBillete}>
+                    ${b}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Calculadora Táctil Integrada */}
+            <div style={styles.tecladoGrid}>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
+                <button key={n} type="button" onClick={() => pulsarTecla(String(n))} style={styles.btnTecla}>
+                  {n}
+                </button>
+              ))}
+              <button type="button" onClick={() => pulsarTecla('.')} style={styles.btnTecla}>.</button>
+              <button type="button" onClick={() => pulsarTecla('0')} style={styles.btnTecla}>0</button>
+              <button type="button" onClick={borrarTecla} style={styles.btnTeclaBorrar}>⌫</button>
+            </div>
+          </>
         )}
 
-        {/* Resumen de Cobro */}
-        <div style={styles.tarjetaResumen}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.74rem', color: '#0f2a4a', fontWeight: '800' }}>TOTAL ABONADO:</span>
-            <strong style={{ fontSize: '1.05rem', color: '#00b050' }}>+${totalAbonadoUSD.toFixed(2)}</strong>
-          </div>
-
-          {vueltoUSD > 0.005 ? (
-            <div style={styles.alertaVueltoBox}>
-              <span style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: '800' }}>CAMBIO / VUELTO:</span>
-              <strong style={{ fontSize: '1rem', color: '#b45309' }}>
-                ${vueltoUSD.toFixed(2)} <small style={{ fontSize: '0.74rem' }}>(Bs. {vueltoBS.toFixed(2)})</small>
-              </strong>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '0.72rem', color: '#64748b' }}>FALTANTE:</span>
-              <strong style={{ fontSize: '0.84rem', color: saldoRestanteUSD > 0.01 ? '#ea580c' : '#00b050' }}>
-                ${saldoRestanteUSD.toFixed(2)} (Bs. {saldoRestanteBS.toFixed(2)})
-              </strong>
-            </div>
-          )}
-        </div>
-
-        {/* Botón Principal */}
+        {/* Botón de Confirmación con margen inferior limpio */}
         <button
           type="button"
-          onClick={procesarVenta}
+          onClick={procesarCobro}
           style={{
             ...styles.btnCompletarPrincipal,
-            backgroundColor: esCredito ? '#dc2626' : '#00b050'
+            backgroundColor: metodo === 'credito' ? '#dc2626' : '#00b050'
           }}
         >
           <CheckCircle2 size={18} />
-          <span>{esCredito ? 'Fiar y Guardar en Créditos' : 'Procesar Pago y Emitir Ticket'}</span>
+          <span>{metodo === 'credito' ? 'Fiar y Guardar en Créditos' : 'Completar Cobro e Imprimir'}</span>
         </button>
       </div>
     </div>
@@ -382,30 +355,33 @@ const styles = {
     position: 'fixed',
     inset: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    backdropFilter: 'blur(3px)',
+    backdropFilter: 'blur(4px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '8px',
+    padding: '16px 12px',
+    boxSizing: 'border-box',
     zIndex: 99999999
   },
   modalBox: {
     backgroundColor: '#ffffff',
-    borderRadius: '20px',
+    borderRadius: '24px',
     width: '100%',
-    maxWidth: '430px',
-    maxHeight: '96vh',
+    maxWidth: '380px',
+    maxHeight: '92vh',
     overflowY: 'auto',
-    padding: '14px',
-    boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
+    padding: '16px',
+    boxSizing: 'border-box',
+    boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
     display: 'flex',
     flexDirection: 'column',
-    gap: '8px'
+    gap: '10px'
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    paddingBottom: '2px'
   },
   iconoBox: {
     width: '32px',
@@ -440,7 +416,7 @@ const styles = {
   },
   tarjetaTotal: {
     backgroundColor: '#0f2a4a',
-    borderRadius: '14px',
+    borderRadius: '16px',
     padding: '10px 14px',
     textAlign: 'center',
     color: '#ffffff'
@@ -465,7 +441,7 @@ const styles = {
   },
   seccionCliente: {
     backgroundColor: '#f8fafc',
-    borderRadius: '12px',
+    borderRadius: '14px',
     padding: '8px',
     border: '1px solid #e2e8f0'
   },
@@ -478,12 +454,6 @@ const styles = {
     fontSize: '0.8rem',
     outline: 'none',
     backgroundColor: '#ffffff'
-  },
-  iconoInputBox: {
-    width: '20px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
   },
   desplegableSugerencias: {
     position: 'absolute',
@@ -503,78 +473,123 @@ const styles = {
     borderBottom: '1px solid #f1f5f9',
     cursor: 'pointer'
   },
-  cardFiar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '8px 12px',
-    borderRadius: '10px',
-    border: '1px solid',
-    cursor: 'pointer'
-  },
-  gridPagos: {
-    display: 'flex',
-    flexDirection: 'column',
+  gridMetodos: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
     gap: '6px'
   },
-  cajaPagoMetodo: {
-    backgroundColor: '#ffffff',
-    borderRadius: '10px',
-    border: '1px solid #e2e8f0',
-    padding: '6px 10px'
-  },
-  filaMetodoTop: {
+  btnMetodo: {
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '3px'
-  },
-  labelMetodo: {
+    gap: '6px',
+    padding: '8px 10px',
+    borderRadius: '10px',
+    border: '1px solid',
     fontSize: '0.74rem',
-    color: '#0f2a4a'
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    justifyContent: 'center'
   },
-  btnPagarTodoPill: {
+  alertaCredito: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: '12px',
+    padding: '10px 12px'
+  },
+  tarjetaVisorPago: {
+    backgroundColor: '#f8fafc',
+    borderRadius: '14px',
+    border: '1px solid #e2e8f0',
+    padding: '10px 12px'
+  },
+  btnPagarTodoDirecto: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
     backgroundColor: '#eff6ff',
     color: '#0052cc',
     border: '1px solid #bfdbfe',
     borderRadius: '6px',
-    padding: '2px 8px',
-    fontSize: '0.66rem',
+    padding: '3px 8px',
+    fontSize: '0.68rem',
     fontWeight: 'bold',
     cursor: 'pointer'
   },
-  inputMetodo: {
-    width: '100%',
-    boxSizing: 'border-box',
-    padding: '6px 8px',
-    borderRadius: '6px',
-    border: '1px solid #cbd5e1',
-    fontSize: '0.84rem',
-    fontWeight: 'bold',
-    outline: 'none',
-    backgroundColor: '#f8fafc',
-    color: '#0f2a4a'
+  cifraMontoIngresado: {
+    fontSize: '1.4rem',
+    fontWeight: '900',
+    color: '#0f2a4a',
+    margin: '4px 0 2px 0'
   },
-  tarjetaResumen: {
-    backgroundColor: '#f0fdf4',
-    borderRadius: '10px',
-    border: '1px solid #bbf7d0',
-    padding: '8px 12px'
-  },
-  alertaVueltoBox: {
+  filaVueltoTag: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: '4px',
+    fontSize: '0.72rem',
+    color: '#b45309',
+    fontWeight: 'bold',
     paddingTop: '4px',
-    borderTop: '1px dashed #bbf7d0'
+    borderTop: '1px dashed #cbd5e1'
+  },
+  filaFaltanteTag: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.72rem',
+    color: '#ea580c',
+    fontWeight: 'bold',
+    paddingTop: '4px',
+    borderTop: '1px dashed #cbd5e1'
+  },
+  filaBilletes: {
+    display: 'flex',
+    gap: '4px',
+    overflowX: 'auto',
+    padding: '2px 0'
+  },
+  btnBillete: {
+    flex: 1,
+    padding: '6px 0',
+    backgroundColor: '#eff6ff',
+    border: '1px solid #bfdbfe',
+    borderRadius: '8px',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    color: '#0052cc',
+    cursor: 'pointer'
+  },
+  tecladoGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '6px'
+  },
+  btnTecla: {
+    backgroundColor: '#f8fafc',
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '10px',
+    fontSize: '1.2rem',
+    fontWeight: 'bold',
+    color: '#0f2a4a',
+    cursor: 'pointer'
+  },
+  btnTeclaBorrar: {
+    backgroundColor: '#fee2e2',
+    border: '1px solid #fecaca',
+    borderRadius: '10px',
+    padding: '10px',
+    fontSize: '1.1rem',
+    fontWeight: 'bold',
+    color: '#dc2626',
+    cursor: 'pointer'
   },
   btnCompletarPrincipal: {
     width: '100%',
     padding: '12px',
     color: '#ffffff',
     border: 'none',
-    borderRadius: '10px',
+    borderRadius: '12px',
     fontSize: '0.88rem',
     fontWeight: 'bold',
     cursor: 'pointer',
@@ -582,6 +597,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '6px',
-    boxShadow: '0 4px 12px rgba(0, 176, 80, 0.3)'
+    boxShadow: '0 4px 14px rgba(0, 176, 80, 0.3)',
+    marginTop: '2px'
   }
 };
