@@ -205,7 +205,6 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(`pos_historico_${currentNegocioId}`, JSON.stringify(historicoVentasGlobal)); } catch (e) {} }, [historicoVentasGlobal, currentNegocioId]);
   useEffect(() => { try { localStorage.setItem('pos_espera_final', JSON.stringify(cuentasEnEspera)); } catch (e) {} }, [cuentasEnEspera]);
 
-  // MAPEO ROBUSTO QUE LEE TANTO camelCase COMO snake_case
   const formatearProducto = (p) => ({
     id: String(p.id),
     codigo: String(p.codigo || p.codigo_barras || '').trim(),
@@ -317,7 +316,7 @@ export default function App() {
 
     const res = await dbService.registrarNegocio(
       { id: negocioId, nombre: datos.nombreNegocio },
-      { id: duenoId, nombre: datos.nombreDueno, correo: datos.correo }
+      { id: duenoId, nombre: datos.nombreDueno, correo: datos.correo, password: datos.password }
     );
 
     if (!res.success) {
@@ -332,25 +331,36 @@ export default function App() {
     return true;
   };
 
+  // INICIO DE SESIÓN DIRECTO CONTRA SUPABASE
   const iniciarSesionDueno = async (correo, password) => {
     const correoLimpio = correo.toLowerCase().trim();
 
+    // 1. Consultar a Supabase para verificar credenciales y recuperar el negocio exacto
+    const res = await dbService.loginDueno(correoLimpio, password);
+    if (res && res.usuario) {
+      const cuentaRecuperada = {
+        nombreDueno: res.usuario.nombre,
+        correo: correoLimpio,
+        password: password,
+        negocioId: res.negocio.id,
+        nombreNegocio: res.negocio.nombre
+      };
+
+      setCuentaMaster(cuentaRecuperada);
+      setConfigEmpresa(prev => ({ ...prev, nombre: res.negocio.nombre }));
+      setUsuarioActivo({ rol: 'dueno', nombre: res.usuario.nombre, negocioId: res.negocio.id });
+      if (!cajaActiva) setCajaActiva(CAJAS_DEFAULT[0]);
+      setOnlineBackend(true);
+      return true;
+    }
+
+    // 2. Respaldo por si está offline y tiene datos en localStorage
     if (cuentaMaster && (cuentaMaster.correo?.toLowerCase() === correoLimpio)) {
       if (cuentaMaster.password === password) {
         setUsuarioActivo({ rol: 'dueno', nombre: cuentaMaster.nombreDueno || 'Dueño', negocioId: cuentaMaster.negocioId || 'neg_local' });
         if (!cajaActiva) setCajaActiva(CAJAS_DEFAULT[0]);
         return true;
       }
-    }
-
-    if (password.length >= 6) {
-      await registrarDueno({
-        nombreNegocio: 'Mi Bodega POS',
-        nombreDueno: 'Dueño',
-        correo: correoLimpio,
-        password: password
-      });
-      return true;
     }
 
     return false;

@@ -27,7 +27,8 @@ export const dbService = {
         negocio_id: String(datosNegocio.id),
         nombre: datosDueno.nombre,
         rol: 'dueno',
-        correo: datosDueno.correo
+        correo: datosDueno.correo ? datosDueno.correo.toLowerCase().trim() : '',
+        password: datosDueno.password || ''
       }]);
       if (errUsr) console.error('Error en tabla usuarios:', errUsr);
 
@@ -35,6 +36,50 @@ export const dbService = {
     } catch (err) {
       console.error('Error general registrando negocio:', err);
       return { success: true, offline: true };
+    }
+  },
+
+  // LOGIN DUEÑO DIRECTO CONTRA SUPABASE
+  async loginDueno(correo, password) {
+    try {
+      const correoLimpio = correo.toLowerCase().trim();
+      
+      const { data: usuario, error: errUsr } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('correo', correoLimpio)
+        .eq('rol', 'dueno')
+        .maybeSingle();
+
+      if (errUsr || !usuario) return null;
+
+      // Verificar contraseña (si no tiene password asignado previamente por ser cuenta legacy, permite enlazarla)
+      if (usuario.password && usuario.password !== password) {
+        return null;
+      }
+
+      // Si no tenía contraseña guardada, la actualizamos
+      if (!usuario.password) {
+        await supabase
+          .from('usuarios')
+          .update({ password: password })
+          .eq('id', usuario.id);
+      }
+
+      // Obtener datos del negocio
+      const { data: negocio } = await supabase
+        .from('negocios')
+        .select('*')
+        .eq('id', usuario.negocio_id)
+        .maybeSingle();
+
+      return {
+        usuario,
+        negocio: negocio || { id: usuario.negocio_id, nombre: 'Mi Bodega POS' }
+      };
+    } catch (err) {
+      console.error('Error en loginDueno:', err);
+      return null;
     }
   },
 
@@ -62,7 +107,6 @@ export const dbService = {
     }
   },
 
-  // PRODUCTOS CON SOPORTE DE PESO Y MAYORISTA
   async getProductos(negocioId) {
     try {
       let query = supabase.from('productos').select('*').order('nombre');
@@ -72,10 +116,9 @@ export const dbService = {
       const { data, error } = await query;
       if (error || !data) throw error;
 
-      // Mapeo asegurando campos booleanos y numéricos correctos
       const formateados = data.map(p => ({
-        id: p.id,
-        codigo: p.codigo_barras || '',
+        id: String(p.id),
+        codigo: String(p.codigo_barras || '').trim(),
         nombre: p.nombre,
         precioUSD: Number(p.precio_usd || 0),
         costoUSD: Number(p.costo_usd || 0),
