@@ -83,19 +83,19 @@ export default function LoginModal({
 
   return (
     <div style={styles.contenedor} translate="no">
-      {/* Elementos Decorativos Animados de Fondo */}
+      {/* Orbes de fondo animados */}
       <div style={styles.orbe1} />
       <div style={styles.orbe2} />
       <div style={styles.orbe3} />
 
       <div style={styles.tarjetaLogin}>
-        {/* Logo Oficial de Facilito POS */}
+        {/* Cabecera del Logo con espacio y equilibrio */}
         <div style={styles.logoHeader}>
           <img src="/logo.svg" alt="Facilito POS Logo" style={styles.logoImg} />
           <span style={styles.tagline}>Sistema Integral de Facturación</span>
         </div>
 
-        {/* Selector de Pestaña: Cajeros vs Dueño */}
+        {/* Pestañas de Selección */}
         <div style={styles.tabsContainer}>
           <button
             type="button"
@@ -123,7 +123,7 @@ export default function LoginModal({
           </button>
         </div>
 
-        {/* VISTA 1: INICIO DE SESIÓN DE CAJEROS CON PIN */}
+        {/* PESTAÑA: CAJEROS */}
         {pestana === 'cajeros' && (
           <div style={styles.cuerpoCajeros}>
             {!cajeroSeleccionado ? (
@@ -132,8 +132,8 @@ export default function LoginModal({
                 <div style={styles.listaCajerosGrid}>
                   {cajeros.length === 0 ? (
                     <div style={styles.cajaSinCajeros}>
-                      <AlertCircle size={24} color="#d97706" />
-                      <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#92400e' }}>
+                      <AlertCircle size={22} color="#d97706" />
+                      <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#92400e', lineHeight: 1.4 }}>
                         No hay cajeros registrados aún. Inicia sesión como dueño para crear personal.
                       </p>
                     </div>
@@ -149,7 +149,7 @@ export default function LoginModal({
                           <User size={20} color="#0f2a4a" />
                         </div>
                         <span style={styles.nombreCajero}>{c.nombre}</span>
-                        <small style={{ fontSize: '0.66rem', color: '#64748b' }}>Cajero</small>
+                        <small style={{ fontSize: '0.66rem', color: '#64748b', marginTop: '2px' }}>Cajero</small>
                       </button>
                     ))
                   )}
@@ -198,7 +198,7 @@ export default function LoginModal({
           </div>
         )}
 
-        {/* VISTA 2: INICIO DE SESIÓN / REGISTRO DEL DUEÑO */}
+        {/* PESTAÑA: DUEÑO */}
         {pestana === 'dueno' && (
           <form onSubmit={manejarSubmitDueno} style={styles.formularioDueno}>
             {errorLogin && <div style={styles.alertaError}>{errorLogin}</div>}
@@ -223,7 +223,7 @@ export default function LoginModal({
                     value={nombreNegocio}
                     onChange={(e) => setNombreNegocio(e.target.value)}
                     style={styles.input}
-                    placeholder="Ej. MiniMarket Express"
+                    placeholder="Ej. MiniMarket JJJP"
                     required
                   />
                 </div>
@@ -296,7 +296,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '16px',
+    padding: '20px 16px',
     zIndex: 999999,
     fontFamily: 'system-ui, -apple-system, sans-serif',
     overflow: 'hidden'
@@ -339,10 +339,10 @@ const styles = {
   tarjetaLogin: {
     position: 'relative',
     backgroundColor: '#ffffff',
-    borderRadius: '26px',
+    borderRadius: '28px',
     maxWidth: '380px',
     width: '100%',
-    padding: '26px 22px',
+    padding: '32px 22px 24px 22px', // Más holgura arriba para evitar el corte
     boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)',
     display: 'flex',
     flexDirection: 'column',
@@ -352,18 +352,18 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    marginBottom: '16px'
+    marginBottom: '20px'
   },
   logoImg: {
-    height: '62px',
-    maxWidth: '220px',
+    height: '52px',
+    maxWidth: '210px',
     objectFit: 'contain'
   },
   tagline: {
-    fontSize: '0.7rem',
+    fontSize: '0.72rem',
     color: '#64748b',
     fontWeight: '700',
-    marginTop: '4px'
+    marginTop: '6px'
   },
   tabsContainer: {
     display: 'flex',
@@ -376,7 +376,7 @@ const styles = {
     flex: 1,
     border: 'none',
     borderRadius: '10px',
-    padding: '8px 10px',
+    padding: '9px 10px',
     fontSize: '0.76rem',
     fontWeight: 'bold',
     cursor: 'pointer',
