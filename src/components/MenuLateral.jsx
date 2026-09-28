@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   X, Store, Package, BookOpen, Wallet, History, 
-  TrendingUp, Settings, LogOut, ShieldCheck, UserCheck, ChevronRight
+  TrendingUp, Settings, HelpCircle, LogOut, ShieldCheck, UserCheck, ChevronRight
 } from 'lucide-react';
 
 export default function MenuLateral({ 
@@ -18,7 +18,6 @@ export default function MenuLateral({
 
   const esDueno = usuarioActivo?.rol === 'dueno';
 
-  // Solo opciones operativas y esenciales del día a día
   const items = [
     { id: 'pos', label: 'Punto de Venta (Caja)', icon: Store, color: '#0052cc', bg: '#eff6ff', soloDueno: false },
     { id: 'inventario', label: 'Inventario de Productos', icon: Package, color: '#0052cc', bg: '#eff6ff', soloDueno: false },
@@ -34,7 +33,8 @@ export default function MenuLateral({
     { id: 'caja', label: 'Cierre de Caja (Z)', icon: Wallet, color: '#16a34a', bg: '#f0fdf4', soloDueno: false },
     { id: 'historial', label: 'Historial de Ventas', icon: History, color: '#9333ea', bg: '#faf5ff', soloDueno: false },
     { id: 'metricas', label: 'Ganancias y Rendimiento', icon: TrendingUp, color: '#16a34a', bg: '#f0fdf4', soloDueno: true },
-    { id: 'configuracion', label: 'Ajustes y Configuración', icon: Settings, color: '#475569', bg: '#f1f5f9', soloDueno: true }
+    { id: 'configuracion', label: 'Ajustes y Configuración', icon: Settings, color: '#475569', bg: '#f1f5f9', soloDueno: true },
+    { id: 'soporte', label: 'Centro de Ayuda y Soporte', icon: HelpCircle, color: '#059669', bg: '#ecfdf5', soloDueno: false }
   ];
 
   const itemsFiltrados = items.filter(it => !it.soloDueno || esDueno);
@@ -70,7 +70,7 @@ export default function MenuLateral({
           </button>
         </div>
 
-        {/* Lista de Navegación Esencial */}
+        {/* Lista de Navegación */}
         <nav style={styles.listaNav}>
           {itemsFiltrados.map((it) => {
             const Icon = it.icon;

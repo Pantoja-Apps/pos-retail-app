@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ArrowLeft, Store, Save, ShieldAlert, Monitor, Users,
-  Download, Upload, HelpCircle, Image as ImageIcon, Trash2
+  Download, Upload, Image as ImageIcon, Trash2
 } from 'lucide-react';
 
 export default function ConfiguracionModal({ 
@@ -14,7 +14,6 @@ export default function ConfiguracionModal({
   alImportarBackup, 
   alAbrirTerminales,
   alAbrirUsuarios,
-  alAbrirSoporte,
   alVolver 
 }) {
   const [datos, setDatos] = useState({ ...config });
@@ -66,36 +65,36 @@ export default function ConfiguracionModal({
           <ArrowLeft size={18} />
         </button>
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <h2 style={styles.tituloHeader}>Ajustes y Configuración</h2>
-          <small style={{ color: '#64748b', fontSize: '0.72rem' }}>Control general de tu comercio</small>
+          <h2 style={styles.tituloHeader}>Ajustes del Sistema</h2>
+          <small style={{ color: '#64748b', fontSize: '0.72rem' }}>Configuración general y comercio</small>
         </div>
         <div style={{ width: '32px' }} />
       </header>
 
       <main style={styles.cuerpo}>
-        {/* Formulario de Datos y Logo */}
         <form onSubmit={handleSubmit} style={styles.formulario}>
+          {/* Tarjeta de Logo e Identidad */}
           <div style={styles.cardSeccion}>
             <div style={styles.tituloSeccion}>
               <Store size={16} color="#0052cc" />
-              <span>Datos del Comercio y Logo</span>
+              <span>Logotipo del Negocio</span>
             </div>
 
-            <div style={styles.contenedorLogo}>
+            <div style={styles.cajaLogoFlex}>
               <div style={styles.previewLogoBox}>
                 {datos.logo ? (
                   <img src={datos.logo} alt="Logo" style={styles.logoImg} />
                 ) : (
                   <div style={styles.logoVacio}>
-                    <ImageIcon size={24} color="#94a3b8" />
-                    <span style={{ fontSize: '0.64rem', color: '#94a3b8', marginTop: '2px' }}>Sin Logo</span>
+                    <ImageIcon size={26} color="#94a3b8" />
+                    <span style={{ fontSize: '0.62rem', color: '#94a3b8', marginTop: '2px' }}>Sin Logo</span>
                   </div>
                 )}
               </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={styles.accionesLogoCol}>
                 <label style={styles.btnSubirLogo}>
                   <Upload size={13} />
-                  <span>{datos.logo ? 'Cambiar Logo' : 'Subir Logo'}</span>
+                  <span>{datos.logo ? 'Cambiar Imagen' : 'Cargar Imagen'}</span>
                   <input type="file" accept="image/*" onChange={handleSubirLogo} style={{ display: 'none' }} />
                 </label>
                 {datos.logo && (
@@ -104,11 +103,19 @@ export default function ConfiguracionModal({
                     onClick={() => setDatos(prev => ({ ...prev, logo: '' }))} 
                     style={styles.btnQuitarLogo}
                   >
-                    <Trash2 size={13} /> Quitar Logo
+                    <Trash2 size={13} /> Eliminar Logo
                   </button>
                 )}
-                <small style={{ fontSize: '0.66rem', color: '#64748b' }}>Aparece en tickets y en el menú lateral.</small>
+                <span style={styles.textoAyudaLogo}>Se muestra en tickets y en el menú.</span>
               </div>
+            </div>
+          </div>
+
+          {/* Tarjeta de Datos Fiscales y Dirección */}
+          <div style={styles.cardSeccion}>
+            <div style={styles.tituloSeccion}>
+              <Store size={16} color="#0052cc" />
+              <span>Datos del Comercio</span>
             </div>
 
             <div style={styles.campo}>
@@ -122,25 +129,24 @@ export default function ConfiguracionModal({
               />
             </div>
 
-            <div style={styles.filaCampos}>
-              <div style={styles.campo}>
-                <label style={styles.label}>RIF / Cédula</label>
-                <input 
-                  type="text" 
-                  value={datos.rif || ''} 
-                  onChange={(e) => setDatos({ ...datos, rif: e.target.value })} 
-                  style={styles.input} 
-                />
-              </div>
-              <div style={styles.campo}>
-                <label style={styles.label}>Teléfono Contacto</label>
-                <input 
-                  type="text" 
-                  value={datos.telefono || ''} 
-                  onChange={(e) => setDatos({ ...datos, telefono: e.target.value })} 
-                  style={styles.input} 
-                />
-              </div>
+            <div style={styles.campo}>
+              <label style={styles.label}>RIF / Cédula</label>
+              <input 
+                type="text" 
+                value={datos.rif || ''} 
+                onChange={(e) => setDatos({ ...datos, rif: e.target.value })} 
+                style={styles.input} 
+              />
+            </div>
+
+            <div style={styles.campo}>
+              <label style={styles.label}>Teléfono Contacto</label>
+              <input 
+                type="text" 
+                value={datos.telefono || ''} 
+                onChange={(e) => setDatos({ ...datos, telefono: e.target.value })} 
+                style={styles.input} 
+              />
             </div>
 
             <div style={styles.campo}>
@@ -165,16 +171,16 @@ export default function ConfiguracionModal({
 
             <button type="submit" style={styles.btnGuardar}>
               <Save size={15} />
-              <span>{guardadoExitoso ? '¡Cambios Guardados!' : 'Guardar Datos'}</span>
+              <span>{guardadoExitoso ? '¡Datos Guardados Exitosamente!' : 'Guardar Cambios'}</span>
             </button>
           </div>
         </form>
 
-        {/* Módulos de Administración y Gestión */}
+        {/* Cajas y Usuarios */}
         <div style={styles.cardSeccion}>
           <div style={styles.tituloSeccion}>
             <Monitor size={16} color="#0052cc" />
-            <span>Administración de Cajas y Personal</span>
+            <span>Gestión de Cajas y Personal</span>
           </div>
 
           <button type="button" onClick={alAbrirUsuarios} style={styles.btnModuloItem}>
@@ -206,28 +212,13 @@ export default function ConfiguracionModal({
             </div>
             <ArrowLeft size={16} style={{ transform: 'rotate(180deg)', color: '#94a3b8' }} />
           </button>
-
-          <button type="button" onClick={alAbrirSoporte} style={{ ...styles.btnModuloItem, marginTop: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ ...styles.iconoPill, backgroundColor: '#f0fdf4', color: '#16a34a' }}>
-                <HelpCircle size={16} />
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <strong style={{ fontSize: '0.84rem', color: '#1e293b' }}>Centro de Ayuda y Soporte Técnico</strong>
-                <span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b' }}>
-                  WhatsApp directo, reporte de pagos y contacto
-                </span>
-              </div>
-            </div>
-            <ArrowLeft size={16} style={{ transform: 'rotate(180deg)', color: '#94a3b8' }} />
-          </button>
         </div>
 
-        {/* Respaldo de Datos */}
+        {/* Respaldos */}
         <div style={styles.cardSeccion}>
           <div style={styles.tituloSeccion}>
             <ShieldAlert size={16} color="#ea580c" />
-            <span>Respaldo y Seguridad de Datos</span>
+            <span>Respaldo y Seguridad</span>
           </div>
           <p style={{ margin: '0 0 10px 0', fontSize: '0.74rem', color: '#64748b', lineHeight: 1.4 }}>
             Descarga un respaldo seguro con todos tus productos, clientes y transacciones para guardarlo en tu computadora o pendrive.
@@ -286,7 +277,7 @@ const styles = {
   cuerpo: {
     flex: 1,
     overflowY: 'auto',
-    padding: '14px 16px',
+    padding: '14px',
     display: 'flex',
     flexDirection: 'column',
     gap: '14px'
@@ -312,19 +303,18 @@ const styles = {
     color: '#0f172a',
     marginBottom: '12px'
   },
-  contenedorLogo: {
+  cajaLogoFlex: {
     display: 'flex',
     alignItems: 'center',
     gap: '14px',
     backgroundColor: '#f8fafc',
     padding: '12px',
     borderRadius: '12px',
-    border: '1px solid #e2e8f0',
-    marginBottom: '14px'
+    border: '1px solid #e2e8f0'
   },
   previewLogoBox: {
-    width: '60px',
-    height: '60px',
+    width: '64px',
+    height: '64px',
     borderRadius: '12px',
     border: '1px dashed #cbd5e1',
     backgroundColor: '#fff',
@@ -345,10 +335,16 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center'
   },
+  accionesLogoCol: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px'
+  },
   btnSubirLogo: {
     backgroundColor: '#0052cc',
     color: '#fff',
-    padding: '6px 12px',
+    padding: '7px 12px',
     borderRadius: '8px',
     fontSize: '0.74rem',
     fontWeight: 'bold',
@@ -362,9 +358,9 @@ const styles = {
     backgroundColor: '#fee2e2',
     color: '#dc2626',
     border: '1px solid #fecaca',
-    padding: '5px 10px',
+    padding: '6px 12px',
     borderRadius: '8px',
-    fontSize: '0.7rem',
+    fontSize: '0.72rem',
     fontWeight: 'bold',
     cursor: 'pointer',
     display: 'inline-flex',
@@ -372,16 +368,16 @@ const styles = {
     justifyContent: 'center',
     gap: '4px'
   },
+  textoAyudaLogo: {
+    fontSize: '0.66rem',
+    color: '#64748b'
+  },
   campo: {
     display: 'flex',
     flexDirection: 'column',
     gap: '4px',
-    marginBottom: '10px'
-  },
-  filaCampos: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '8px'
+    marginBottom: '10px',
+    width: '100%'
   },
   label: {
     fontSize: '0.72rem',
@@ -389,7 +385,9 @@ const styles = {
     color: '#475569'
   },
   input: {
-    padding: '8px 10px',
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '9px 10px',
     borderRadius: '8px',
     border: '1px solid #cbd5e1',
     fontSize: '0.84rem',
@@ -398,12 +396,13 @@ const styles = {
   },
   btnGuardar: {
     width: '100%',
-    padding: '10px',
+    boxSizing: 'border-box',
+    padding: '11px',
     backgroundColor: '#0052cc',
     color: '#fff',
     border: 'none',
     borderRadius: '10px',
-    fontSize: '0.82rem',
+    fontSize: '0.84rem',
     fontWeight: 'bold',
     cursor: 'pointer',
     display: 'flex',
@@ -427,7 +426,6 @@ const styles = {
     width: '32px',
     height: '32px',
     borderRadius: '8px',
-    backgroundColor: '#eff6ff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center'

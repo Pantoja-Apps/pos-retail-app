@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   RefreshCw, User, Search, PauseCircle, PlayCircle, Store, Tag, Percent,
-  Cloud, CloudOff, AlertOctagon, PhoneCall, CheckCircle2, Sparkles, Monitor, Menu
+  Cloud, CloudOff, AlertOctagon, PhoneCall, CheckCircle2, Sparkles
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -905,7 +905,7 @@ export default function App() {
       {vistaActual === 'soporte' && (
         <SoporteModal 
           nombreNegocio={configEmpresa.nombre}
-          alVolver={() => setVistaActual(esDueno ? 'configuracion' : 'pos')}
+          alVolver={() => setVistaActual('pos')}
         />
       )}
 
@@ -922,7 +922,6 @@ export default function App() {
           alImportarBackup={importarBackupCompleto}
           alAbrirTerminales={() => setVistaActual('terminales')}
           alAbrirUsuarios={() => setVistaActual('usuarios')}
-          alAbrirSoporte={() => setVistaActual('soporte')}
           alVolver={() => setVistaActual('pos')}
         />
       )}
@@ -1072,19 +1071,16 @@ export default function App() {
         <>
           <header style={styles.topHeader}>
             <div style={styles.headerFila1}>
-              {/* Sección Izquierda: Botón Menú + Info */}
+              {/* Logo como disparador directo del Menú Lateral */}
               <div 
-                style={styles.marcaContainerClickable} 
+                style={styles.logoTriggerClickable} 
                 onClick={() => setMenuLateralAbierto(true)}
-                title="Toca para abrir el menú"
+                title="Toca para abrir menú"
               >
-                <div style={styles.btnMenuToggle}>
-                  <Menu size={19} color="#0052cc" />
-                </div>
                 {configEmpresa.logo ? (
-                  <img src={configEmpresa.logo} alt="Logo" style={styles.logoMini} />
+                  <img src={configEmpresa.logo} alt="Logo" style={styles.logoHeaderImg} />
                 ) : (
-                  <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
+                  <div style={styles.avatarHeaderBox}><Store size={18} color="#0052cc" /></div>
                 )}
                 <div style={styles.infoNegocio}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -1102,7 +1098,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Sección Derecha: Chip Tasa BCV alineado */}
+              {/* Tasa BCV alineada y limpia a la derecha */}
               <div style={styles.tasaChip}>
                 <span style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
                 <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar BCV">
@@ -1462,21 +1458,20 @@ const styles = {
   topHeader: { padding: '8px 12px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   headerFila1: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' },
   
-  marcaContainerClickable: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, cursor: 'pointer' },
-  btnMenuToggle: { width: '34px', height: '34px', borderRadius: '10px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  logoMini: { width: '34px', height: '34px', borderRadius: '10px', objectFit: 'contain', border: '1px solid #e2e8f0', flexShrink: 0, backgroundColor: '#fff' },
-  avatarIcon: { width: '34px', height: '34px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #bfdbfe' },
+  logoTriggerClickable: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, cursor: 'pointer' },
+  logoHeaderImg: { width: '38px', height: '38px', borderRadius: '10px', objectFit: 'contain', border: '1px solid #cbd5e1', flexShrink: 0, backgroundColor: '#fff' },
+  avatarHeaderBox: { width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #bfdbfe' },
   
   infoNegocio: { display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', flex: 1 },
-  nombreNegocio: { margin: 0, fontSize: '0.88rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  nombreNegocio: { margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   subtextHeader: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.66rem', color: '#64748b', fontWeight: '600', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   
   badgeOnline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.54rem', fontWeight: 'bold', backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 4px', borderRadius: '4px' },
   badgeOffline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.54rem', fontWeight: 'bold', backgroundColor: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: '4px' },
   
-  tasaChip: { display: 'flex', alignItems: 'center', gap: '3px', backgroundColor: '#f8fafc', padding: '4px 6px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
+  tasaChip: { display: 'flex', alignItems: 'center', gap: '3px', backgroundColor: '#f8fafc', padding: '5px 7px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
   btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
-  inputTasaMini: { width: '64px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.78rem', color: '#0f172a', outline: 'none' },
+  inputTasaMini: { width: '66px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.8rem', color: '#0f172a', outline: 'none' },
   
   barraClienteMostrador: { backgroundColor: '#fff', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', gap: '8px', flexShrink: 0 },
   inputDocMostrador: { border: 'none', background: '#f1f5f9', padding: '6px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', width: '130px', outline: 'none' },
