@@ -19,14 +19,14 @@ export const dbService = {
   },
 
   async registrarNegocio(negocio, dueno) {
-    if (!supabase) return null;
+    if (!supabase) return false;
     try {
       await supabase.from('negocios').upsert([negocio]);
       await supabase.from('usuarios').upsert([{
         id: dueno.id,
         negocio_id: negocio.id,
         nombre: dueno.nombre,
-        correo: dueno.correo,
+        correo: dueno.correo.toLowerCase().trim(),
         password: dueno.password,
         rol: 'dueno'
       }]);
@@ -34,6 +34,40 @@ export const dbService = {
     } catch (e) {
       console.error('Error registrando negocio:', e);
       return false;
+    }
+  },
+
+  async loginDueno(correo, password) {
+    if (!supabase) return null;
+    try {
+      const correoLimpio = correo.toLowerCase().trim();
+      
+      // Consulta directa sin JOIN foráneo para evitar fallos de schema
+      const { data: usuario, error: errUser } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('correo', correoLimpio)
+        .eq('password', password)
+        .eq('rol', 'dueno')
+        .maybeSingle();
+
+      if (errUser || !usuario) return null;
+
+      // Obtener negocio asociado
+      let negocio = { id: usuario.negocio_id || 'neg_local', nombre: 'Mi Negocio' };
+      if (usuario.negocio_id) {
+        const { data: negData } = await supabase
+          .from('negocios')
+          .select('*')
+          .eq('id', usuario.negocio_id)
+          .maybeSingle();
+        if (negData) negocio = negData;
+      }
+
+      return { usuario, negocio };
+    } catch (e) {
+      console.error('Error en login:', e);
+      return null;
     }
   },
 
@@ -54,43 +88,6 @@ export const dbService = {
       return !error;
     } catch (e) {
       return false;
-    }
-  },
-
-  async subirImagenStorage(negocioId, nombreArchivo, base64Data) {
-    if (!supabase || !negocioId || !base64Data) return base64Data;
-    try {
-      // Si el bucket existe, subir; sino devolver base64 directo
-      const blob = await (await fetch(base64Data)).blob();
-      const path = `${negocioId}/${Date.now()}_${nombreArchivo}`;
-      const { data, error } = await supabase.storage.from('pos-imagenes').upload(path, blob, {
-        contentType: blob.type,
-        upsert: true
-      });
-      if (error || !data) return base64Data;
-
-      const { data: pubData } = supabase.storage.from('pos-imagenes').getPublicUrl(path);
-      return pubData?.publicUrl || base64Data;
-    } catch (e) {
-      return base64Data;
-    }
-  },
-
-  async loginDueno(correo, password) {
-    if (!supabase) return null;
-    try {
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('*, negocios(*)')
-        .eq('correo', correo)
-        .eq('password', password)
-        .eq('rol', 'dueno')
-        .single();
-
-      if (error || !data) return null;
-      return { usuario: data, negocio: data.negocios };
-    } catch (e) {
-      return null;
     }
   },
 
