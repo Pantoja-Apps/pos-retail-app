@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg', 'logo.svg', 'favicon.ico'],
+      includeAssets: ['pwa-v2-192.png', 'pwa-v2-512.png', 'logo.svg', 'favicon.ico'],
       manifestFilename: 'manifest.json',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json}']
@@ -23,15 +23,21 @@ export default defineConfig({
         orientation: 'portrait',
         icons: [
           {
-            src: '/icon.svg',
-            sizes: '192x192 512x512',
-            type: 'image/svg+xml',
+            src: '/pwa-v2-192.png',
+            sizes: '192x192',
+            type: 'image/png',
             purpose: 'any'
           },
           {
-            src: '/icon.svg',
-            sizes: '192x192 512x512',
-            type: 'image/svg+xml',
+            src: '/pwa-v2-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: '/pwa-v2-512.png',
+            sizes: '512x512',
+            type: 'image/png',
             purpose: 'maskable'
           }
         ]
