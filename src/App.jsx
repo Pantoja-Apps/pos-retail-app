@@ -3,7 +3,7 @@ import {
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   RefreshCw, Package, User, BookOpen, Wallet, Search, History, 
   PauseCircle, PlayCircle, Settings, Store, TrendingUp, Tag, Percent,
-  LogOut, Users, ShieldCheck, UserCheck, Cloud, CloudOff, AlertOctagon, PhoneCall, CheckCircle2, Sparkles, Scale, Monitor
+  LogOut, Users, ShieldCheck, UserCheck, Cloud, CloudOff, AlertOctagon, PhoneCall, CheckCircle2, Sparkles, Scale, Monitor, Menu
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -20,6 +20,7 @@ import UsuariosModal from './components/UsuariosModal';
 import TerminalesModal from './components/TerminalesModal';
 import ModalPeso from './components/ModalPeso';
 import SoporteModal from './components/SoporteModal';
+import MenuLateral from './components/MenuLateral';
 import { dbService } from './services/dbService';
 
 const PRODUCTOS_INICIALES = [
@@ -57,6 +58,7 @@ function normalizarDoc(str) {
 
 export default function App() {
   const [vistaActual, setVistaActual] = useState('pos');
+  const [menuLateralAbierto, setMenuLateralAbierto] = useState(false);
   const [onlineBackend, setOnlineBackend] = useState(false);
   const [licenciaBloqueada, setLicenciaBloqueada] = useState(false);
   const [modalReactivado, setModalReactivado] = useState(false);
@@ -308,7 +310,6 @@ export default function App() {
   const registrarDueno = async (datos) => {
     const negocioId = 'neg_' + Date.now().toString(36);
     const duenoId = 'usr_' + Date.now();
-
     const cuentaFinal = { ...datos, negocioId, duenoId };
 
     await dbService.registrarNegocio(
@@ -859,6 +860,18 @@ export default function App() {
 
   return (
     <div style={styles.contenedor} translate="no">
+      {/* Menú Lateral Desplegable */}
+      <MenuLateral 
+        abierto={menuLateralAbierto}
+        alCerrar={() => setMenuLateralAbierto(false)}
+        configEmpresa={configEmpresa}
+        usuarioActivo={usuarioActivo}
+        cajaActiva={cajaActiva}
+        clientesMorosos={clientesMorosos}
+        alNavegar={(vista) => setVistaActual(vista)}
+        alCerrarSesion={cerrarSesion}
+      />
+
       {modalReactivado && (
         <div style={styles.overlayFelicitacion} translate="no">
           <div style={styles.cardFelicitacionPro}>
@@ -1058,124 +1071,80 @@ export default function App() {
       {vistaActual === 'pos' && (
         <>
           <header style={styles.topHeader}>
-            {esDueno ? (
-              <>
-                <div style={styles.headerFila1}>
-                  <div style={styles.marcaContainer}>
-                    {configEmpresa.logo ? (
-                      <img src={configEmpresa.logo} alt="Logo" style={styles.logoMini} />
-                    ) : (
-                      <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
-                    )}
-                    <div style={styles.infoNegocio}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
-                        <span style={onlineBackend ? styles.badgeOnline : styles.badgeOffline}>
-                          {onlineBackend ? <Cloud size={10} /> : <CloudOff size={10} />}
-                          <span>{onlineBackend ? 'Nube' : 'Local'}</span>
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '1px' }}>
-                        <span style={styles.badgeRolDueno}>
-                          <ShieldCheck size={10} color="#16a34a" /> Dueño: {usuarioActivo.nombre}
-                        </span>
-                        <span style={styles.badgeTerminalHeader}>
-                          <Monitor size={10} color="#0052cc" /> {cajaActiva.nombre}
-                        </span>
-                      </div>
-                    </div>
+            <div style={styles.headerFila1}>
+              {/* Botón que despliega el Menú Lateral */}
+              <div 
+                style={styles.marcaContainerClickable} 
+                onClick={() => setMenuLateralAbierto(true)}
+                title="Toca para abrir el menú lateral"
+              >
+                {configEmpresa.logo ? (
+                  <img src={configEmpresa.logo} alt="Logo" style={styles.logoMini} />
+                ) : (
+                  <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
+                )}
+                <div style={styles.infoNegocio}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
+                    <span style={onlineBackend ? styles.badgeOnline : styles.badgeOffline}>
+                      {onlineBackend ? <Cloud size={10} /> : <CloudOff size={10} />}
+                      <span>{onlineBackend ? 'Nube' : 'Local'}</span>
+                    </span>
                   </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '1px' }}>
+                    <span style={esDueno ? styles.badgeRolDueno : styles.badgeRolCajero}>
+                      {esDueno ? <ShieldCheck size={10} color="#16a34a" /> : <UserCheck size={10} color="#2563eb" />}
+                      <span>{usuarioActivo.nombre}</span>
+                    </span>
+                    <span style={styles.badgeTerminalHeader}>
+                      <Monitor size={10} color="#0052cc" /> {cajaActiva.nombre}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-                  <button type="button" onClick={cerrarSesion} style={styles.btnLogout} title="Cerrar Turno / Salir">
-                    <LogOut size={13} color="#dc2626" />
-                    <span>Salir</span>
+              {/* Botón de Hamburguesa / Menú Lateral */}
+              <button 
+                type="button" 
+                onClick={() => setMenuLateralAbierto(true)} 
+                style={styles.btnMenuToggle}
+                title="Abrir Menú"
+              >
+                <Menu size={18} color="#0052cc" />
+              </button>
+            </div>
+
+            <div style={styles.headerFila2}>
+              <div style={styles.tasaChip}>
+                <span style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
+                <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar BCV">
+                  <RefreshCw size={10} color="#0052cc" />
+                </button>
+                <input 
+                  type="number" 
+                  step="any" 
+                  value={tasaCambio} 
+                  onChange={(e) => setTasaCambio(e.target.value)} 
+                  style={styles.inputTasaMini} 
+                />
+              </div>
+
+              {esDueno ? (
+                <div style={styles.grupoBotonesDueno}>
+                  <button type="button" onClick={() => setVistaActual('metricas')} style={styles.btnPillHeader} title="Rendimiento y Ganancias">
+                    <TrendingUp size={13} color="#16a34a" /> <span>Ganancias</span>
+                  </button>
+                  <button type="button" onClick={() => setVistaActual('configuracion')} style={styles.btnPillHeader} title="Configuración">
+                    <Settings size={13} color="#475569" /> <span>Ajustes</span>
                   </button>
                 </div>
-
-                <div style={styles.headerFila2}>
-                  <div style={styles.tasaChip}>
-                    <span style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
-                    <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar BCV">
-                      <RefreshCw size={10} color="#0052cc" />
-                    </button>
-                    <input 
-                      type="number" 
-                      step="any" 
-                      value={tasaCambio} 
-                      onChange={(e) => setTasaCambio(e.target.value)} 
-                      style={styles.inputTasaMini} 
-                    />
-                  </div>
-
-                  <div style={styles.grupoBotonesDueno}>
-                    <button type="button" onClick={() => setVistaActual('usuarios')} style={styles.btnPillHeader} title="Personal y Cajeros">
-                      <Users size={13} color="#0052cc" /> <span>Cajeros</span>
-                    </button>
-                    <button type="button" onClick={() => setVistaActual('metricas')} style={styles.btnPillHeader} title="Rendimiento y Ganancias">
-                      <TrendingUp size={13} color="#16a34a" /> <span>Ganancias</span>
-                    </button>
-                    <button type="button" onClick={() => setVistaActual('configuracion')} style={styles.btnPillHeader} title="Configuración">
-                      <Settings size={13} color="#475569" /> <span>Ajustes</span>
-                    </button>
-                  </div>
+              ) : (
+                <div style={styles.pillAvisoCajaLive}>
+                  <div style={styles.puntoVerdeLive}></div>
+                  <span>Caja Conectada</span>
                 </div>
-              </>
-            ) : (
-              <>
-                <div style={styles.headerFila1}>
-                  <div style={styles.marcaContainer}>
-                    {configEmpresa.logo ? (
-                      <img src={configEmpresa.logo} alt="Logo" style={styles.logoMini} />
-                    ) : (
-                      <div style={styles.avatarIcon}><Store size={18} color="#0052cc" /></div>
-                    )}
-                    <div style={styles.infoNegocio}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <h1 style={styles.nombreNegocio}>{configEmpresa.nombre}</h1>
-                        <span style={onlineBackend ? styles.badgeOnline : styles.badgeOffline}>
-                          {onlineBackend ? <Cloud size={10} /> : <CloudOff size={10} />}
-                          <span>{onlineBackend ? 'Nube' : 'Local'}</span>
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '1px' }}>
-                        <span style={styles.badgeRolCajero}>
-                          <UserCheck size={10} color="#2563eb" /> {usuarioActivo.nombre}
-                        </span>
-                        <span style={styles.badgeTerminalHeader}>
-                          <Monitor size={10} color="#0052cc" /> {cajaActiva.nombre}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button type="button" onClick={cerrarSesion} style={styles.btnLogout} title="Cerrar Turno / Salir">
-                    <LogOut size={13} color="#dc2626" />
-                    <span>Salir</span>
-                  </button>
-                </div>
-
-                <div style={styles.headerFila2Cajero}>
-                  <div style={styles.tasaChip}>
-                    <span style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
-                    <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar BCV">
-                      <RefreshCw size={10} color="#0052cc" />
-                    </button>
-                    <input 
-                      type="number" 
-                      step="any" 
-                      value={tasaCambio} 
-                      onChange={(e) => setTasaCambio(e.target.value)} 
-                      style={styles.inputTasaMini} 
-                    />
-                  </div>
-
-                  <div style={styles.pillAvisoCajaLive}>
-                    <div style={styles.puntoVerdeLive}></div>
-                    <span>Terminal Conectada en Vivo</span>
-                  </div>
-                </div>
-              </>
-            )}
+              )}
+            </div>
           </header>
 
           <nav style={styles.barraModulos}>
@@ -1547,9 +1516,10 @@ const styles = {
   contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#f8fafc' },
   topHeader: { padding: '8px 12px 6px 12px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #e2e8f0', flexShrink: 0, gap: '6px' },
   headerFila1: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' },
-  marcaContainer: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 },
-  logoMini: { width: '34px', height: '34px', borderRadius: '8px', objectFit: 'contain', border: '1px solid #e2e8f0', flexShrink: 0 },
-  avatarIcon: { width: '34px', height: '34px', borderRadius: '8px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  
+  marcaContainerClickable: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, cursor: 'pointer', padding: '2px 4px', borderRadius: '10px' },
+  logoMini: { width: '36px', height: '36px', borderRadius: '10px', objectFit: 'contain', border: '1px solid #e2e8f0', flexShrink: 0, backgroundColor: '#fff' },
+  avatarIcon: { width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #bfdbfe' },
   infoNegocio: { display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', flex: 1 },
   nombreNegocio: { margin: 0, fontSize: '0.94rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   
@@ -1560,10 +1530,9 @@ const styles = {
   badgeOnline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.58rem', fontWeight: 'bold', backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 5px', borderRadius: '4px' },
   badgeOffline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.58rem', fontWeight: 'bold', backgroundColor: '#fef3c7', color: '#b45309', padding: '1px 5px', borderRadius: '4px' },
   
-  btnLogout: { background: '#fee2e2', border: '1px solid #fecaca', borderRadius: '8px', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', flexShrink: 0, color: '#dc2626', fontSize: '0.72rem', fontWeight: 'bold' },
+  btnMenuToggle: { background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '7px 9px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
   
   headerFila2: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '6px' },
-  headerFila2Cajero: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px', paddingTop: '2px' },
   
   tasaChip: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc', padding: '3px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
   btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },

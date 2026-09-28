@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ArrowLeft, Store, Save, ShieldAlert, Monitor, 
-  Download, Upload, HelpCircle, MessageSquare
+  Download, Upload, HelpCircle, Image as ImageIcon, Trash2
 } from 'lucide-react';
 
 export default function ConfiguracionModal({ 
@@ -23,6 +23,20 @@ export default function ConfiguracionModal({
     alGuardarConfig(datos);
     setGuardadoExitoso(true);
     setTimeout(() => setGuardadoExitoso(false), 2000);
+  };
+
+  const handleSubirLogo = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      alert('La imagen no debe superar los 2MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (evento) => {
+      setDatos(prev => ({ ...prev, logo: evento.target.result }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubirArchivo = (e) => {
@@ -58,11 +72,42 @@ export default function ConfiguracionModal({
 
       <main style={styles.cuerpo}>
         <form onSubmit={handleSubmit} style={styles.formulario}>
-          {/* Datos de la Empresa */}
+          {/* Logo y Datos del Comercio */}
           <div style={styles.cardSeccion}>
             <div style={styles.tituloSeccion}>
               <Store size={16} color="#0052cc" />
-              <span>Datos del Comercio</span>
+              <span>Datos del Comercio y Marca</span>
+            </div>
+
+            {/* Selector de Logo */}
+            <div style={styles.contenedorLogo}>
+              <div style={styles.previewLogoBox}>
+                {datos.logo ? (
+                  <img src={datos.logo} alt="Logo comercio" style={styles.logoImg} />
+                ) : (
+                  <div style={styles.logoVacio}>
+                    <ImageIcon size={26} color="#94a3b8" />
+                    <span style={{ fontSize: '0.66rem', color: '#94a3b8', marginTop: '2px' }}>Sin Logo</span>
+                  </div>
+                )}
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={styles.btnSubirLogo}>
+                  <Upload size={13} />
+                  <span>{datos.logo ? 'Cambiar Logo' : 'Subir Logo'}</span>
+                  <input type="file" accept="image/*" onChange={handleSubirLogo} style={{ display: 'none' }} />
+                </label>
+                {datos.logo && (
+                  <button 
+                    type="button" 
+                    onClick={() => setDatos(prev => ({ ...prev, logo: '' }))} 
+                    style={styles.btnQuitarLogo}
+                  >
+                    <Trash2 size={13} /> Quitar Logo
+                  </button>
+                )}
+                <small style={{ fontSize: '0.66rem', color: '#64748b' }}>Aparece en tickets y en el menú lateral.</small>
+              </div>
             </div>
 
             <div style={styles.campo}>
@@ -124,7 +169,7 @@ export default function ConfiguracionModal({
           </div>
         </form>
 
-        {/* Accesos Rápidos: Terminales y Soporte */}
+        {/* Accesos Rápidos */}
         <div style={styles.cardSeccion}>
           <div style={styles.tituloSeccion}>
             <Monitor size={16} color="#0052cc" />
@@ -250,6 +295,66 @@ const styles = {
     fontWeight: '800',
     color: '#0f172a',
     marginBottom: '12px'
+  },
+  contenedorLogo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+    backgroundColor: '#f8fafc',
+    padding: '12px',
+    borderRadius: '12px',
+    border: '1px solid #e2e8f0',
+    marginBottom: '14px'
+  },
+  previewLogoBox: {
+    width: '64px',
+    height: '64px',
+    borderRadius: '12px',
+    border: '1px dashed #cbd5e1',
+    backgroundColor: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    flexShrink: 0
+  },
+  logoImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain'
+  },
+  logoVacio: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  btnSubirLogo: {
+    backgroundColor: '#0052cc',
+    color: '#fff',
+    padding: '6px 12px',
+    borderRadius: '8px',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px'
+  },
+  btnQuitarLogo: {
+    backgroundColor: '#fee2e2',
+    color: '#dc2626',
+    border: '1px solid #fecaca',
+    padding: '5px 10px',
+    borderRadius: '8px',
+    fontSize: '0.7rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px'
   },
   campo: {
     display: 'flex',
