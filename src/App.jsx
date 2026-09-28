@@ -264,11 +264,7 @@ export default function App() {
         }
 
         const copia = [...prev];
-        copia[idx] = {
-          ...itemExistente,
-          cantidad: nuevaCant,
-          precioUSD: precioAplicado
-        };
+        copia[idx] = { ...itemExistente, cantidad: nuevaCant, precioUSD: precioAplicado };
         return copia;
       } else {
         let precioAplicado = producto.precioUSD;
@@ -276,11 +272,7 @@ export default function App() {
           precioAplicado = producto.precioMayorUSD;
         }
 
-        return [...prev, {
-          ...producto,
-          cantidad: cantidadAAgregar,
-          precioUSD: precioAplicado
-        }];
+        return [...prev, { ...producto, cantidad: cantidadAAgregar, precioUSD: precioAplicado }];
       }
     });
 
@@ -312,9 +304,7 @@ export default function App() {
     setCarrito(prev => {
       const item = prev[index];
       const nuevaCant = parseFloat((item.cantidad + delta).toFixed(3));
-      if (nuevaCant <= 0) {
-        return prev.filter((_, i) => i !== index);
-      }
+      if (nuevaCant <= 0) return prev.filter((_, i) => i !== index);
 
       let precioAplicado = item.precioUSD;
       const prodOriginal = productos.find(p => String(p.id) === String(item.id));
@@ -334,11 +324,8 @@ export default function App() {
 
   const pausarCuentaActual = () => {
     if (carrito.length === 0) {
-      if (pedidosPausados.length > 0) {
-        setModalPausadosAbierto(true);
-      } else {
-        alert('No hay productos en caja para pausar.');
-      }
+      if (pedidosPausados.length > 0) setModalPausadosAbierto(true);
+      else alert('No hay productos en caja para pausar.');
       return;
     }
 
@@ -353,14 +340,12 @@ export default function App() {
     setPedidosPausados(prev => [nuevoPausado, ...prev]);
     setCarrito([]);
     setClienteActual(CLIENTES_INICIALES[0]);
-    alert('Orden guardada en pausa con éxito.');
+    alert('Orden guardada en pausa.');
   };
 
   const reanudarPedido = (pedido) => {
     if (carrito.length > 0) {
-      if (!confirm('Ya hay productos en la caja actual. ¿Deseas reemplazarlos por esta cuenta en pausa?')) {
-        return;
-      }
+      if (!confirm('¿Reemplazar los artículos actuales por esta orden en pausa?')) return;
     }
     setCarrito(pedido.carrito);
     setClienteActual(pedido.cliente || CLIENTES_INICIALES[0]);
@@ -369,7 +354,7 @@ export default function App() {
   };
 
   const eliminarPedidoPausado = (id) => {
-    if (confirm('¿Eliminar esta orden pausada permanentemente?')) {
+    if (confirm('¿Eliminar orden pausada?')) {
       setPedidosPausados(prev => prev.filter(p => p.id !== id));
     }
   };
@@ -386,7 +371,7 @@ export default function App() {
     });
   };
 
-  // FINALIZAR VENTA COMPLETA: Caja, Historial, Inventario, Supabase y Ticket
+  // FINALIZAR VENTA COMPLETA
   const alFinalizarVenta = async (datosVenta) => {
     const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
     const ahora = new Date();
@@ -397,24 +382,24 @@ export default function App() {
       fecha: ahora.toISOString(),
       fechaFormateada: ahora.toLocaleDateString() + ' ' + ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       negocio_id: negId,
-      cajero: usuarioActivo?.nombre || 'Cajero',
+      cajero: usuarioActivo?.nombre || 'Angel Pantoja',
       caja: cajaActiva?.nombre || 'Caja 01',
       cliente: datosVenta.cliente || clienteActual,
       items: datosVenta.items || [...carrito],
       totalUSD: parseFloat(datosVenta.totalUSD || totalUSD),
       totalBS: parseFloat(datosVenta.totalBS || totalBS),
       tasaCambio: parseFloat(tasaCambio),
-      pagos: datosVenta.pagos || [],
+      metodoPago: datosVenta.metodoPago || 'efectivo_usd',
+      montoRecibido: parseFloat(datosVenta.montoRecibido || datosVenta.totalUSD || totalUSD),
       vueltoUSD: parseFloat(datosVenta.vueltoUSD || 0),
-      vueltoBS: parseFloat(datosVenta.vueltoBS || 0),
-      descuento: datosVenta.descuento || 0
+      vueltoBS: parseFloat(datosVenta.vueltoBS || 0)
     };
 
-    // 1. Guardar en Transacciones (Caja e Historial local)
+    // 1. Guardar en el turno actual (Caja e Historial)
     setTransacciones(prev => [ventaCompleta, ...prev]);
     setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
 
-    // 2. Descontar Stock de los productos vendidos
+    // 2. Descontar Stock
     setProductos(prevProds => {
       const copia = [...prevProds];
       ventaCompleta.items.forEach(itemVendido => {
@@ -430,7 +415,7 @@ export default function App() {
       return copia;
     });
 
-    // 3. Subir la venta a Supabase
+    // 3. Persistir en Supabase
     await dbService.registrarVenta({
       id: ventaCompleta.id,
       negocio_id: negId,
@@ -445,7 +430,7 @@ export default function App() {
       detalles: ventaCompleta
     });
 
-    // 4. Limpiar caja y mostrar el Ticket
+    // 4. Limpiar caja y desplegar ticket
     setCarrito([]);
     setClienteActual(CLIENTES_INICIALES[0]);
     setModalCobroAbierto(false);
@@ -678,6 +663,7 @@ export default function App() {
         />
       )}
 
+      {/* CAJA Y CUADRE Z CONECTADO DIRECTO */}
       {vistaActual === 'caja' && (
         <CajaModal 
           transacciones={transacciones}
@@ -685,6 +671,7 @@ export default function App() {
           tasaCambio={tasaCambio}
           configEmpresa={configEmpresa}
           usuarioActivo={usuarioActivo}
+          cajaActiva={cajaActiva}
           alRegistrarGasto={(g) => setGastosCaja(prev => [g, ...prev])}
           alEliminarGasto={(id) => setGastosCaja(prev => prev.filter(g => g.id !== id))}
           alCerrarTurno={() => {
@@ -912,7 +899,7 @@ export default function App() {
         </>
       )}
 
-      {/* MODAL BALANZA DIGITAL */}
+      {/* BALANZA DIGITAL */}
       {productoParaPesar && (
         <ModalPeso
           producto={productoParaPesar}
@@ -925,7 +912,7 @@ export default function App() {
         />
       )}
 
-      {/* MODAL CUENTAS EN PAUSA */}
+      {/* CUENTAS EN PAUSA */}
       {modalPausadosAbierto && (
         <div style={styles.overlayPausados}>
           <div style={styles.boxPausados}>
@@ -1000,11 +987,8 @@ export default function App() {
         abierto={camaraAbierta}
         alDetectar={(codigoLeido) => {
           const prod = productos.find(p => p.codigo === codigoLeido);
-          if (prod) {
-            agregarAlCarrito(prod);
-          } else {
-            alert(`Código ${codigoLeido} no registrado.`);
-          }
+          if (prod) agregarAlCarrito(prod);
+          else alert(`Código ${codigoLeido} no registrado.`);
           setCamaraAbierta(false);
         }}
         alCerrar={() => setCamaraAbierta(false)}
