@@ -1,27 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="100%" height="100%">
-  <rect width="800" height="800" rx="160" fill="#ffffff"/>
-  <g transform="translate(140, 100) scale(0.65)">
-    <!-- Nube Tecnológica Superior -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 450" width="100%" height="100%">
+  <!-- Isotipo Escala Reducida -->
+  <g transform="translate(10, -50) scale(0.42)">
     <path d="M 280 200 C 230 200 190 240 190 290 C 190 295 191 300 193 305 C 160 315 135 345 135 385 C 135 435 175 475 225 475 L 430 475 L 430 200 Z" fill="#00b050"/>
     <path d="M 430 200 L 430 475 L 595 475 C 645 475 685 435 685 385 C 685 345 660 315 627 305 C 629 300 630 295 630 290 C 630 240 590 200 540 200 C 515 200 492 210 475 228 C 458 210 435 200 430 200 Z" fill="#0f2a4a"/>
-    <!-- Pistas de Circuito de la Nube -->
     <circle cx="340" cy="340" r="18" fill="#ffffff"/>
     <path d="M 340 358 L 340 475 L 305 530" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     <circle cx="410" cy="275" r="18" fill="#ffffff"/>
     <path d="M 410 293 L 410 475 L 350 565" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     <circle cx="490" cy="335" r="18" fill="#ffffff"/>
     <path d="M 490 353 L 490 475 L 430 565" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    <!-- Infinito: Anillo Exterior Azul Marino -->
     <path d="M 280 500 C 140 500 50 610 50 740 C 50 870 140 980 280 980 C 390 980 470 910 530 820 C 590 910 670 980 780 980 C 920 980 1010 870 1010 740 C 1010 610 920 500 780 500 C 670 500 590 570 530 660 C 470 570 390 500 280 500 Z" fill="none" stroke="#0f2a4a" stroke-width="55" stroke-linecap="round" stroke-linejoin="round"/>
-    <!-- Infinito: Anillo Interior Verde Esmeralda -->
     <path d="M 280 555 C 170 555 105 640 105 740 C 105 840 170 925 280 925 C 370 925 435 865 485 790 C 535 715 570 665 625 615 C 675 565 725 555 780 555 C 890 555 955 640 955 740 C 955 840 890 925 780 925 C 725 925 675 895 625 845 L 435 635 C 385 585 335 555 280 555 Z" fill="none" stroke="#00b050" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
-    <!-- Punto de Venta POS (Lado Izquierdo) -->
     <g transform="translate(170, 620) rotate(-18)">
       <rect x="0" y="0" width="130" height="200" rx="26" fill="#0f2a4a"/>
       <rect x="15" y="15" width="100" height="75" rx="12" fill="#ffffff"/>
-      <!-- Check dentro de pantalla del POS -->
       <path d="M 35 52 L 52 68 L 95 32" fill="none" stroke="#00b050" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-      <!-- Botones del teclado -->
       <circle cx="35" cy="115" r="9" fill="#ffffff"/>
       <circle cx="65" cy="115" r="9" fill="#ffffff"/>
       <circle cx="95" cy="115" r="9" fill="#ffffff"/>
@@ -32,7 +25,9 @@
       <circle cx="65" cy="175" r="9" fill="#00b050"/>
       <circle cx="95" cy="175" r="9" fill="#00b050"/>
     </g>
-    <!-- Checkmark Grande de Confirmación (Lado Derecho) -->
     <path d="M 680 730 L 750 800 L 890 640" fill="none" stroke="#00b050" stroke-width="65" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
+  <!-- Texto Tipográfico Corporativo -->
+  <text x="490" y="240" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="130" fill="#0f2a4a" letter-spacing="4">FACILITO</text>
+  <text x="495" y="360" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="120" fill="#00b050" letter-spacing="6">POS</text>
 </svg>

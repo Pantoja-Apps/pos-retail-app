@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  Store, ShieldCheck, UserCheck, KeyRound, Mail, ArrowRight, 
-  UserPlus, LogIn, Lock, QrCode, Monitor, Camera, X, RefreshCw, Smartphone
+  Store, User, Lock, ArrowRight, ShieldCheck, 
+  QrCode, KeyRound, Monitor, Smartphone, RefreshCw, AlertCircle
 } from 'lucide-react';
-import ScannerModal from './ScannerModal';
-import { dbService } from '../services/dbService';
 
 export default function LoginModal({
   cuentaMaster,
@@ -18,534 +16,494 @@ export default function LoginModal({
   alDesvincularTerminal,
   alActualizarCajerosLista
 }) {
-  const [modo, setModo] = useState('login'); // 'login' | 'registro' | 'vincular'
-  const [rolLogin, setRolLogin] = useState('dueno');
+  const [pestana, setPestana] = useState('cajeros'); // 'cajeros' | 'dueno'
+  const [esRegistro, setEsRegistro] = useState(!cuentaMaster);
 
-  const [formRegistro, setFormRegistro] = useState({
-    nombreNegocio: '',
-    nombreDueno: '',
-    correo: '',
-    password: ''
-  });
-
-  const [correoLogin, setCorreoLogin] = useState('');
-  const [passwordLogin, setPasswordLogin] = useState('');
-
-  const [cajeroSeleccionadoId, setCajeroSeleccionadoId] = useState('');
-  const [pinCajero, setPinCajero] = useState('');
+  // Estados formulario dueño
+  const [nombreDueno, setNombreDueno] = useState('');
+  const [nombreNegocio, setNombreNegocio] = useState('');
+  const [correo, setCorreo] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorLogin, setErrorLogin] = useState('');
   const [cargando, setCargando] = useState(false);
-  const [sincronizando, setSincronizando] = useState(false);
 
-  const [modalEscanearQR, setModalEscanearQR] = useState(false);
-  const [modalCodigoPC, setModalCodigoPC] = useState(false);
-  const [inputCodigo6, setInputCodigo6] = useState('');
+  // Estados cajero PIN
+  const [cajeroSeleccionado, setCajeroSeleccionado] = useState(null);
+  const [pinIngresado, setPinIngresado] = useState('');
+  const [errorPin, setErrorPin] = useState(false);
 
-  // Cargar cajeros desde Supabase si se conoce el negocio o caja activa
-  const sincronizarCajerosSupabase = async () => {
-    setSincronizando(true);
+  const manejarSubmitDueno = async (e) => {
+    e.preventDefault();
+    setErrorLogin('');
+    setCargando(true);
+
     try {
-      const negId = cajaActiva?.negocioId || cuentaMaster?.negocioId;
-      if (negId) {
-        const lista = await dbService.getCajeros(negId);
-        if (Array.isArray(lista) && lista.length > 0) {
-          if (typeof alActualizarCajerosLista === 'function') {
-            alActualizarCajerosLista(lista);
-          }
-          setCajeroSeleccionadoId(String(lista[0].id));
+      if (esRegistro) {
+        if (!nombreDueno || !nombreNegocio || !correo || !password) {
+          setErrorLogin('Por favor completa todos los campos.');
+          setCargando(false);
+          return;
+        }
+        await alRegistrarDueno({ nombreDueno, nombreNegocio, correo, password });
+      } else {
+        const ok = await alIniciarSesionDueno(correo, password);
+        if (!ok) {
+          setErrorLogin('Correo o contraseña incorrectos.');
         }
       }
-    } catch (e) {
-      console.error('Error sincronizando cajeros:', e);
-    } finally {
-      setSincronizando(false);
-    }
-  };
-
-  useEffect(() => {
-    if (cajeros.length > 0 && !cajeroSeleccionadoId) {
-      setCajeroSeleccionadoId(String(cajeros[0].id));
-    }
-  }, [cajeros]);
-
-  const manejarRegistro = async (e) => {
-    e.preventDefault();
-    if (!formRegistro.nombreNegocio.trim() || !formRegistro.nombreDueno.trim()) {
-      return alert('Por favor llena el nombre de tu negocio y el nombre del dueño.');
-    }
-    if (!formRegistro.correo.includes('@')) return alert('Introduce un correo válido.');
-    if (formRegistro.password.length < 6) return alert('La contraseña debe tener al menos 6 caracteres.');
-
-    setCargando(true);
-    try {
-      await alRegistrarDueno(formRegistro);
     } catch (err) {
-      console.error(err);
-      alert('Error creando cuenta. Revisa tu conexión.');
+      setErrorLogin('Ocurrió un error al procesar el acceso.');
     } finally {
       setCargando(false);
     }
   };
 
-  const manejarLoginDueno = async (e) => {
-    e.preventDefault();
-    if (!correoLogin.trim() || !passwordLogin.trim()) {
-      return alert('Introduce tu correo y contraseña.');
-    }
-    setCargando(true);
-    try {
-      const ok = await alIniciarSesionDueno(correoLogin.trim(), passwordLogin.trim());
-      if (!ok) alert('Credenciales incorrectas o negocio no registrado.');
-    } catch (err) {
-      console.error(err);
-      alert('Error al conectar con el servidor.');
-    } finally {
-      setCargando(false);
+  const pulsarNumeroPin = (num) => {
+    if (pinIngresado.length < 4) {
+      const nuevoPin = pinIngresado + num;
+      setPinIngresado(nuevoPin);
+      setErrorPin(false);
+      if (nuevoPin.length === 4) {
+        verificarPin(nuevoPin);
+      }
     }
   };
 
-  const manejarLoginCajero = (e) => {
-    e.preventDefault();
-    if (!cajeroSeleccionadoId) return alert('Selecciona tu nombre de empleado.');
-    if (!pinCajero.trim()) return alert('Introduce tu PIN.');
+  const borrarNumeroPin = () => {
+    setPinIngresado(prev => prev.slice(0, -1));
+    setErrorPin(false);
+  };
 
-    const ok = alIniciarSesionCajero(String(cajeroSeleccionadoId), pinCajero.trim()) ||
-               alIniciarSesionCajero(Number(cajeroSeleccionadoId), pinCajero.trim());
-
+  const verificarPin = (pin) => {
+    if (!cajeroSeleccionado) return;
+    const ok = alIniciarSesionCajero(cajeroSeleccionado.id, pin);
     if (!ok) {
-      const cajeroObj = cajeros.find(c => String(c.id) === String(cajeroSeleccionadoId));
-      if (cajeroObj && String(cajeroObj.pin) === String(pinCajero.trim())) {
-        window.location.reload();
-        return;
-      }
-      alert('PIN de cajero incorrecto.');
-      setPinCajero('');
-    }
-  };
-
-  const procesarDeteccionQR = async (texto) => {
-    try {
-      let data = null;
-      if (texto.startsWith('POS|')) {
-        const p = texto.split('|');
-        data = {
-          cajaId: p[1],
-          cajaNombre: p[2],
-          tipoGaveta: p[3] || 'centralizada',
-          codigoEnlace: p[4],
-          negocioId: p[5] || 'neg_local'
-        };
-      } else {
-        data = JSON.parse(texto);
-      }
-
-      if (data && (data.cajaId || data.id)) {
-        setModalEscanearQR(false);
-        alVincularTerminalPorQR(data);
-        setModo('login');
-        setRolLogin('cajero');
-        alert(`¡Dispositivo vinculado con éxito como ${data.cajaNombre || data.nombre}!`);
-        await sincronizarCajerosSupabase();
-      }
-    } catch {
-      alert('Código QR no válido para vinculación.');
-    }
-  };
-
-  const procesarVinculacionPC = async (e) => {
-    e.preventDefault();
-    const cod = inputCodigo6.trim();
-    if (cod.length !== 6) return alert('Introduce el código de 6 dígitos.');
-
-    const ok = alVincularTerminalPorCodigo(cod);
-    if (ok) {
-      setModalCodigoPC(false);
-      setInputCodigo6('');
-      setModo('login');
-      setRolLogin('cajero');
-      alert('¡Dispositivo vinculado con éxito a la caja!');
-      await sincronizarCajerosSupabase();
-    } else {
-      alert('Código no encontrado. Asegúrate de haber creado la terminal en el teléfono del Dueño.');
+      setErrorPin(true);
+      setTimeout(() => {
+        setPinIngresado('');
+        setErrorPin(false);
+      }, 700);
     }
   };
 
   return (
-    <div style={styles.contenedorFondo} translate="no">
-      <div style={styles.cardLogin}>
-        
-        {/* ENCABEZADO */}
-        <div style={styles.header}>
-          <div style={styles.avatarIcon}>
-            <Store size={32} color="#0052cc" />
-          </div>
-          <h2 style={styles.titulo}>Facilito POS</h2>
-          
-          {cajaActiva && (
-            <div style={styles.badgeTerminalConectada}>
-              <Monitor size={12} color="#16a34a" />
-              <span>Terminal: <strong>{cajaActiva.nombre}</strong></span>
-              <button 
-                type="button" 
-                onClick={alDesvincularTerminal}
-                style={styles.btnDesvincularMini}
-                title="Cambiar caja"
-              >
-                (Cambiar)
-              </button>
-            </div>
-          )}
+    <div style={styles.contenedor} translate="no">
+      <div style={styles.tarjetaLogin}>
+        {/* Logo Oficial de Facilito POS */}
+        <div style={styles.logoHeader}>
+          <img src="/logo.svg" alt="Facilito POS Logo" style={styles.logoImg} />
+          <span style={styles.tagline}>Sistema Integral de Punto de Venta</span>
         </div>
 
-        {/* SELECTOR DE ACCIÓN: LOGIN | REGISTRO | VINCULAR */}
-        <div style={styles.barraPillsNav}>
-          <button 
-            type="button" 
-            onClick={() => setModo('login')} 
-            style={{ 
-              ...styles.btnPillNav, 
-              backgroundColor: modo === 'login' ? '#0052cc' : 'transparent',
-              color: modo === 'login' ? '#fff' : '#64748b' 
+        {/* Selector de Pestaña: Cajeros vs Dueño */}
+        <div style={styles.tabsContainer}>
+          <button
+            type="button"
+            onClick={() => { setPestana('cajeros'); setCajeroSeleccionado(null); setPinIngresado(''); }}
+            style={{
+              ...styles.tabBtn,
+              backgroundColor: pestana === 'cajeros' ? '#0f2a4a' : 'transparent',
+              color: pestana === 'cajeros' ? '#fff' : '#64748b'
             }}
           >
-            <LogIn size={14} /> Entrar
+            <User size={15} />
+            <span>Turno Cajeros</span>
           </button>
-          
-          <button 
-            type="button" 
-            onClick={() => setModo('registro')} 
-            style={{ 
-              ...styles.btnPillNav, 
-              backgroundColor: modo === 'registro' ? '#0052cc' : 'transparent',
-              color: modo === 'registro' ? '#fff' : '#64748b' 
+          <button
+            type="button"
+            onClick={() => { setPestana('dueno'); setErrorLogin(''); }}
+            style={{
+              ...styles.tabBtn,
+              backgroundColor: pestana === 'dueno' ? '#0f2a4a' : 'transparent',
+              color: pestana === 'dueno' ? '#fff' : '#64748b'
             }}
           >
-            <UserPlus size={14} /> Nuevo Negocio
-          </button>
-
-          <button 
-            type="button" 
-            onClick={() => setModo('vincular')} 
-            style={{ 
-              ...styles.btnPillNav, 
-              backgroundColor: modo === 'vincular' ? '#0052cc' : 'transparent',
-              color: modo === 'vincular' ? '#fff' : '#64748b' 
-            }}
-          >
-            <Smartphone size={14} /> Vincular
+            <ShieldCheck size={15} />
+            <span>Acceso Dueño</span>
           </button>
         </div>
 
-        {/* 1. MODO: INICIAR SESIÓN */}
-        {modo === 'login' && (
-          <div style={{ marginTop: '14px' }}>
-            <div style={styles.selectorRol}>
-              <button 
-                type="button" 
-                onClick={() => setRolLogin('dueno')}
-                style={{ 
-                  ...styles.btnRol,
-                  backgroundColor: rolLogin === 'dueno' ? '#fff' : 'transparent',
-                  color: rolLogin === 'dueno' ? '#0f172a' : '#64748b',
-                  boxShadow: rolLogin === 'dueno' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-                }}
-              >
-                <ShieldCheck size={14} color={rolLogin === 'dueno' ? '#16a34a' : '#64748b'} />
-                <span>Dueño / Master</span>
-              </button>
-
-              <button 
-                type="button" 
-                onClick={() => setRolLogin('cajero')}
-                style={{ 
-                  ...styles.btnRol,
-                  backgroundColor: rolLogin === 'cajero' ? '#fff' : 'transparent',
-                  color: rolLogin === 'cajero' ? '#0f172a' : '#64748b',
-                  boxShadow: rolLogin === 'cajero' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-                }}
-              >
-                <UserCheck size={14} color={rolLogin === 'cajero' ? '#0052cc' : '#64748b'} />
-                <span>Cajero</span>
-              </button>
-            </div>
-
-            {/* Login Dueño */}
-            {rolLogin === 'dueno' && (
-              <form onSubmit={manejarLoginDueno} style={styles.form}>
-                <div style={styles.campo}>
-                  <label style={styles.lbl}>Correo Electrónico Maestro</label>
-                  <div style={styles.inputWrapper}>
-                    <Mail size={16} color="#64748b" style={styles.inputIcon} />
-                    <input 
-                      type="email" 
-                      placeholder="dueno@negocio.com"
-                      value={correoLogin}
-                      onChange={(e) => setCorreoLogin(e.target.value)}
-                      style={styles.inputWithIcon}
-                      required
-                      autoFocus
-                    />
-                  </div>
+        {/* VISTA 1: INICIO DE SESIÓN DE CAJEROS CON PIN */}
+        {pestana === 'cajeros' && (
+          <div style={styles.cuerpoCajeros}>
+            {!cajeroSeleccionado ? (
+              <>
+                <p style={styles.subtituloGuia}>Selecciona tu usuario para iniciar turno:</p>
+                <div style={styles.listaCajerosGrid}>
+                  {cajeros.length === 0 ? (
+                    <div style={styles.cajaSinCajeros}>
+                      <AlertCircle size={24} color="#d97706" />
+                      <p style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#92400e' }}>
+                        No hay cajeros registrados aún. Inicia sesión como dueño para registrar personal.
+                      </p>
+                    </div>
+                  ) : (
+                    cajeros.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => { setCajeroSeleccionado(c); setPinIngresado(''); setErrorPin(false); }}
+                        style={styles.cardCajeroItem}
+                      >
+                        <div style={styles.avatarCajero}>
+                          <User size={20} color="#0f2a4a" />
+                        </div>
+                        <span style={styles.nombreCajero}>{c.nombre}</span>
+                        <small style={{ fontSize: '0.66rem', color: '#64748b' }}>Cajero</small>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={styles.contenedorTecladoPin}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <button type="button" onClick={() => { setCajeroSeleccionado(null); setPinIngresado(''); }} style={styles.btnVolverCajeros}>
+                    ← Cambiar
+                  </button>
+                  <strong style={{ fontSize: '0.88rem', color: '#0f2a4a' }}>{cajeroSeleccionado.nombre}</strong>
+                  <div style={{ width: '50px' }} />
                 </div>
 
-                <div style={styles.campo}>
-                  <label style={styles.lbl}>Clave Maestra</label>
-                  <div style={styles.inputWrapper}>
-                    <Lock size={16} color="#64748b" style={styles.inputIcon} />
-                    <input 
-                      type="password" 
-                      placeholder="••••••"
-                      value={passwordLogin}
-                      onChange={(e) => setPasswordLogin(e.target.value)}
-                      style={styles.inputWithIcon}
-                      required
+                <div style={styles.indicadoresPinFila}>
+                  {[0, 1, 2, 3].map((idx) => (
+                    <div 
+                      key={idx} 
+                      style={{
+                        ...styles.dotPin,
+                        backgroundColor: pinIngresado.length > idx ? (errorPin ? '#dc2626' : '#00b050') : '#e2e8f0',
+                        borderColor: errorPin ? '#dc2626' : (pinIngresado.length > idx ? '#00b050' : '#cbd5e1')
+                      }} 
                     />
-                  </div>
+                  ))}
                 </div>
+                {errorPin && <small style={styles.textoPinInvalido}>PIN Incorrecto</small>}
 
-                <button type="submit" disabled={cargando} style={styles.btnPrincipal}>
-                  {cargando ? 'Verificando...' : 'Acceder al POS'} <ArrowRight size={16} />
-                </button>
-              </form>
-            )}
-
-            {/* Login Cajero */}
-            {rolLogin === 'cajero' && (
-              <form onSubmit={manejarLoginCajero} style={styles.form}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={styles.lbl}>Empleado / Cajero</label>
-                  <button 
-                    type="button" 
-                    onClick={sincronizarCajerosSupabase}
-                    disabled={sincronizando}
-                    style={styles.btnSincronizarCajeros}
-                  >
-                    <RefreshCw size={11} className={sincronizando ? 'animate-spin' : ''} />
-                    <span>{sincronizando ? 'Cargando...' : 'Actualizar'}</span>
+                <div style={styles.tecladoNumerico}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                    <button key={n} type="button" onClick={() => pulsarNumeroPin(n)} style={styles.btnTecla}>
+                      {n}
+                    </button>
+                  ))}
+                  <div style={styles.btnTeclaVacia} />
+                  <button type="button" onClick={() => pulsarNumeroPin(0)} style={styles.btnTecla}>
+                    0
+                  </button>
+                  <button type="button" onClick={borrarNumeroPin} style={styles.btnTeclaBorrar}>
+                    ⌫
                   </button>
                 </div>
-
-                {cajeros.length === 0 ? (
-                  <div style={styles.avisoSinCajeros}>
-                    No hay cajeros en esta terminal. Primero crea los cajeros desde la cuenta del <strong>Dueño</strong> (Módulo Cajeros) o vincula esta caja en la pestaña <strong>"Vincular"</strong> arriba.
-                  </div>
-                ) : (
-                  <>
-                    <select 
-                      value={cajeroSeleccionadoId}
-                      onChange={(e) => setCajeroSeleccionadoId(e.target.value)}
-                      style={styles.selectCajeroVisible}
-                    >
-                      {cajeros.map(c => (
-                        <option key={c.id} value={String(c.id)}>
-                          {c.nombre}
-                        </option>
-                      ))}
-                    </select>
-
-                    <div style={styles.campo}>
-                      <label style={styles.lbl}>PIN de Seguridad (4 Dígitos)</label>
-                      <div style={styles.inputWrapper}>
-                        <KeyRound size={16} color="#0052cc" style={styles.inputIcon} />
-                        <input 
-                          type="password" 
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          maxLength={6}
-                          placeholder="••••"
-                          value={pinCajero}
-                          onChange={(e) => setPinCajero(e.target.value.replace(/[^0-9]/g, ''))}
-                          style={styles.inputPinVisible}
-                          required
-                          autoFocus
-                        />
-                      </div>
-                    </div>
-
-                    <button type="submit" style={styles.btnPrincipal}>
-                      Abrir Turno de Cobro <ArrowRight size={16} />
-                    </button>
-                  </>
-                )}
-              </form>
+              </div>
             )}
           </div>
         )}
 
-        {/* 2. MODO: REGISTRO DE NUEVO NEGOCIO */}
-        {modo === 'registro' && (
-          <form onSubmit={manejarRegistro} style={{ ...styles.form, marginTop: '14px' }}>
-            <div style={styles.campo}>
-              <label style={styles.lbl}>Nombre del Negocio / Establecimiento *</label>
-              <input 
-                type="text" 
-                placeholder="Ej: Bodega Don José"
-                value={formRegistro.nombreNegocio}
-                onChange={(e) => setFormRegistro({ ...formRegistro, nombreNegocio: e.target.value })}
-                style={styles.input}
-                required
-                autoFocus
-              />
-            </div>
+        {/* VISTA 2: INICIO DE SESIÓN / REGISTRO DEL DUEÑO */}
+        {pestana === 'dueno' && (
+          <form onSubmit={manejarSubmitDueno} style={styles.formularioDueno}>
+            {errorLogin && <div style={styles.alertaError}>{errorLogin}</div>}
+
+            {esRegistro && (
+              <>
+                <div style={styles.campo}>
+                  <label style={styles.label}>Tu Nombre Completo</label>
+                  <input
+                    type="text"
+                    value={nombreDueno}
+                    onChange={(e) => setNombreDueno(e.target.value)}
+                    style={styles.input}
+                    placeholder="Ej. Ángel Pantoja"
+                    required
+                  />
+                </div>
+                <div style={styles.campo}>
+                  <label style={styles.label}>Nombre de tu Comercio</label>
+                  <input
+                    type="text"
+                    value={nombreNegocio}
+                    onChange={(e) => setNombreNegocio(e.target.value)}
+                    style={styles.input}
+                    placeholder="Ej. MiniMarket Express"
+                    required
+                  />
+                </div>
+              </>
+            )}
 
             <div style={styles.campo}>
-              <label style={styles.lbl}>Nombre del Propietario *</label>
-              <input 
-                type="text" 
-                placeholder="Ej: José Pérez"
-                value={formRegistro.nombreDueno}
-                onChange={(e) => setFormRegistro({ ...formRegistro, nombreDueno: e.target.value })}
+              <label style={styles.label}>Correo Electrónico</label>
+              <input
+                type="email"
+                value={correo}
+                onChange={(e) => setCorreo(e.target.value)}
                 style={styles.input}
-                required
-              />
-            </div>
-
-            <div style={styles.campo}>
-              <label style={styles.lbl}>Correo Electrónico Maestro *</label>
-              <input 
-                type="email" 
-                placeholder="jose@ejemplo.com"
-                value={formRegistro.correo}
-                onChange={(e) => setFormRegistro({ ...formRegistro, correo: e.target.value })}
-                style={styles.input}
-                required
-              />
-            </div>
-
-            <div style={styles.campo}>
-              <label style={styles.lbl}>Clave Maestra (Mínimo 6 caracteres) *</label>
-              <input 
-                type="password" 
-                placeholder="••••••"
-                value={formRegistro.password}
-                onChange={(e) => setFormRegistro({ ...formRegistro, password: e.target.value })}
-                style={styles.input}
+                placeholder="dueno@gmail.com"
                 required
               />
             </div>
 
-            <button type="submit" disabled={cargando} style={styles.btnPrincipal}>
-              {cargando ? 'Configurando Espacio...' : 'Crear Cuenta y Comenzar'} <ArrowRight size={16} />
+            <div style={styles.campo}>
+              <label style={styles.label}>Contraseña de Administrador</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={styles.input}
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
+            <button type="submit" disabled={cargando} style={styles.btnSubmitDueno}>
+              {cargando ? <RefreshCw size={16} className="spin" /> : <ArrowRight size={16} />}
+              <span>{esRegistro ? 'Crear Negocio e Iniciar' : 'Ingresar al Panel'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setEsRegistro(!esRegistro); setErrorLogin(''); }}
+              style={styles.btnToggleRegistro}
+            >
+              {esRegistro ? '¿Ya tienes cuenta registrada? Inicia Sesión' : '¿Nuevo negocio? Regístrate aquí'}
             </button>
           </form>
         )}
-
-        {/* 3. MODO: VINCULAR DISPOSITIVO SECUNDARIO */}
-        {modo === 'vincular' && (
-          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b', textAlign: 'center', lineHeight: 1.4 }}>
-              Vincula este teléfono, tablet o PC para usarlo como punto de cobro secundario en tu negocio.
-            </p>
-
-            <button 
-              type="button" 
-              onClick={() => setModalEscanearQR(true)}
-              style={styles.btnOpcionVinculacion}
-            >
-              <QrCode size={20} color="#0052cc" />
-              <div style={{ textAlign: 'left' }}>
-                <strong style={{ display: 'block', fontSize: '0.84rem', color: '#0f172a' }}>Escanear Código QR</strong>
-                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Apunta a la pantalla del Dueño (Ajustes &gt; Terminales)</span>
-              </div>
-            </button>
-
-            <button 
-              type="button" 
-              onClick={() => setModalCodigoPC(true)}
-              style={styles.btnOpcionVinculacion}
-            >
-              <Monitor size={20} color="#16a34a" />
-              <div style={{ textAlign: 'left' }}>
-                <strong style={{ display: 'block', fontSize: '0.84rem', color: '#0f172a' }}>Ingresar Código de 6 Dígitos</strong>
-                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Ideal para computadoras o equipos sin cámara</span>
-              </div>
-            </button>
-          </div>
-        )}
-
       </div>
-
-      {/* MODAL SCANNER QR */}
-      <ScannerModal 
-        abierto={modalEscanearQR}
-        alDetectar={procesarDeteccionQR}
-        alCerrar={() => setModalEscanearQR(false)}
-      />
-
-      {/* MODAL CÓDIGO 6 DÍGITOS */}
-      {modalCodigoPC && (
-        <div style={styles.overlay} translate="no">
-          <div style={styles.modalBoxCard}>
-            <div style={styles.headerModal}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '0.98rem', color: '#0f172a', fontWeight: '800' }}>Vincular Terminal por Código</h3>
-                <small style={{ color: '#64748b', fontSize: '0.7rem' }}>Ingresa el código generado en la pantalla del Dueño</small>
-              </div>
-              <button type="button" onClick={() => setModalCodigoPC(false)} style={styles.btnCerrarX}><X size={18} /></button>
-            </div>
-
-            <form onSubmit={procesarVinculacionPC} style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={styles.campo}>
-                <input 
-                  type="text" 
-                  maxLength={6}
-                  placeholder="Ej: 100001"
-                  value={inputCodigo6}
-                  onChange={(e) => setInputCodigo6(e.target.value.replace(/[^0-9]/g, ''))}
-                  style={styles.inputCodigo6}
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <button type="submit" style={styles.btnPrincipal}>
-                Vincular este Equipo
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
 
 const styles = {
-  contenedorFondo: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' },
-  cardLogin: { backgroundColor: '#fff', borderRadius: '24px', padding: '24px 20px', maxWidth: '380px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' },
-  header: { textAlign: 'center', marginBottom: '14px' },
-  avatarIcon: { width: '56px', height: '56px', borderRadius: '16px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px auto' },
-  titulo: { margin: 0, fontSize: '1.25rem', fontWeight: '900', color: '#0f172a' },
-  
-  badgeTerminalConectada: { display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '4px 10px', borderRadius: '8px', fontSize: '0.72rem', marginTop: '6px' },
-  btnDesvincularMini: { background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.66rem', fontWeight: 'bold', padding: 0 },
-  
-  barraPillsNav: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '12px', gap: '2px' },
-  btnPillNav: { border: 'none', borderRadius: '9px', padding: '8px 2px', fontSize: '0.72rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', transition: 'all 0.2s' },
-  
-  selectorRol: { display: 'grid', gridTemplateColumns: '1fr 1fr', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '3px', borderRadius: '10px', marginBottom: '10px' },
-  btnRol: { border: 'none', borderRadius: '8px', padding: '7px 4px', fontSize: '0.72rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', cursor: 'pointer' },
-  
-  form: { display: 'flex', flexDirection: 'column', gap: '10px' },
-  campo: { display: 'flex', flexDirection: 'column', gap: '4px' },
-  lbl: { fontSize: '0.72rem', fontWeight: 'bold', color: '#334155' },
-  btnSincronizarCajeros: { background: 'none', border: 'none', color: '#0052cc', fontSize: '0.68rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer' },
-  
-  input: { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.86rem', outline: 'none', backgroundColor: '#f8fafc', color: '#0f172a' },
-  inputWrapper: { position: 'relative', display: 'flex', alignItems: 'center' },
-  inputIcon: { position: 'absolute', left: '12px' },
-  inputWithIcon: { width: '100%', boxSizing: 'border-box', padding: '10px 12px 10px 36px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '0.86rem', outline: 'none', backgroundColor: '#f8fafc', color: '#0f172a' },
-  
-  selectCajeroVisible: { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '2px solid #0052cc', fontSize: '0.92rem', fontWeight: '700', outline: 'none', backgroundColor: '#ffffff', color: '#0f172a', display: 'block' },
-  inputPinVisible: { width: '100%', boxSizing: 'border-box', padding: '10px 12px 10px 38px', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '1.25rem', fontWeight: '900', letterSpacing: '8px', textAlign: 'center', outline: 'none', backgroundColor: '#ffffff', color: '#0f172a' },
-  
-  btnPrincipal: { marginTop: '4px', width: '100%', padding: '12px', backgroundColor: '#0052cc', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '0.88rem', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', boxShadow: '0 4px 12px rgba(0, 82, 204, 0.25)' },
-  avisoSinCajeros: { backgroundColor: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', fontSize: '0.74rem', padding: '10px', borderRadius: '10px', lineHeight: 1.4, textAlign: 'center' },
-  
-  btnOpcionVinculacion: { display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', cursor: 'pointer', textAlign: 'left' },
-  
-  overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(2px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '14px' },
-  modalBoxCard: { background: '#fff', borderRadius: '18px', width: '100%', maxWidth: '340px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden' },
-  headerModal: { padding: '12px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  btnCerrarX: { background: '#f1f5f9', border: 'none', borderRadius: '50%', cursor: 'pointer', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' },
-  inputCodigo6: { width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: '10px', border: '2px solid #0052cc', fontSize: '1.4rem', fontWeight: '900', textAlign: 'center', letterSpacing: '6px', color: '#0052cc', outline: 'none' }
+  contenedor: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#0f2a4a',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '16px',
+    zIndex: 999999,
+    fontFamily: 'system-ui, -apple-system, sans-serif'
+  },
+  tarjetaLogin: {
+    backgroundColor: '#fff',
+    borderRadius: '24px',
+    maxWidth: '380px',
+    width: '100%',
+    padding: '24px 20px',
+    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  logoHeader: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    marginBottom: '16px'
+  },
+  logoImg: {
+    height: '60px',
+    maxWidth: '220px',
+    objectFit: 'contain'
+  },
+  tagline: {
+    fontSize: '0.7rem',
+    color: '#64748b',
+    fontWeight: '600',
+    marginTop: '4px'
+  },
+  tabsContainer: {
+    display: 'flex',
+    backgroundColor: '#f1f5f9',
+    borderRadius: '12px',
+    padding: '3px',
+    marginBottom: '16px'
+  },
+  tabBtn: {
+    flex: 1,
+    border: 'none',
+    borderRadius: '10px',
+    padding: '8px 10px',
+    fontSize: '0.76rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px'
+  },
+  cuerpoCajeros: {
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  subtituloGuia: {
+    margin: '0 0 12px 0',
+    fontSize: '0.78rem',
+    color: '#64748b',
+    textAlign: 'center'
+  },
+  listaCajerosGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '10px'
+  },
+  cardCajeroItem: {
+    backgroundColor: '#f8fafc',
+    border: '1px solid #e2e8f0',
+    borderRadius: '14px',
+    padding: '14px 10px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    cursor: 'pointer'
+  },
+  avatarCajero: {
+    width: '42px',
+    height: '42px',
+    borderRadius: '50%',
+    backgroundColor: '#eff6ff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '6px'
+  },
+  nombreCajero: {
+    fontSize: '0.84rem',
+    fontWeight: 'bold',
+    color: '#0f2a4a'
+  },
+  cajaSinCajeros: {
+    gridColumn: '1 / -1',
+    backgroundColor: '#fffbeb',
+    borderRadius: '12px',
+    padding: '14px',
+    textAlign: 'center',
+    border: '1px solid #fde68a'
+  },
+  contenedorTecladoPin: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center'
+  },
+  btnVolverCajeros: {
+    background: 'none',
+    border: 'none',
+    color: '#00b050',
+    fontWeight: 'bold',
+    fontSize: '0.75rem',
+    cursor: 'pointer',
+    padding: 0
+  },
+  indicadoresPinFila: {
+    display: 'flex',
+    gap: '12px',
+    margin: '12px 0 6px 0'
+  },
+  dotPin: {
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    border: '2px solid'
+  },
+  textoPinInvalido: {
+    color: '#dc2626',
+    fontSize: '0.72rem',
+    fontWeight: 'bold',
+    marginBottom: '4px'
+  },
+  tecladoNumerico: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '8px',
+    width: '100%',
+    maxWidth: '240px',
+    marginTop: '10px'
+  },
+  btnTecla: {
+    backgroundColor: '#f8fafc',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    padding: '12px',
+    fontSize: '1.25rem',
+    fontWeight: 'bold',
+    color: '#0f2a4a',
+    cursor: 'pointer'
+  },
+  btnTeclaVacia: {
+    background: 'none',
+    border: 'none'
+  },
+  btnTeclaBorrar: {
+    backgroundColor: '#fee2e2',
+    border: '1px solid #fecaca',
+    borderRadius: '12px',
+    padding: '12px',
+    fontSize: '1rem',
+    fontWeight: 'bold',
+    color: '#dc2626',
+    cursor: 'pointer'
+  },
+  formularioDueno: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px'
+  },
+  alertaError: {
+    backgroundColor: '#fee2e2',
+    color: '#dc2626',
+    fontSize: '0.72rem',
+    fontWeight: 'bold',
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid #fecaca'
+  },
+  campo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px'
+  },
+  label: {
+    fontSize: '0.72rem',
+    fontWeight: '700',
+    color: '#475569'
+  },
+  input: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '9px 10px',
+    borderRadius: '8px',
+    border: '1px solid #cbd5e1',
+    fontSize: '0.84rem',
+    outline: 'none',
+    backgroundColor: '#f8fafc'
+  },
+  btnSubmitDueno: {
+    width: '100%',
+    padding: '11px',
+    backgroundColor: '#00b050',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '0.86rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    marginTop: '6px'
+  },
+  btnToggleRegistro: {
+    background: 'none',
+    border: 'none',
+    color: '#0f2a4a',
+    fontSize: '0.72rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    textAlign: 'center',
+    marginTop: '4px'
+  }
 };

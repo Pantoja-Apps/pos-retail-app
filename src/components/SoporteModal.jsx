@@ -1,10 +1,9 @@
 import React from 'react';
-import { ArrowLeft, MessageCircle, Mail, Globe, Sparkles, ExternalLink, HelpCircle, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Mail, ShieldCheck } from 'lucide-react';
 
 export default function SoporteModal({ alVolver, nombreNegocio }) {
-  // Números y enlaces de contacto de tu marca
-  const telefonoSoporte1 = "584120000000"; // Reemplaza por tu número real
-  const mensajeWhatsApp = encodeURIComponent(`Hola, me comunico desde el negocio "${nombreNegocio || 'Mi Negocio'}" solicitando asistencia técnica con el sistema POS.`);
+  const telefonoSoporte1 = "584120000000"; // Reemplaza por tu número
+  const mensajeWhatsApp = encodeURIComponent(`Hola, me comunico desde el negocio "${nombreNegocio || 'Mi Negocio'}" solicitando soporte técnico con Facilito POS.`);
 
   const abrirWhatsApp = (numero) => {
     window.open(`https://wa.me/${numero}?text=${mensajeWhatsApp}`, '_blank');
@@ -24,11 +23,12 @@ export default function SoporteModal({ alVolver, nombreNegocio }) {
       </header>
 
       <main style={styles.cuerpo}>
-        {/* Tarjeta de Marca y Presentación */}
+        {/* Tarjeta de Marca Oficial con el Logotipo */}
         <div style={styles.cardMarca}>
-          <div style={styles.iconoMarcaBox}>
-            <Sparkles size={22} color="#0052cc" />
+          <div style={styles.cajaLogoOficial}>
+            <img src="/logo.svg" alt="Facilito POS Logo" style={styles.logoOficialImg} />
           </div>
+          <div style={styles.divisorMarca} />
           <div>
             <div style={styles.etiquetaDesarrollo}>Desarrollado por Pantoja Apps</div>
             <h3 style={styles.tituloMarca}>Innovación a tu alcance, conectamos tu futuro.</h3>
@@ -38,7 +38,7 @@ export default function SoporteModal({ alVolver, nombreNegocio }) {
           </div>
         </div>
 
-        {/* Sección de Canales de Atención Directa */}
+        {/* Canales de Contacto Directo */}
         <div style={styles.seccionCanales}>
           <h4 style={styles.tituloSeccion}>¿Necesitas ayuda o soporte técnico?</h4>
           <p style={styles.subtituloSeccion}>
@@ -48,7 +48,7 @@ export default function SoporteModal({ alVolver, nombreNegocio }) {
           <div style={styles.tarjetaCanal}>
             <div style={styles.infoCanal}>
               <div style={styles.iconoCanalBox}>
-                <MessageCircle size={18} color="#16a34a" />
+                <MessageCircle size={18} color="#00b050" />
               </div>
               <div>
                 <strong style={styles.nombreCanal}>Soporte Técnico WhatsApp</strong>
@@ -66,7 +66,7 @@ export default function SoporteModal({ alVolver, nombreNegocio }) {
 
           <div style={styles.tarjetaCanal}>
             <div style={styles.infoCanal}>
-              <div style={{ ...styles.iconoCanalBox, backgroundColor: '#eff6ff', color: '#0052cc' }}>
+              <div style={{ ...styles.iconoCanalBox, backgroundColor: '#eff6ff', color: '#0f2a4a' }}>
                 <Mail size={18} />
               </div>
               <div>
@@ -77,18 +77,18 @@ export default function SoporteModal({ alVolver, nombreNegocio }) {
             <button 
               type="button" 
               onClick={() => window.open('mailto:soporte@pantojaapps.com?subject=Soporte%20Facilito%20POS', '_blank')} 
-              style={{ ...styles.btnEscribir, backgroundColor: '#eff6ff', color: '#0052cc', border: '1px solid #bfdbfe' }}
+              style={styles.btnContactarMail}
             >
               <Mail size={14} /> Contactar
             </button>
           </div>
         </div>
 
-        {/* Información de Versión y Estado de Seguridad */}
+        {/* Información de Versión */}
         <div style={styles.cardInfoVersion}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            <ShieldCheck size={16} color="#16a34a" />
-            <strong style={{ fontSize: '0.82rem', color: '#1e293b' }}>Facilito POS Pro v2.3</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <ShieldCheck size={16} color="#00b050" />
+            <strong style={{ fontSize: '0.84rem', color: '#0f2a4a' }}>Facilito POS Pro v2.3</strong>
           </div>
           <div style={{ fontSize: '0.74rem', color: '#64748b', lineHeight: 1.4 }}>
             Sistema conectado y protegido en la nube con Supabase. Base de datos aislada por establecimiento.
@@ -132,12 +132,12 @@ const styles = {
     margin: 0,
     fontSize: '0.96rem',
     fontWeight: '800',
-    color: '#0f172a'
+    color: '#0f2a4a'
   },
   cuerpo: {
     flex: 1,
     overflowY: 'auto',
-    padding: '14px 16px',
+    padding: '14px',
     display: 'flex',
     flexDirection: 'column',
     gap: '14px'
@@ -145,27 +145,34 @@ const styles = {
   cardMarca: {
     backgroundColor: '#fff',
     borderRadius: '16px',
-    padding: '16px',
+    padding: '18px 16px',
     border: '1px solid #e2e8f0',
     boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
     display: 'flex',
-    gap: '12px',
-    alignItems: 'flex-start'
+    flexDirection: 'column',
+    gap: '12px'
   },
-  iconoMarcaBox: {
-    width: '42px',
-    height: '42px',
-    borderRadius: '12px',
-    backgroundColor: '#eff6ff',
+  cajaLogoOficial: {
+    width: '100%',
+    height: '65px',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0
+    justifyContent: 'flex-start'
+  },
+  logoOficialImg: {
+    maxHeight: '100%',
+    maxWidth: '240px',
+    objectFit: 'contain'
+  },
+  divisorMarca: {
+    height: '1px',
+    backgroundColor: '#f1f5f9',
+    width: '100%'
   },
   etiquetaDesarrollo: {
     fontSize: '0.68rem',
     fontWeight: '800',
-    color: '#0052cc',
+    color: '#00b050',
     textTransform: 'uppercase',
     letterSpacing: '0.5px'
   },
@@ -173,7 +180,7 @@ const styles = {
     margin: '4px 0 6px 0',
     fontSize: '0.94rem',
     fontWeight: '800',
-    color: '#0f172a',
+    color: '#0f2a4a',
     lineHeight: 1.3
   },
   descripcionMarca: {
@@ -196,7 +203,7 @@ const styles = {
     margin: 0,
     fontSize: '0.88rem',
     fontWeight: '800',
-    color: '#0f172a'
+    color: '#0f2a4a'
   },
   subtituloSeccion: {
     margin: 0,
@@ -233,7 +240,7 @@ const styles = {
   nombreCanal: {
     display: 'block',
     fontSize: '0.82rem',
-    color: '#1e293b'
+    color: '#0f2a4a'
   },
   detalleCanal: {
     display: 'block',
@@ -243,10 +250,24 @@ const styles = {
   },
   btnEscribir: {
     backgroundColor: '#f0fdf4',
-    color: '#16a34a',
+    color: '#00b050',
     border: '1px solid #bbf7d0',
     borderRadius: '8px',
-    padding: '6px 10px',
+    padding: '7px 12px',
+    fontSize: '0.74rem',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    flexShrink: 0
+  },
+  btnContactarMail: {
+    backgroundColor: '#f0f4f8',
+    color: '#0f2a4a',
+    border: '1px solid #cbd5e1',
+    borderRadius: '8px',
+    padding: '7px 12px',
     fontSize: '0.74rem',
     fontWeight: 'bold',
     cursor: 'pointer',
