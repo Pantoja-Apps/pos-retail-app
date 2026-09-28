@@ -8,10 +8,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: [
-        'pwa-splash-logo-512.png',
-        'pwa-splash-logo-192.png',
-        'pwa-launcher-maskable-512.png',
-        'pwa-launcher-maskable-192.png',
+        'pwa-unified-192.png',
+        'pwa-unified-512.png',
+        'logo.svg',
         'favicon.ico'
       ],
       manifestFilename: 'manifest.json',
@@ -29,26 +28,20 @@ export default defineConfig({
         orientation: 'portrait',
         icons: [
           {
-            src: '/pwa-splash-logo-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any'
-          },
-          {
-            src: '/pwa-splash-logo-192.png',
+            src: '/pwa-unified-192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: '/pwa-launcher-maskable-512.png',
+            src: '/pwa-unified-512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'maskable'
+            purpose: 'any'
           },
           {
-            src: '/pwa-launcher-maskable-192.png',
-            sizes: '192x192',
+            src: '/pwa-unified-512.png',
+            sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable'
           }

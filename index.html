@@ -5,65 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#ffffff" />
     <meta name="description" content="Facilito POS - Sistema de Facturación y Control" />
-    <link rel="icon" type="image/png" href="/pwa-v3-launcher-192.png" />
-    <link rel="manifest" href="/manifest.json?v=5" />
+    <link rel="icon" type="image/png" href="/pwa-unified-192.png" />
+    <link rel="manifest" href="/manifest.json?v=6" />
     <title>Facilito POS Pro</title>
-    <style>
-      * {
-        box-sizing: border-box;
-      }
-      html, body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        background-color: #ffffff;
-        overflow: hidden;
-      }
-      #app-splash {
-        position: fixed;
-        inset: 0;
-        width: 100vw;
-        height: 100vh;
-        background-color: #ffffff;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justifyContent: center;
-        z-index: 999999999;
-        pointer-events: none;
-        transition: opacity 0.35s ease-out;
-      }
-      #app-splash img {
-        width: 82%;
-        max-width: 320px;
-        height: auto;
-        object-fit: contain;
-        display: block;
-        margin: 0 auto;
-      }
-    </style>
   </head>
-  <body>
-    <!-- Splash Screen Centrado en Ejes X e Y -->
-    <div id="app-splash">
-      <img src="/logo_splash_centrado.png" alt="Facilito POS" />
-    </div>
-
+  <body style="margin: 0; background-color: #ffffff;">
     <div id="root"></div>
-
-    <script>
-      // Ocultar suavemente cuando React monte el DOM
-      window.addEventListener('load', () => {
-        setTimeout(() => {
-          const splash = document.getElementById('app-splash');
-          if (splash) {
-            splash.style.opacity = '0';
-            setTimeout(() => splash.remove(), 350);
-          }
-        }, 300);
-      });
-    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
