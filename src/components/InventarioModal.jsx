@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ArrowLeft, Search, Plus, Edit2, Trash2, Camera, 
-  Package, DollarSign, Barcode, Check, X, Image as ImageIcon
+  Package, Check, X, Image as ImageIcon, Percent, Layers
 } from 'lucide-react';
 import { optimizarImagen } from '../utils/imageOptimizer';
 
@@ -15,6 +15,7 @@ export default function InventarioModal({
   alAbrirCamara
 }) {
   const [busqueda, setBusqueda] = useState('');
+  const [categoriaFiltro, setCategoriaFiltro] = useState('Todas');
   const [modalFormAbierto, setModalFormAbierto] = useState(false);
   const [productoEnEdicion, setProductoEnEdicion] = useState(null);
 
@@ -23,6 +24,7 @@ export default function InventarioModal({
   const [nombre, setNombre] = useState('');
   const [costoUSD, setCostoUSD] = useState('');
   const [precioUSD, setPrecioUSD] = useState('');
+  const [margenGanancia, setMargenGanancia] = useState('30');
   const [stock, setStock] = useState('');
   const [categoria, setCategoria] = useState('Víveres');
   const [esPesado, setEsPesado] = useState(false);
@@ -32,12 +34,44 @@ export default function InventarioModal({
   const [imagen, setImagen] = useState('');
   const [procesandoFoto, setProcesandoFoto] = useState(false);
 
+  // Categorías automáticas
+  const categoriasDisponibles = ['Todas', ...new Set(productos.map(p => p.categoria || 'General'))];
+
+  // Cálculo de Margen % y Precio
+  const manejarCambioCosto = (costoVal) => {
+    setCostoUSD(costoVal);
+    const c = parseFloat(costoVal) || 0;
+    const m = parseFloat(margenGanancia) || 0;
+    if (c > 0 && m > 0) {
+      setPrecioUSD((c * (1 + m / 100)).toFixed(2));
+    }
+  };
+
+  const manejarCambioMargen = (margenVal) => {
+    setMargenGanancia(margenVal);
+    const c = parseFloat(costoUSD) || 0;
+    const m = parseFloat(margenVal) || 0;
+    if (c > 0 && m > 0) {
+      setPrecioUSD((c * (1 + m / 100)).toFixed(2));
+    }
+  };
+
+  const manejarCambioPrecio = (precioVal) => {
+    setPrecioUSD(precioVal);
+    const p = parseFloat(precioVal) || 0;
+    const c = parseFloat(costoUSD) || 0;
+    if (c > 0 && p >= c) {
+      setMargenGanancia((((p - c) / c) * 100).toFixed(1));
+    }
+  };
+
   const abrirCreacion = () => {
     setProductoEnEdicion(null);
     setCodigo('');
     setNombre('');
     setCostoUSD('');
     setPrecioUSD('');
+    setMargenGanancia('30');
     setStock('');
     setCategoria('Víveres');
     setEsPesado(false);
@@ -52,9 +86,16 @@ export default function InventarioModal({
     setProductoEnEdicion(p);
     setCodigo(p.codigo || '');
     setNombre(p.nombre || '');
-    setCostoUSD(p.costoUSD ? String(p.costoUSD) : '');
-    setPrecioUSD(p.precioUSD ? String(p.precioUSD) : '');
-    setStock(p.stock ? String(p.stock) : '0');
+    const c = p.costoUSD ? String(p.costoUSD) : '';
+    const pr = p.precioUSD ? String(p.precioUSD) : '';
+    setCostoUSD(c);
+    setPrecioUSD(pr);
+    if (parseFloat(c) > 0 && parseFloat(pr) > 0) {
+      setMargenGanancia((((parseFloat(pr) - parseFloat(c)) / parseFloat(c)) * 100).toFixed(1));
+    } else {
+      setMargenGanancia('30');
+    }
+    setStock(p.stock !== undefined ? String(p.stock) : '0');
     setCategoria(p.categoria || 'Víveres');
     setEsPesado(Boolean(p.esPesado));
     setAplicaMayor(Boolean(p.aplicaPrecioMayor));
@@ -70,7 +111,7 @@ export default function InventarioModal({
 
     setProcesandoFoto(true);
     try {
-      const base64Mini = await optimizarImagen(file, 280, 0.75);
+      const base64Mini = await optimizarImagen(file, 260, 0.7);
       setImagen(base64Mini);
     } catch (err) {
       alert('Error procesando foto.');
@@ -79,12 +120,12 @@ export default function InventarioModal({
     }
   };
 
-  const guardar = (e) => {
+  const guardar = async (e) => {
     e.preventDefault();
     if (!nombre.trim()) return alert('El nombre es obligatorio');
 
     const nuevoProd = {
-      id: productoEnEdicion ? productoEnEdicion.id : 'prod_' + Date.now(),
+      id: productoEnEdicion ? String(productoEnEdicion.id) : 'prod_' + Date.now(),
       codigo: codigo.trim() || 'SIN_CODIGO_' + Date.now().toString().slice(-4),
       nombre: nombre.trim(),
       costoUSD: parseFloat(costoUSD) || 0,
@@ -95,17 +136,19 @@ export default function InventarioModal({
       aplicaPrecioMayor: Boolean(aplicaMayor),
       precioMayorUSD: parseFloat(precioMayorUSD) || 0,
       cantMinimaMayor: parseFloat(cantMinimaMayor) || 3,
-      imagen: imagen
+      imagen: imagen || (productoEnEdicion ? productoEnEdicion.imagen : '')
     };
 
-    alGuardarProducto(nuevoProd);
+    await alGuardarProducto(nuevoProd);
     setModalFormAbierto(false);
   };
 
-  const productosFiltrados = productos.filter(p => 
-    p.nombre?.toLowerCase().includes(busqueda.toLowerCase()) || 
-    p.codigo?.toLowerCase().includes(busqueda.toLowerCase())
-  );
+  const productosFiltrados = productos.filter(p => {
+    const coincideTexto = p.nombre?.toLowerCase().includes(busqueda.toLowerCase()) || 
+                          p.codigo?.toLowerCase().includes(busqueda.toLowerCase());
+    const coincideCategoria = categoriaFiltro === 'Todas' || p.categoria === categoriaFiltro;
+    return coincideTexto && coincideCategoria;
+  });
 
   return (
     <div style={styles.contenedor} translate="no">
@@ -143,6 +186,25 @@ export default function InventarioModal({
         </div>
       </div>
 
+      {/* Filtro por Categorías */}
+      <div style={styles.carruselCategorias}>
+        {categoriasDisponibles.map((cat, idx) => (
+          <button
+            key={idx}
+            type="button"
+            onClick={() => setCategoriaFiltro(cat)}
+            style={{
+              ...styles.chipCategoria,
+              backgroundColor: categoriaFiltro === cat ? '#0f2a4a' : '#fff',
+              color: categoriaFiltro === cat ? '#fff' : '#64748b',
+              borderColor: categoriaFiltro === cat ? '#0f2a4a' : '#cbd5e1'
+            }}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
       {/* Lista de Productos */}
       <main style={styles.cuerpo}>
         {productosFiltrados.length === 0 ? (
@@ -169,12 +231,17 @@ export default function InventarioModal({
                       {p.esPesado && <span style={styles.badgeBalanza}>KG</span>}
                     </div>
                     <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '1px' }}>
-                      Cód: {p.codigo} · Stock: <strong>{p.stock}</strong>
+                      Cód: {p.codigo} · Stock: <strong>{p.stock}</strong> · {p.categoria || 'General'}
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '3px' }}>
-                      <span style={styles.precioUSDTag}>${p.precioUSD.toFixed(2)}</span>
+                      <span style={styles.precioUSDTag}>${Number(p.precioUSD).toFixed(2)}</span>
                       <span style={styles.precioBSTag}>Bs. {precioBs}</span>
                     </div>
+                    {p.aplicaPrecioMayor && (
+                      <div style={{ fontSize: '0.64rem', color: '#0284c7', fontWeight: 'bold' }}>
+                        Mayor: ${Number(p.precioMayorUSD).toFixed(2)} (desde {p.cantMinimaMayor} unids)
+                      </div>
+                    )}
                   </div>
 
                   {esDueno && (
@@ -208,7 +275,6 @@ export default function InventarioModal({
             </div>
 
             <form onSubmit={guardar} style={styles.formProducto}>
-              {/* Foto del Producto con Compresión */}
               <div style={styles.filaFotoInput}>
                 <div style={styles.previewFotoProd}>
                   {imagen ? (
@@ -252,39 +318,46 @@ export default function InventarioModal({
 
               <div style={styles.campoForm}>
                 <label style={styles.labelForm}>Código de Barras</label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <input
-                    type="text"
-                    value={codigo}
-                    onChange={(e) => setCodigo(e.target.value)}
-                    style={styles.inputForm}
-                    placeholder="759100..."
-                  />
-                  <button type="button" onClick={() => { if (alAbrirCamara) alAbrirCamara((c) => setCodigo(c)); }} style={styles.btnScanCod}>
-                    <Barcode size={16} />
-                  </button>
-                </div>
+                <input
+                  type="text"
+                  value={codigo}
+                  onChange={(e) => setCodigo(e.target.value)}
+                  style={styles.inputForm}
+                  placeholder="759100..."
+                />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {/* Costo, Margen % y Precio de Venta */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
                 <div style={styles.campoForm}>
                   <label style={styles.labelForm}>Costo ($)</label>
                   <input
                     type="number"
                     step="any"
                     value={costoUSD}
-                    onChange={(e) => setCostoUSD(e.target.value)}
+                    onChange={(e) => manejarCambioCosto(e.target.value)}
                     style={styles.inputForm}
                     placeholder="0.90"
                   />
                 </div>
                 <div style={styles.campoForm}>
-                  <label style={styles.labelForm}>Precio Venta ($) *</label>
+                  <label style={styles.labelForm}>Margen %</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={margenGanancia}
+                    onChange={(e) => manejarCambioMargen(e.target.value)}
+                    style={styles.inputForm}
+                    placeholder="30"
+                  />
+                </div>
+                <div style={styles.campoForm}>
+                  <label style={styles.labelForm}>Precio ($) *</label>
                   <input
                     type="number"
                     step="any"
                     value={precioUSD}
-                    onChange={(e) => setPrecioUSD(e.target.value)}
+                    onChange={(e) => manejarCambioPrecio(e.target.value)}
                     style={{ ...styles.inputForm, fontWeight: 'bold', color: '#00b050' }}
                     placeholder="1.20"
                     required
@@ -316,7 +389,7 @@ export default function InventarioModal({
                 </div>
               </div>
 
-              {/* Checkbox Producto Pesado (Balanza) */}
+              {/* Casilla Granel */}
               <label style={styles.filaCheckbox}>
                 <input
                   type="checkbox"
@@ -327,6 +400,46 @@ export default function InventarioModal({
                   Es producto pesado / Granel (Pide KG o Gramos)
                 </span>
               </label>
+
+              {/* Casilla Precio al Mayor */}
+              <label style={styles.filaCheckbox}>
+                <input
+                  type="checkbox"
+                  checked={aplicaMayor}
+                  onChange={(e) => setAplicaMayor(e.target.checked)}
+                />
+                <span style={{ fontSize: '0.78rem', color: '#334155', fontWeight: '600' }}>
+                  Habilitar Precio al Mayor
+                </span>
+              </label>
+
+              {aplicaMayor && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', backgroundColor: '#f0fdf4', padding: '8px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                  <div style={styles.campoForm}>
+                    <label style={styles.labelForm}>Precio Mayor ($)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={precioMayorUSD}
+                      onChange={(e) => setPrecioMayorUSD(e.target.value)}
+                      style={styles.inputForm}
+                      placeholder="1.05"
+                      required={aplicaMayor}
+                    />
+                  </div>
+                  <div style={styles.campoForm}>
+                    <label style={styles.labelForm}>A partir de (Cant)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={cantMinimaMayor}
+                      onChange={(e) => setCantMinimaMayor(e.target.value)}
+                      style={styles.inputForm}
+                      placeholder="3"
+                    />
+                  </div>
+                </div>
+              )}
 
               <button type="submit" style={styles.btnGuardarProducto}>
                 <Check size={16} />
@@ -341,322 +454,43 @@ export default function InventarioModal({
 }
 
 const styles = {
-  contenedor: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100vh',
-    backgroundColor: '#f8fafc',
-    fontFamily: 'system-ui, -apple-system, sans-serif'
-  },
-  header: {
-    padding: '10px 14px',
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #e2e8f0',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexShrink: 0
-  },
-  btnAtras: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    border: '1px solid #e2e8f0',
-    backgroundColor: '#f8fafc',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    color: '#334155'
-  },
-  tituloHeader: {
-    margin: 0,
-    fontSize: '0.96rem',
-    fontWeight: '800',
-    color: '#0f2a4a'
-  },
-  btnNuevo: {
-    backgroundColor: '#00b050',
-    color: '#fff',
-    border: 'none',
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer'
-  },
-  barraBusqueda: {
-    padding: '8px 12px',
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #e2e8f0'
-  },
-  cajaInputBusqueda: {
-    display: 'flex',
-    alignItems: 'center',
-    backgroundColor: '#f1f5f9',
-    borderRadius: '10px',
-    padding: '6px 10px',
-    gap: '6px'
-  },
-  inputBusqueda: {
-    flex: 1,
-    border: 'none',
-    background: 'transparent',
-    outline: 'none',
-    fontSize: '0.84rem'
-  },
-  btnLimpiarBusqueda: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    color: '#94a3b8',
-    padding: 0
-  },
-  cuerpo: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '10px 12px'
-  },
-  vacioBox: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '60%',
-    color: '#94a3b8'
-  },
-  listaGrid: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px'
-  },
-  cardItem: {
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    padding: '10px 12px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-  },
-  itemImgBox: {
-    width: '46px',
-    height: '46px',
-    borderRadius: '10px',
-    backgroundColor: '#f8fafc',
-    border: '1px solid #cbd5e1',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    flexShrink: 0
-  },
-  itemImg: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover'
-  },
-  itemNombre: {
-    fontSize: '0.84rem',
-    color: '#0f2a4a',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis'
-  },
-  badgeBalanza: {
-    backgroundColor: '#eff6ff',
-    color: '#0052cc',
-    fontSize: '0.62rem',
-    fontWeight: 'bold',
-    padding: '1px 5px',
-    borderRadius: '4px',
-    border: '1px solid #bfdbfe'
-  },
-  precioUSDTag: {
-    fontSize: '0.86rem',
-    fontWeight: '800',
-    color: '#00b050'
-  },
-  precioBSTag: {
-    fontSize: '0.74rem',
-    fontWeight: 'bold',
-    color: '#64748b'
-  },
-  accionesItem: {
-    display: 'flex',
-    gap: '6px'
-  },
-  btnEditar: {
-    backgroundColor: '#f1f5f9',
-    border: '1px solid #cbd5e1',
-    borderRadius: '8px',
-    width: '28px',
-    height: '28px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    color: '#0f2a4a'
-  },
-  btnBorrar: {
-    backgroundColor: '#fee2e2',
-    border: '1px solid #fecaca',
-    borderRadius: '8px',
-    width: '28px',
-    height: '28px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    color: '#dc2626'
-  },
-  overlayModal: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.7)',
-    backdropFilter: 'blur(3px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '16px',
-    zIndex: 9999999
-  },
-  modalBox: {
-    backgroundColor: '#fff',
-    borderRadius: '20px',
-    maxWidth: '380px',
-    width: '100%',
-    maxHeight: '90vh',
-    overflowY: 'auto',
-    padding: '18px',
-    boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
-  },
-  headerModalForm: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '12px',
-    borderBottom: '1px solid #f1f5f9',
-    paddingBottom: '8px'
-  },
-  btnCerrarX: {
-    background: '#f1f5f9',
-    border: 'none',
-    borderRadius: '50%',
-    width: '28px',
-    height: '28px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    color: '#64748b'
-  },
-  formProducto: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px'
-  },
-  filaFotoInput: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    paddingBottom: '8px',
-    borderBottom: '1px dashed #e2e8f0'
-  },
-  previewFotoProd: {
-    width: '54px',
-    height: '54px',
-    borderRadius: '12px',
-    border: '1px solid #cbd5e1',
-    backgroundColor: '#f8fafc',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    flexShrink: 0
-  },
-  imgProdPreview: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover'
-  },
-  btnTomarFoto: {
-    backgroundColor: '#0f2a4a',
-    color: '#fff',
-    padding: '7px 10px',
-    borderRadius: '8px',
-    fontSize: '0.72rem',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '5px'
-  },
-  btnQuitarFoto: {
-    background: 'none',
-    border: 'none',
-    color: '#dc2626',
-    fontSize: '0.68rem',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    textAlign: 'left',
-    padding: 0
-  },
-  campoForm: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '3px'
-  },
-  labelForm: {
-    fontSize: '0.7rem',
-    fontWeight: '700',
-    color: '#475569'
-  },
-  inputForm: {
-    width: '100%',
-    boxSizing: 'border-box',
-    padding: '8px 10px',
-    borderRadius: '8px',
-    border: '1px solid #cbd5e1',
-    fontSize: '0.84rem',
-    outline: 'none',
-    backgroundColor: '#f8fafc'
-  },
-  btnScanCod: {
-    backgroundColor: '#f1f5f9',
-    border: '1px solid #cbd5e1',
-    borderRadius: '8px',
-    padding: '0 10px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  filaCheckbox: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    cursor: 'pointer',
-    marginTop: '2px'
-  },
-  btnGuardarProducto: {
-    marginTop: '6px',
-    width: '100%',
-    padding: '11px',
-    backgroundColor: '#00b050',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '10px',
-    fontSize: '0.86rem',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '6px'
-  }
+  contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f8fafc', fontFamily: 'system-ui, -apple-system, sans-serif' },
+  header: { padding: '10px 14px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
+  btnAtras: { width: '32px', height: '32px', borderRadius: '50%', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#334155' },
+  tituloHeader: { margin: 0, fontSize: '0.96rem', fontWeight: '800', color: '#0f2a4a' },
+  btnNuevo: { backgroundColor: '#00b050', color: '#fff', border: 'none', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  barraBusqueda: { padding: '8px 12px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0' },
+  cajaInputBusqueda: { display: 'flex', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: '10px', padding: '6px 10px', gap: '6px' },
+  inputBusqueda: { flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '0.84rem' },
+  btnLimpiarBusqueda: { background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 },
+  carruselCategorias: { display: 'flex', gap: '6px', overflowX: 'auto', padding: '8px 12px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
+  chipCategoria: { border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' },
+  cuerpo: { flex: 1, overflowY: 'auto', padding: '10px 12px' },
+  vacioBox: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', color: '#94a3b8' },
+  listaGrid: { display: 'flex', flexDirection: 'column', gap: '8px' },
+  cardItem: { backgroundColor: '#fff', borderRadius: '12px', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' },
+  itemImgBox: { width: '46px', height: '46px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
+  itemImg: { width: '100%', height: '100%', objectFit: 'cover' },
+  itemNombre: { fontSize: '0.84rem', color: '#0f2a4a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  badgeBalanza: { backgroundColor: '#eff6ff', color: '#0052cc', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 5px', borderRadius: '4px', border: '1px solid #bfdbfe' },
+  precioUSDTag: { fontSize: '0.86rem', fontWeight: '800', color: '#00b050' },
+  precioBSTag: { fontSize: '0.74rem', fontWeight: 'bold', color: '#64748b' },
+  accionesItem: { display: 'flex', gap: '6px' },
+  btnEditar: { backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#0f2a4a' },
+  btnBorrar: { backgroundColor: '#fee2e2', border: '1px solid #fecaca', borderRadius: '8px', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#dc2626' },
+  overlayModal: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 9999999 },
+  modalBox: { backgroundColor: '#fff', borderRadius: '20px', maxWidth: '380px', width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: '18px', boxShadow: '0 20px 40px rgba(0,0,0,0.3)' },
+  headerModalForm: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' },
+  btnCerrarX: { background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b' },
+  formProducto: { display: 'flex', flexDirection: 'column', gap: '10px' },
+  filaFotoInput: { display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '8px', borderBottom: '1px dashed #e2e8f0' },
+  previewFotoProd: { width: '54px', height: '54px', borderRadius: '12px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
+  imgProdPreview: { width: '100%', height: '100%', objectFit: 'cover' },
+  btnTomarFoto: { backgroundColor: '#0f2a4a', color: '#fff', padding: '7px 10px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' },
+  btnQuitarFoto: { background: 'none', border: 'none', color: '#dc2626', fontSize: '0.68rem', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left', padding: 0 },
+  campoForm: { display: 'flex', flexDirection: 'column', gap: '3px' },
+  labelForm: { fontSize: '0.7rem', fontWeight: '700', color: '#475569' },
+  inputForm: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.84rem', outline: 'none', backgroundColor: '#f8fafc' },
+  filaCheckbox: { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginTop: '2px' },
+  btnGuardarProducto: { marginTop: '6px', width: '100%', padding: '11px', backgroundColor: '#00b050', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.86rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }
 };

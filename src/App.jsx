@@ -22,8 +22,8 @@ import MenuLateral from './components/MenuLateral';
 import { dbService } from './services/dbService';
 
 const PRODUCTOS_INICIALES = [
-  { id: 1, codigo: '7591001000123', nombre: 'Harina PAN Blanca 1kg', costoUSD: 0.92, precioUSD: 1.10, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 0.98, cantMinimaMayor: 3, stock: 50, categoria: 'Víveres', imagen: '' },
-  { id: 2, codigo: '7591002000456', nombre: 'Arroz Blanco Primor 1kg', costoUSD: 1.05, precioUSD: 1.35, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 1.20, cantMinimaMayor: 3, stock: 40, categoria: 'Víveres', imagen: '' }
+  { id: 'prod_1', codigo: '7591001000123', nombre: 'Harina PAN Blanca 1kg', costoUSD: 0.92, precioUSD: 1.10, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 0.98, cantMinimaMayor: 3, stock: 50, categoria: 'Víveres', imagen: '' },
+  { id: 'prod_2', codigo: '7591002000456', nombre: 'Arroz Blanco Primor 1kg', costoUSD: 1.05, precioUSD: 1.35, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 1.20, cantMinimaMayor: 3, stock: 40, categoria: 'Víveres', imagen: '' }
 ];
 
 const CLIENTES_INICIALES = [
@@ -36,8 +36,7 @@ const CONFIG_INICIAL = {
   direccion: 'Caracas, Venezuela',
   telefono: '0412-0000000',
   mensajePie: '¡Gracias por su compra! Revise su mercancía',
-  logo: '',
-  margenDefault: 30
+  logo: ''
 };
 
 const CAJAS_DEFAULT = [
@@ -143,10 +142,12 @@ export default function App() {
   const [tasaCambio, setTasaCambio] = useState(855.66);
   const [carrito, setCarrito] = useState([]);
   const [busquedaInput, setBusquedaInput] = useState('');
+  const [sugerencias, setSugerencias] = useState([]);
   
   const [modalCobroAbierto, setModalCobroAbierto] = useState(false);
   const [ticketModalData, setTicketModalData] = useState(null);
   const [camaraAbierta, setCamaraAbierta] = useState(false);
+  const [productoParaPesar, setProductoParaPesar] = useState(null);
 
   useEffect(() => { try { localStorage.setItem('pos_cuenta_dueno', JSON.stringify(cuentaMaster)); } catch (e) {} }, [cuentaMaster]);
   useEffect(() => { try { localStorage.setItem('pos_cajas_lista', JSON.stringify(cajas)); } catch (e) {} }, [cajas]);
@@ -166,19 +167,16 @@ export default function App() {
 
     const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId;
     if (negId) {
-      // 1. Sincronizar cajeros
       const cajerosSupabase = await dbService.getCajeros(negId);
       if (Array.isArray(cajerosSupabase) && cajerosSupabase.length > 0) {
         setCajeros(cajerosSupabase.map(c => ({ id: c.id, nombre: c.nombre, pin: c.pin || '' })));
       }
 
-      // 2. Sincronizar productos con sus fotos
       const prodsCloud = await dbService.getProductos(negId);
       if (Array.isArray(prodsCloud) && prodsCloud.length > 0) {
         setProductos(prodsCloud);
       }
 
-      // 3. Sincronizar datos y logo del negocio desde Supabase
       const negData = await dbService.getNegocio(negId);
       if (negData) {
         setConfigEmpresa(prev => ({
@@ -210,6 +208,112 @@ export default function App() {
     const intervalo = setInterval(sincronizarSilenciosamente, 4000);
     return () => clearInterval(intervalo);
   }, [cuentaMaster, usuarioActivo]);
+
+  // Manejo de búsqueda y sugerencias automáticas
+  const manejarCambioBusqueda = (texto) => {
+    setBusquedaInput(texto);
+    if (!texto.trim()) {
+      setSugerencias([]);
+      return;
+    }
+    const q = texto.toLowerCase().trim();
+    const coincidencias = productos.filter(p => 
+      p.nombre?.toLowerCase().includes(q) || 
+      p.codigo?.toLowerCase().includes(q)
+    ).slice(0, 6);
+    setSugerencias(coincidencias);
+  };
+
+  // Agregar al carrito con soporte para Mayor y Granel
+  const agregarAlCarrito = (producto, cantidadManual = null) => {
+    if (producto.esPesado && cantidadManual === null) {
+      setProductoParaPesar(producto);
+      setSugerencias([]);
+      setBusquedaInput('');
+      return;
+    }
+
+    const cantidadAAgregar = cantidadManual !== null ? cantidadManual : 1;
+
+    setCarrito(prev => {
+      const idx = prev.findIndex(item => String(item.id) === String(producto.id));
+      if (idx >= 0) {
+        const itemExistente = prev[idx];
+        const nuevaCant = parseFloat((itemExistente.cantidad + cantidadAAgregar).toFixed(3));
+        
+        let precioAplicado = producto.precioUSD;
+        if (producto.aplicaPrecioMayor && nuevaCant >= (producto.cantMinimaMayor || 3)) {
+          precioAplicado = producto.precioMayorUSD;
+        }
+
+        const copia = [...prev];
+        copia[idx] = {
+          ...itemExistente,
+          cantidad: nuevaCant,
+          precioUSD: precioAplicado
+        };
+        return copia;
+      } else {
+        let precioAplicado = producto.precioUSD;
+        if (producto.aplicaPrecioMayor && cantidadAAgregar >= (producto.cantMinimaMayor || 3)) {
+          precioAplicado = producto.precioMayorUSD;
+        }
+
+        return [...prev, {
+          ...producto,
+          cantidad: cantidadAAgregar,
+          precioUSD: precioAplicado
+        }];
+      }
+    });
+
+    setBusquedaInput('');
+    setSugerencias([]);
+  };
+
+  const ejecutarBusquedaDirecta = (e) => {
+    if (e) e.preventDefault();
+    if (!busquedaInput.trim()) return;
+
+    const q = busquedaInput.trim().toLowerCase();
+    const coincidenciaExacta = productos.find(p => p.codigo?.toLowerCase() === q);
+    if (coincidenciaExacta) {
+      agregarAlCarrito(coincidenciaExacta);
+      return;
+    }
+
+    const coincidenciaNombre = productos.find(p => p.nombre?.toLowerCase().includes(q));
+    if (coincidenciaNombre) {
+      agregarAlCarrito(coincidenciaNombre);
+      return;
+    }
+
+    alert('Producto no encontrado');
+  };
+
+  const actualizarCantidadItem = (index, delta) => {
+    setCarrito(prev => {
+      const item = prev[index];
+      const nuevaCant = parseFloat((item.cantidad + delta).toFixed(3));
+      if (nuevaCant <= 0) {
+        return prev.filter((_, i) => i !== index);
+      }
+
+      let precioAplicado = item.esPesado ? item.precioUSD : (item.precioUSD);
+      const prodOriginal = productos.find(p => String(p.id) === String(item.id));
+      if (prodOriginal && prodOriginal.aplicaPrecioMayor) {
+        if (nuevaCant >= (prodOriginal.cantMinimaMayor || 3)) {
+          precioAplicado = prodOriginal.precioMayorUSD;
+        } else {
+          precioAplicado = prodOriginal.precioUSD;
+        }
+      }
+
+      const copia = [...prev];
+      copia[index] = { ...item, cantidad: nuevaCant, precioUSD: precioAplicado };
+      return copia;
+    });
+  };
 
   const registrarDueno = async (datos) => {
     const negocioId = 'neg_' + Date.now().toString(36);
@@ -533,17 +637,56 @@ export default function App() {
             </div>
           </section>
 
+          {/* BUSCADOR DE PRODUCTOS CON SUGERENCIAS DESPLEGABLES */}
           <section style={styles.seccionBuscador}>
-            <div style={{ position: 'relative', flex: 1, display: 'flex', gap: '6px' }}>
+            <form onSubmit={ejecutarBusquedaDirecta} style={{ position: 'relative', flex: 1, display: 'flex', gap: '6px' }}>
               <input
                 type="text"
                 placeholder="Escribe nombre o código..."
                 value={busquedaInput}
-                onChange={(e) => setBusquedaInput(e.target.value)}
+                onChange={(e) => manejarCambioBusqueda(e.target.value)}
                 style={styles.inputBuscador}
               />
-              <button type="button" style={styles.btnAgregar}>Ingresar</button>
-            </div>
+              {busquedaInput && (
+                <button type="button" onClick={() => { setBusquedaInput(''); setSugerencias([]); }} style={styles.btnLimpiarInput}>
+                  <X size={14} />
+                </button>
+              )}
+              <button type="submit" style={styles.btnAgregar}>Ingresar</button>
+
+              {/* LISTA FLOTANTE DE SUGERENCIAS */}
+              {sugerencias.length > 0 && (
+                <div style={styles.desplegableSugerencias}>
+                  {sugerencias.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => agregarAlCarrito(item)}
+                      style={styles.itemSugerencia}
+                    >
+                      <div style={styles.miniImgSugerencia}>
+                        {item.imagen ? (
+                          <img src={item.imagen} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <Barcode size={16} color="#94a3b8" />
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#0f2a4a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.nombre}
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                          Cód: {item.codigo} · Stock: {item.stock}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <strong style={{ fontSize: '0.84rem', color: '#00b050' }}>${item.precioUSD.toFixed(2)}</strong>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </form>
+
             <button type="button" onClick={() => setCamaraAbierta(true)} style={styles.btnCamara}>
               <Camera size={17} />
               <span style={{ fontSize: '0.78rem', marginLeft: '4px', fontWeight: 'bold' }}>Cámara</span>
@@ -562,12 +705,14 @@ export default function App() {
                   <div key={idx} style={styles.itemFila}>
                     <div style={{ flex: 2 }}>
                       <strong style={{ fontSize: '0.88rem', color: '#1e293b' }}>{item.nombre}</strong>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>${item.precioUSD} c/u</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                        ${item.precioUSD} c/u {item.esPesado && '· KG'}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button type="button" style={styles.btnCant}><Minus size={13}/></button>
+                      <button type="button" onClick={() => actualizarCantidadItem(idx, item.esPesado ? -0.1 : -1)} style={styles.btnCant}><Minus size={13}/></button>
                       <span style={{ fontWeight: 'bold', fontSize: '0.88rem' }}>{item.cantidad}</span>
-                      <button type="button" style={styles.btnCant}><Plus size={13}/></button>
+                      <button type="button" onClick={() => actualizarCantidadItem(idx, item.esPesado ? 0.1 : 1)} style={styles.btnCant}><Plus size={13}/></button>
                     </div>
                     <div style={{ textAlign: 'right', flex: 1 }}>
                       <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>${(item.precioUSD * item.cantidad).toFixed(2)}</strong>
@@ -601,6 +746,19 @@ export default function App() {
         </>
       )}
 
+      {/* MODAL PARA PESAR / GRANEL */}
+      {productoParaPesar && (
+        <ModalPeso
+          producto={productoParaPesar}
+          tasaCambio={tasaCambio}
+          alConfirmar={(cant) => {
+            agregarAlCarrito(productoParaPesar, cant);
+            setProductoParaPesar(null);
+          }}
+          alCerrar={() => setProductoParaPesar(null)}
+        />
+      )}
+
       <ModalCobro 
         abierto={modalCobroAbierto}
         alCerrar={() => setModalCobroAbierto(false)}
@@ -616,7 +774,15 @@ export default function App() {
 
       <ScannerModal 
         abierto={camaraAbierta}
-        alDetectar={() => setCamaraAbierta(false)}
+        alDetectar={(codigoLeido) => {
+          const prod = productos.find(p => p.codigo === codigoLeido);
+          if (prod) {
+            agregarAlCarrito(prod);
+          } else {
+            alert(`Código ${codigoLeido} no registrado.`);
+          }
+          setCamaraAbierta(false);
+        }}
         alCerrar={() => setCamaraAbierta(false)}
       />
     </div>
@@ -639,10 +805,14 @@ const styles = {
   barraClienteMostrador: { backgroundColor: '#fff', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', gap: '8px', flexShrink: 0 },
   inputDocMostrador: { border: 'none', background: '#f1f5f9', padding: '6px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', width: '130px', outline: 'none' },
   nombreClienteTag: { fontSize: '0.78rem', color: '#334155', fontWeight: '600', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' },
-  seccionBuscador: { padding: '6px 12px', backgroundColor: '#fff', display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
-  inputBuscador: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.85rem', outline: 'none' },
-  btnAgregar: { padding: '0 10px', backgroundColor: '#0f2a4a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.78rem', cursor: 'pointer' },
-  btnCamara: { display: 'flex', alignItems: 'center', backgroundColor: '#00b050', color: '#fff', border: 'none', borderRadius: '8px', padding: '0 9px', cursor: 'pointer' },
+  seccionBuscador: { padding: '6px 12px', backgroundColor: '#fff', display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', flexShrink: 0, position: 'relative' },
+  inputBuscador: { width: '100%', boxSizing: 'border-box', padding: '8px 28px 8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.85rem', outline: 'none' },
+  btnLimpiarInput: { position: 'absolute', right: '86px', top: '10px', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 },
+  desplegableSugerencias: { position: 'absolute', top: '42px', left: 0, right: '70px', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', zIndex: 99999, maxHeight: '250px', overflowY: 'auto' },
+  itemSugerencia: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' },
+  miniImgSugerencia: { width: '32px', height: '32px', borderRadius: '6px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
+  btnAgregar: { padding: '0 12px', backgroundColor: '#0f2a4a', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.78rem', cursor: 'pointer', flexShrink: 0 },
+  btnCamara: { display: 'flex', alignItems: 'center', backgroundColor: '#00b050', color: '#fff', border: 'none', borderRadius: '8px', padding: '0 9px', cursor: 'pointer', flexShrink: 0 },
   seccionCarrito: { flex: 1, overflowY: 'auto', padding: '8px 12px' },
   carritoVacio: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8' },
   listaItems: { display: 'flex', flexDirection: 'column', gap: '6px' },
