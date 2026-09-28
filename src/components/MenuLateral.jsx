@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   X, Store, Package, BookOpen, Wallet, History, 
   TrendingUp, Settings, HelpCircle, LogOut, ShieldCheck, UserCheck, 
-  ChevronRight, Cloud, CloudOff
+  ChevronRight, Wifi, WifiOff
 } from 'lucide-react';
 
 export default function MenuLateral({ 
@@ -47,13 +47,25 @@ export default function MenuLateral({
         {/* Cabecera del Perfil / Negocio */}
         <div style={styles.perfilHeader}>
           <div style={styles.perfilInfo}>
-            {configEmpresa.logo ? (
-              <img src={configEmpresa.logo} alt="Logo" style={styles.avatarLogo} />
-            ) : (
-              <div style={styles.avatarDefault}>
-                <Store size={22} color="#0052cc" />
-              </div>
-            )}
+            <div style={{ position: 'relative' }}>
+              {configEmpresa.logo ? (
+                <img src={configEmpresa.logo} alt="Logo" style={styles.avatarLogo} />
+              ) : (
+                <div style={styles.avatarDefault}>
+                  <Store size={22} color="#0052cc" />
+                </div>
+              )}
+              {/* Punto indicador de conexión sobre el logo */}
+              <span 
+                style={{
+                  ...styles.dotStatus,
+                  backgroundColor: onlineBackend ? '#16a34a' : '#d97706',
+                  boxShadow: onlineBackend ? '0 0 0 2px #fff, 0 0 6px rgba(22, 163, 74, 0.6)' : '0 0 0 2px #fff'
+                }} 
+                title={onlineBackend ? 'Online' : 'Offline'}
+              />
+            </div>
+
             <div style={{ minWidth: 0, flex: 1 }}>
               <h3 style={styles.nombreNegocio}>{configEmpresa.nombre || 'Mi Negocio'}</h3>
               <div style={styles.filaBadges}>
@@ -61,16 +73,9 @@ export default function MenuLateral({
                   {esDueno ? <ShieldCheck size={11} /> : <UserCheck size={11} />}
                   <span>{usuarioActivo?.nombre || 'Usuario'}</span>
                 </span>
-                
                 {cajaActiva?.nombre && (
                   <span style={styles.badgeCaja}>{cajaActiva.nombre}</span>
                 )}
-
-                {/* Estado de sincronización en la nube */}
-                <span style={onlineBackend ? styles.badgeOnlineMenu : styles.badgeOfflineMenu}>
-                  {onlineBackend ? <Cloud size={10} /> : <CloudOff size={10} />}
-                  <span>{onlineBackend ? 'Nube' : 'Local'}</span>
-                </span>
               </div>
             </div>
           </div>
@@ -108,7 +113,7 @@ export default function MenuLateral({
           })}
         </nav>
 
-        {/* Pie del Menú con Cerrar Turno */}
+        {/* Pie del Menú con Estado de Conexión Profesional */}
         <div style={styles.footerDrawer}>
           <button
             type="button"
@@ -121,7 +126,24 @@ export default function MenuLateral({
             <LogOut size={16} color="#dc2626" />
             <span>Cerrar Turno / Salir</span>
           </button>
-          <div style={styles.textoVersion}>Facilito POS Pro · Pantoja Apps</div>
+
+          {/* Estado de Red / Servidor en el pie */}
+          <div style={styles.cajaEstadoConexion}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span 
+                style={{
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  backgroundColor: onlineBackend ? '#16a34a' : '#d97706'
+                }} 
+              />
+              <span style={{ fontSize: '0.68rem', fontWeight: '700', color: onlineBackend ? '#166534' : '#92400e' }}>
+                {onlineBackend ? 'Servidor Online' : 'Modo Offline'}
+              </span>
+            </div>
+            <div style={styles.textoVersion}>Facilito POS Pro · Pantoja Apps</div>
+          </div>
         </div>
       </div>
     </div>
@@ -171,7 +193,8 @@ const styles = {
     borderRadius: '12px',
     objectFit: 'contain',
     border: '1px solid #e2e8f0',
-    backgroundColor: '#fff'
+    backgroundColor: '#fff',
+    display: 'block'
   },
   avatarDefault: {
     width: '42px',
@@ -182,6 +205,14 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     border: '1px solid #bfdbfe'
+  },
+  dotStatus: {
+    position: 'absolute',
+    bottom: '-2px',
+    right: '-2px',
+    width: '10px',
+    height: '10px',
+    borderRadius: '50%'
   },
   nombreNegocio: {
     margin: 0,
@@ -196,7 +227,7 @@ const styles = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: '4px',
-    marginTop: '5px'
+    marginTop: '4px'
   },
   badgeRolDueno: {
     display: 'inline-flex',
@@ -225,28 +256,6 @@ const styles = {
     fontWeight: '600',
     backgroundColor: '#f1f5f9',
     color: '#475569',
-    padding: '2px 6px',
-    borderRadius: '4px'
-  },
-  badgeOnlineMenu: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '3px',
-    fontSize: '0.62rem',
-    fontWeight: 'bold',
-    backgroundColor: '#dcfce7',
-    color: '#15803d',
-    padding: '2px 6px',
-    borderRadius: '4px'
-  },
-  badgeOfflineMenu: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '3px',
-    fontSize: '0.62rem',
-    fontWeight: 'bold',
-    backgroundColor: '#fef3c7',
-    color: '#b45309',
     padding: '2px 6px',
     borderRadius: '4px'
   },
@@ -303,9 +312,12 @@ const styles = {
     marginTop: '1px'
   },
   footerDrawer: {
-    padding: '12px 14px 20px 14px',
+    padding: '12px 14px 18px 14px',
     borderTop: '1px solid #e2e8f0',
-    backgroundColor: '#fff'
+    backgroundColor: '#fff',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px'
   },
   btnCerrarTurno: {
     width: '100%',
@@ -322,10 +334,15 @@ const styles = {
     gap: '8px',
     cursor: 'pointer'
   },
+  cajaEstadoConexion: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '6px 4px 0 4px',
+    borderTop: '1px dashed #e2e8f0'
+  },
   textoVersion: {
-    textAlign: 'center',
     fontSize: '0.66rem',
-    color: '#94a3b8',
-    marginTop: '8px'
+    color: '#94a3b8'
   }
 };
