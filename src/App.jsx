@@ -205,27 +205,28 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(`pos_historico_${currentNegocioId}`, JSON.stringify(historicoVentasGlobal)); } catch (e) {} }, [historicoVentasGlobal, currentNegocioId]);
   useEffect(() => { try { localStorage.setItem('pos_espera_final', JSON.stringify(cuentasEnEspera)); } catch (e) {} }, [cuentasEnEspera]);
 
-  // CARGAR PRODUCTOS DEL NEGOCIO DESDE SUPABASE
+  // MAPEO ROBUSTO QUE LEE TANTO camelCase COMO snake_case
+  const formatearProducto = (p) => ({
+    id: String(p.id),
+    codigo: String(p.codigo || p.codigo_barras || '').trim(),
+    nombre: p.nombre || '',
+    precioUSD: Number(p.precioUSD ?? p.precio_usd ?? p.precio ?? 0),
+    costoUSD: Number(p.costoUSD ?? p.costo_usd ?? p.costo ?? 0),
+    stock: Number(p.stock ?? 0),
+    categoria: p.categoria || p.departamento || 'General',
+    esPesado: Boolean(p.esPesado ?? p.es_pesado),
+    aplicaPrecioMayor: Boolean(p.aplicaPrecioMayor ?? p.aplica_precio_mayor),
+    precioMayorUSD: Number(p.precioMayorUSD ?? p.precio_mayor_usd ?? 0),
+    cantMinimaMayor: Number(p.cantMinimaMayor ?? p.cant_minima_mayor ?? 3)
+  });
+
   const cargarCatalogoSupabase = async () => {
     try {
       const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
       const data = await dbService.getProductos(negId);
       if (Array.isArray(data) && data.length > 0) {
-        setProductos(data.map(p => ({
-          id: p.id,
-          codigo: p.codigo_barras || '',
-          nombre: p.nombre,
-          precioUSD: Number(p.precio_usd || 0),
-          costoUSD: Number(p.costo_usd || 0),
-          stock: Number(p.stock || 0),
-          categoria: p.departamento || 'General',
-          esPesado: Boolean(p.es_pesado),
-          aplicaPrecioMayor: Boolean(p.aplica_precio_mayor),
-          precioMayorUSD: Number(p.precio_mayor_usd || 0),
-          cantMinimaMayor: Number(p.cant_minima_mayor || 3)
-        })));
+        setProductos(data.map(formatearProducto));
       } else {
-        // Cargar víveres iniciales para el negocio nuevo
         const productosACrear = PRODUCTOS_INICIALES.map(item => ({
           id: `${negId}_${item.id}`,
           negocio_id: negId,
@@ -234,7 +235,11 @@ export default function App() {
           precio_usd: item.precioUSD,
           costo_usd: item.costoUSD,
           stock: item.stock,
-          departamento: item.categoria
+          departamento: item.categoria,
+          es_pesado: Boolean(item.esPesado),
+          aplica_precio_mayor: Boolean(item.aplicaPrecioMayor),
+          precio_mayor_usd: item.precioMayorUSD,
+          cant_minima_mayor: item.cantMinimaMayor
         }));
 
         for (const item of productosACrear) {
@@ -243,15 +248,7 @@ export default function App() {
 
         const dataRecargada = await dbService.getProductos(negId);
         if (dataRecargada?.length) {
-          setProductos(dataRecargada.map(p => ({
-            id: p.id,
-            codigo: p.codigo_barras || '',
-            nombre: p.nombre,
-            precioUSD: Number(p.precio_usd || 0),
-            costoUSD: Number(p.costo_usd || 0),
-            stock: Number(p.stock || 0),
-            categoria: p.departamento || 'General'
-          })));
+          setProductos(dataRecargada.map(formatearProducto));
         }
       }
     } catch (err) {
@@ -308,7 +305,6 @@ export default function App() {
     };
   }, [cuentaMaster, usuarioActivo, configEmpresa]);
 
-  // REGISTRO 100% DIRECTO EN SUPABASE
   const registrarDueno = async (datos) => {
     const negocioId = 'neg_' + Date.now().toString(36);
     const duenoId = 'usr_' + Date.now();
@@ -319,7 +315,6 @@ export default function App() {
       duenoId
     };
 
-    // 1. Guardar negocio y dueño en Supabase
     const res = await dbService.registrarNegocio(
       { id: negocioId, nombre: datos.nombreNegocio },
       { id: duenoId, nombre: datos.nombreDueno, correo: datos.correo }
@@ -329,7 +324,6 @@ export default function App() {
       console.warn('Advertencia Supabase:', res.error);
     }
 
-    // 2. Establecer sesión local inmediata
     setCuentaMaster(cuentaFinal);
     setConfigEmpresa(prev => ({ ...prev, nombre: datos.nombreNegocio }));
     setUsuarioActivo({ rol: 'dueno', nombre: datos.nombreDueno, negocioId });
@@ -341,7 +335,6 @@ export default function App() {
   const iniciarSesionDueno = async (correo, password) => {
     const correoLimpio = correo.toLowerCase().trim();
 
-    // 1. Si coincide con la cuenta dueña guardada localmente
     if (cuentaMaster && (cuentaMaster.correo?.toLowerCase() === correoLimpio)) {
       if (cuentaMaster.password === password) {
         setUsuarioActivo({ rol: 'dueno', nombre: cuentaMaster.nombreDueno || 'Dueño', negocioId: cuentaMaster.negocioId || 'neg_local' });
@@ -350,7 +343,6 @@ export default function App() {
       }
     }
 
-    // 2. Si no hay cuenta previa o es un equipo nuevo, registrar negocio automáticamente
     if (password.length >= 6) {
       await registrarDueno({
         nombreNegocio: 'Mi Bodega POS',
@@ -445,7 +437,7 @@ export default function App() {
     if (Array.isArray(datos.cajas)) setCajas(datos.cajas);
     if (Array.isArray(datos.cajeros)) setCajeros(datos.cajeros);
     if (datos.configEmpresa) setConfigEmpresa(datos.configEmpresa);
-    if (Array.isArray(datos.productos)) setProductos(datos.productos);
+    if (Array.isArray(datos.productos)) setProductos(datos.productos.map(formatearProducto));
     if (Array.isArray(datos.clientes)) setClientes(datos.clientes);
     if (Array.isArray(datos.transacciones)) setTransacciones(datos.transacciones);
     if (Array.isArray(datos.gastosCaja)) setGastosCaja(datos.gastosCaja);
@@ -674,7 +666,6 @@ export default function App() {
     setTransacciones(prev => [ventaCompleta, ...prev]);
     setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
 
-    // Registrar en Supabase con negocio_id
     dbService.registrarVenta({
       id: String(idTicket),
       negocio_id: negId,
@@ -727,7 +718,6 @@ export default function App() {
       });
     }
 
-    // Descontar inventario vinculado al negocio
     setProductos(prods => prods.map(p => {
       const itemsVendidos = carrito.filter(it => String(it.id) === String(p.id));
       if (itemsVendidos.length > 0) {
@@ -743,7 +733,11 @@ export default function App() {
           precio_usd: p.precioUSD,
           costo_usd: p.costoUSD || 0,
           stock: prodActualizado.stock,
-          departamento: p.categoria || 'General'
+          departamento: p.categoria || 'General',
+          es_pesado: Boolean(p.esPesado),
+          aplica_precio_mayor: Boolean(p.aplicaPrecioMayor),
+          precio_mayor_usd: p.precioMayorUSD,
+          cant_minima_mayor: p.cantMinimaMayor
         }).catch(console.error);
 
         return prodActualizado;
@@ -777,7 +771,11 @@ export default function App() {
           precio_usd: p.precioUSD,
           costo_usd: p.costoUSD || 0,
           stock: nuevoStock,
-          departamento: p.categoria || 'General'
+          departamento: p.categoria || 'General',
+          es_pesado: Boolean(p.esPesado),
+          aplica_precio_mayor: Boolean(p.aplicaPrecioMayor),
+          precio_mayor_usd: p.precioMayorUSD,
+          cant_minima_mayor: p.cantMinimaMayor
         }).catch(console.error);
 
         return prodActualizado;
@@ -975,7 +973,7 @@ export default function App() {
           alGuardarProducto={(p) => {
             const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
             const prodId = p.id ? String(p.id) : `${negId}_${Date.now()}`;
-            const productoFormateado = { ...p, id: prodId };
+            const productoFormateado = formatearProducto({ ...p, id: prodId });
 
             setProductos(prev => {
               const idx = prev.findIndex(item => String(item.id) === String(prodId));
@@ -986,12 +984,16 @@ export default function App() {
             dbService.upsertProducto({
               id: prodId,
               negocio_id: negId,
-              nombre: p.nombre,
-              codigo_barras: p.codigo,
-              precio_usd: p.precioUSD,
-              costo_usd: p.costoUSD || 0,
-              stock: p.stock || 0,
-              departamento: p.categoria || 'General'
+              nombre: productoFormateado.nombre,
+              codigo_barras: productoFormateado.codigo,
+              precio_usd: productoFormateado.precioUSD,
+              costo_usd: productoFormateado.costoUSD,
+              stock: productoFormateado.stock,
+              departamento: productoFormateado.categoria,
+              es_pesado: productoFormateado.esPesado,
+              aplica_precio_mayor: productoFormateado.aplicaPrecioMayor,
+              precio_mayor_usd: productoFormateado.precioMayorUSD,
+              cant_minima_mayor: productoFormateado.cantMinimaMayor
             }).catch(console.error);
           }}
           alEliminarProducto={(id) => {
@@ -1050,7 +1052,6 @@ export default function App() {
         <>
           <header style={styles.topHeader}>
             {esDueno ? (
-              /* CABECERA DUEÑO (2 FILAS) */
               <>
                 <div style={styles.headerFila1}>
                   <div style={styles.marcaContainer}>
@@ -1113,7 +1114,6 @@ export default function App() {
                 </div>
               </>
             ) : (
-              /* CABECERA CAJERO / TERMINALES SECUNDARIAS */
               <>
                 <div style={styles.headerFila1}>
                   <div style={styles.marcaContainer}>
