@@ -11,7 +11,7 @@ export default function LoginModal({
   alIniciarSesionDueno,
   alIniciarSesionCajero
 }) {
-  const [pestana, setPestana] = useState('cajeros'); // 'cajeros' | 'dueno'
+  const [pestana, setPestana] = useState('cajeros');
   const [esRegistro, setEsRegistro] = useState(!cuentaMaster);
 
   // Estados dueño
@@ -83,15 +83,18 @@ export default function LoginModal({
 
   return (
     <div style={styles.contenedor} translate="no">
-      {/* Orbes de fondo animados */}
       <div style={styles.orbe1} />
       <div style={styles.orbe2} />
       <div style={styles.orbe3} />
 
       <div style={styles.tarjetaLogin}>
-        {/* Cabecera con la imagen oficial real */}
+        {/* Cabecera con el Isotipo Grande Oficial */}
         <div style={styles.logoHeader}>
-          <img src="/logo_oficial_real.png" alt="Facilito POS Logo" style={styles.logoImg} />
+          <img src="/isotipo_login.png" alt="Facilito POS Logo" style={styles.logoImg} />
+          <div style={styles.tituloMarca}>
+            <span style={{ color: '#0f2a4a' }}>FACILITO </span>
+            <span style={{ color: '#00b050' }}>POS</span>
+          </div>
           <span style={styles.tagline}>Sistema Integral de Facturación</span>
         </div>
 
@@ -342,7 +345,7 @@ const styles = {
     borderRadius: '28px',
     maxWidth: '380px',
     width: '100%',
-    padding: '28px 22px 24px 22px',
+    padding: '24px 22px 24px 22px',
     boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)',
     display: 'flex',
     flexDirection: 'column',
@@ -352,18 +355,24 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    marginBottom: '18px'
+    marginBottom: '16px'
   },
   logoImg: {
-    height: '56px',
-    maxWidth: '230px',
+    height: '82px',
+    width: '82px',
     objectFit: 'contain'
+  },
+  tituloMarca: {
+    fontSize: '1.2rem',
+    fontWeight: '900',
+    letterSpacing: '1px',
+    marginTop: '6px'
   },
   tagline: {
     fontSize: '0.72rem',
     color: '#64748b',
-    fontWeight: '700',
-    marginTop: '6px'
+    fontWeight: '600',
+    marginTop: '2px'
   },
   tabsContainer: {
     display: 'flex',
