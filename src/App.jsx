@@ -228,7 +228,6 @@ export default function App() {
     return () => clearInterval(intervalo);
   }, [cuentaMaster, usuarioActivo]);
 
-  // Manejo de Cédula en el Mostrador con Búsqueda Automática
   const manejarDocMostrador = (docValor) => {
     const docLimpio = docValor.replace(/[^0-9]/g, '');
     const encontrado = clientes.find(c => (c.doc || '').replace(/[^0-9]/g, '') === docLimpio);
@@ -389,7 +388,7 @@ export default function App() {
     });
   };
 
-  // FINALIZAR VENTA COMPLETA (Efectivo, Digital o Fiar / Crédito)
+  // FINALIZAR VENTA COMPLETA
   const alFinalizarVenta = async (datosVenta) => {
     const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
     const ahora = new Date();
@@ -407,14 +406,15 @@ export default function App() {
       totalUSD: parseFloat(datosVenta.totalUSD || totalUSD),
       totalBS: parseFloat(datosVenta.totalBS || totalBS),
       tasaCambio: parseFloat(tasaCambio),
-      metodoPago: datosVenta.metodoPago || 'efectivo_usd',
+      metodoPago: datosVenta.metodoPago || 'Efectivo ($)',
+      pagos: datosVenta.pagos || [],
       esCredito: Boolean(datosVenta.esCredito),
       montoRecibido: parseFloat(datosVenta.montoRecibido || datosVenta.totalUSD || totalUSD),
       vueltoUSD: parseFloat(datosVenta.vueltoUSD || 0),
       vueltoBS: parseFloat(datosVenta.vueltoBS || 0)
     };
 
-    // 1. Si es a crédito / fiado, asentar saldo deudor en el cliente
+    // Si es crédito, registrar deuda
     if (ventaCompleta.esCredito) {
       setClientes(prev => {
         const docBuscado = (ventaCompleta.cliente?.doc || '').replace(/[^0-9]/g, '');
@@ -451,11 +451,11 @@ export default function App() {
       });
     }
 
-    // 2. Guardar en el turno actual (Caja e Historial local)
+    // Guardar en Transacciones
     setTransacciones(prev => [ventaCompleta, ...prev]);
     setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
 
-    // 3. Descontar Stock
+    // Descontar Stock
     setProductos(prevProds => {
       const copia = [...prevProds];
       ventaCompleta.items.forEach(itemVendido => {
@@ -471,7 +471,7 @@ export default function App() {
       return copia;
     });
 
-    // 4. Persistir en Supabase
+    // Subir a Supabase
     await dbService.registrarVenta({
       id: ventaCompleta.id,
       negocio_id: negId,
@@ -486,11 +486,53 @@ export default function App() {
       detalles: ventaCompleta
     });
 
-    // 5. Limpiar caja y desplegar ticket
     setCarrito([]);
     setClienteActual(CLIENTES_INICIALES[0]);
     setModalCobroAbierto(false);
     setTicketModalData(ventaCompleta);
+  };
+
+  // ANULAR FACTURA CON REVERSIÓN DE STOCK
+  const anularFactura = async (ventaId, motivo) => {
+    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+    const ventaTarget = transacciones.find(t => String(t.id) === String(ventaId));
+
+    if (!ventaTarget) return;
+
+    // Reponer Stock de los artículos
+    if (Array.isArray(ventaTarget.items)) {
+      setProductos(prevProds => {
+        const copia = [...prevProds];
+        ventaTarget.items.forEach(it => {
+          const idx = copia.findIndex(p => String(p.id) === String(it.id));
+          if (idx >= 0) {
+            const stockActual = parseFloat(copia[idx].stock) || 0;
+            const cantRevertir = parseFloat(it.cantidad) || 1;
+            copia[idx] = { ...copia[idx], stock: parseFloat((stockActual + cantRevertir).toFixed(3)) };
+            dbService.upsertProducto(copia[idx], negId);
+          }
+        });
+        return copia;
+      });
+    }
+
+    // Marcar como anulada en Transacciones
+    const actualizarLista = (prev) => prev.map(t => {
+      if (String(t.id) === String(ventaId)) {
+        return {
+          ...t,
+          anulada: true,
+          motivoAnulacion: motivo,
+          fechaAnulacion: new Date().toISOString()
+        };
+      }
+      return t;
+    });
+
+    setTransacciones(actualizarLista);
+    setHistoricoVentasGlobal(actualizarLista);
+
+    alert(`Factura #${ventaTarget.correlativo || ventaTarget.id} anulada con éxito y stock reincorporado.`);
   };
 
   const registrarDueno = async (datos) => {
@@ -709,7 +751,6 @@ export default function App() {
         />
       )}
 
-      {/* LIBRETA DE CRÉDITOS Y FIADOS */}
       {vistaActual === 'creditos' && (
         <CreditosModal 
           clientes={clientes}
@@ -739,7 +780,6 @@ export default function App() {
         />
       )}
 
-      {/* CAJA Y CUADRE Z */}
       {vistaActual === 'caja' && (
         <CajaModal 
           transacciones={transacciones}
@@ -759,6 +799,7 @@ export default function App() {
         />
       )}
 
+      {/* HISTORIAL GLOBAL DE VENTAS CON ANULACIONES */}
       {vistaActual === 'historial' && (
         <HistorialModal 
           transacciones={transacciones}
@@ -766,11 +807,7 @@ export default function App() {
           usuarioActivo={usuarioActivo}
           cajaActiva={cajaActiva}
           alVerTicket={(t) => setTicketModalData(t)}
-          alAnularVenta={(id) => {
-            if (confirm('¿Anular esta venta?')) {
-              setTransacciones(prev => prev.filter(t => t.id !== id));
-            }
-          }}
+          alAnularVenta={anularFactura}
           alVolver={() => setVistaActual('pos')}
         />
       )}
@@ -829,7 +866,6 @@ export default function App() {
             </div>
           </header>
 
-          {/* BARRA DE CLIENTE CON AUTOCOMPLETADO AL ESCRIBIR CÉDULA */}
           <section style={styles.barraClienteMostrador}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
               <User color="#0f2a4a" size={16} style={{ flexShrink: 0 }} />
@@ -852,7 +888,7 @@ export default function App() {
             </div>
           </section>
 
-          {/* BUSCADOR CON SUGERENCIAS FLOTANTES */}
+          {/* BUSCADOR CON SUGERENCIAS */}
           <section style={styles.seccionBuscador}>
             <form onSubmit={ejecutarBusquedaDirecta} style={{ position: 'relative', flex: 1, display: 'flex', gap: '6px' }}>
               <input
