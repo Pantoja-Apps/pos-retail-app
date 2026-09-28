@@ -14,9 +14,9 @@ export default function TicketModal({
   const totalBS = Number(datos.totalBS || (totalUSD * tasa));
   const items = datos.items || [];
   const cliente = datos.cliente || { nombre: 'Consumidor Final', doc: 'V-00000000', telefono: '' };
-  const pagos = datos.pagos || [];
+  const pagos = Array.isArray(datos.pagos) ? datos.pagos : [];
 
-  // Discriminación matemática estricta: Pesados vs Unidades
+  // Discriminación matemática: Artículos por unidad vs Peso a granel
   let totalPiezasUnid = 0;
   let totalPesoKg = 0;
   let hayUnidades = false;
@@ -52,16 +52,18 @@ export default function TicketModal({
     if (cliente.telefono) texto += `TELÉFONO: ${cliente.telefono}\n`;
     texto += `--------------------------------\n`;
 
-    // Desglose de formas de pago en WhatsApp
     if (datos.esCredito) {
       texto += `FORMA DE PAGO: CUENTA POR COBRAR (A CRÉDITO)\n`;
     } else if (pagos.length > 1) {
       texto += `FORMAS DE PAGO (PAGO MIXTO):\n`;
       pagos.forEach(p => {
-        if (p.moneda === 'BS' || p.metodo.includes('Bs') || p.metodo.includes('Móvil') || p.metodo.includes('Punto')) {
-          texto += `  • ${p.metodo}: Bs. ${Number(p.montoBS || p.monto).toFixed(2)}\n`;
+        const esBolivares = (p.moneda === 'BS') || /bs|móvil|punto/i.test(p.metodo || '');
+        if (esBolivares) {
+          const montoBsReal = Number(p.montoBS || p.monto || (p.montoUSD ? p.montoUSD * tasa : 0));
+          texto += `  • ${p.metodo}: Bs. ${montoBsReal.toFixed(2)}\n`;
         } else {
-          texto += `  • ${p.metodo}: $${Number(p.montoUSD || p.monto).toFixed(2)}\n`;
+          const montoUsdReal = Number(p.montoUSD || p.monto || 0);
+          texto += `  • ${p.metodo}: $${montoUsdReal.toFixed(2)}\n`;
         }
       });
     } else {
@@ -84,7 +86,7 @@ export default function TicketModal({
     texto += `*TOTAL FACTURA: $${totalUSD.toFixed(2)}*\n`;
     texto += `*TOTAL EN BS: Bs. ${totalBS.toFixed(2)}*\n`;
     texto += `Tasa Oficial BCV: Bs. ${tasa.toFixed(2)}\n`;
-    if (datos.vueltoUSD > 0) {
+    if (datos.vueltoUSD > 0.005) {
       texto += `Vuelto: $${datos.vueltoUSD.toFixed(2)} (Bs. ${datos.vueltoBS.toFixed(2)})\n`;
     }
     texto += `--------------------------------\n`;
@@ -104,7 +106,7 @@ export default function TicketModal({
   return (
     <div style={styles.overlay} translate="no">
       <div style={styles.modalBox}>
-        {/* Barra superior */}
+        {/* Barra superior de control */}
         <div style={styles.barraHeader}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <CheckCircle2 color="#00b050" size={17} />
@@ -132,10 +134,10 @@ export default function TicketModal({
 
           <div style={styles.separadorLineas} />
 
-          {/* Datos del Comprobante Alineados y Ordenados */}
+          {/* Datos del Comprobante */}
           <div style={styles.bloqueMetadatos}>
             <div style={styles.filaMeta}>
-              <span style={styles.metaLabel}>COMPROBANTE:</span>
+              <span style={styles.metaLabel}>CONTROL:</span>
               <strong style={styles.metaValor}>#{datos.correlativo || datos.id}</strong>
             </div>
 
@@ -166,8 +168,8 @@ export default function TicketModal({
               </div>
             )}
 
-            {/* Desglose Limpio de Forma de Pago */}
-            <div style={{ marginTop: '4px', paddingTop: '4px', borderTop: '1px dashed #e2e8f0' }}>
+            {/* SECCIÓN FORMAS DE PAGO ORDENADA */}
+            <div style={styles.bloqueFormaPago}>
               <div style={styles.filaMeta}>
                 <span style={styles.metaLabel}>FORMA DE PAGO:</span>
                 <strong style={styles.metaValor}>
@@ -175,18 +177,19 @@ export default function TicketModal({
                 </strong>
               </div>
 
-              {/* Renglones discriminados si es pago mixto */}
+              {/* Si es Pago Mixto, desglose renglón a renglón con la moneda que corresponde */}
               {pagos.length > 1 && !datos.esCredito && (
-                <div style={styles.cajaDesglosePagoMixto}>
+                <div style={styles.cajaDesgloseMixto}>
                   {pagos.map((p, i) => {
-                    const esBs = p.moneda === 'BS' || p.metodo.includes('Bs') || p.metodo.includes('Móvil') || p.metodo.includes('Punto');
-                    const montoMostrar = esBs 
-                      ? `Bs. ${Number(p.montoBS || p.monto).toFixed(2)}`
-                      : `$${Number(p.montoUSD || p.monto).toFixed(2)}`;
+                    const esBolivares = (p.moneda === 'BS') || /bs|móvil|punto/i.test(p.metodo || '');
+                    const montoTexto = esBolivares 
+                      ? `Bs. ${Number(p.montoBS || p.monto || (p.montoUSD ? p.montoUSD * tasa : 0)).toFixed(2)}`
+                      : `$${Number(p.montoUSD || p.monto || 0).toFixed(2)}`;
+
                     return (
-                      <div key={i} style={styles.itemFilaPagoMixto}>
-                        <span>• {p.metodo}:</span>
-                        <strong>{montoMostrar}</strong>
+                      <div key={i} style={styles.itemFilaPago}>
+                        <span style={styles.metodoItemNombre}>• {p.metodo}</span>
+                        <strong style={styles.metodoItemMonto}>{montoTexto}</strong>
                       </div>
                     );
                   })}
@@ -199,7 +202,7 @@ export default function TicketModal({
 
           {/* Cabecera de la Tabla */}
           <div style={styles.tablaHeader}>
-            <span style={{ flex: 1.7 }}>DESCRIPCIÓN</span>
+            <span style={{ flex: 1.7, textAlign: 'left' }}>DESCRIPCIÓN</span>
             <span style={{ width: '56px', textAlign: 'center' }}>CANT/PESO</span>
             <span style={{ width: '46px', textAlign: 'right' }}>P.U</span>
             <span style={{ width: '54px', textAlign: 'right' }}>TOTAL</span>
@@ -405,21 +408,33 @@ const styles = {
     color: '#0f2a4a',
     textAlign: 'right'
   },
-  cajaDesglosePagoMixto: {
+  bloqueFormaPago: {
+    marginTop: '4px',
+    paddingTop: '4px',
+    borderTop: '1px dashed #e2e8f0'
+  },
+  cajaDesgloseMixto: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '2px',
+    gap: '3px',
     backgroundColor: '#f8fafc',
-    padding: '5px 8px',
-    borderRadius: '6px',
-    marginTop: '3px',
+    padding: '6px 8px',
+    borderRadius: '8px',
+    marginTop: '4px',
     border: '1px solid #f1f5f9'
   },
-  itemFilaPagoMixto: {
+  itemFilaPago: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '0.66rem',
-    color: '#334155'
+    alignItems: 'center',
+    fontSize: '0.66rem'
+  },
+  metodoItemNombre: {
+    color: '#475569',
+    fontWeight: '600'
+  },
+  metodoItemMonto: {
+    color: '#0f2a4a'
   },
   tablaHeader: {
     display: 'flex',
