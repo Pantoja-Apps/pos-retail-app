@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ArrowLeft, Store, Save, Users, Smartphone, Image as ImageIcon, 
-  Trash2, UploadCloud, CheckCircle2, Shield
+  Trash2, UploadCloud, CheckCircle2, RefreshCw
 } from 'lucide-react';
 import { optimizarImagen } from '../utils/imageOptimizer';
 
@@ -21,6 +21,7 @@ export default function ConfiguracionModal({
   const [mensajePie, setMensajePie] = useState(config.mensajePie || '');
   const [logo, setLogo] = useState(config.logo || '');
   const [procesandoLogo, setProcesandoLogo] = useState(false);
+  const [guardando, setGuardando] = useState(false);
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
 
   const manejarSubidaLogo = async (e) => {
@@ -29,18 +30,20 @@ export default function ConfiguracionModal({
 
     setProcesandoLogo(true);
     try {
-      // Comprime a 250px maximo para el encabezado y ticket
-      const base64Optimo = await optimizarImagen(file, 250, 0.8);
+      // Comprime el logo a 240px máximo para optimizar carga y almacenamiento
+      const base64Optimo = await optimizarImagen(file, 240, 0.75);
       setLogo(base64Optimo);
     } catch (err) {
-      alert('Error optimizando el logo.');
+      alert('Error al procesar la imagen del logo.');
     } finally {
       setProcesandoLogo(false);
     }
   };
 
-  const guardar = (e) => {
+  const guardar = async (e) => {
     e.preventDefault();
+    setGuardando(true);
+
     const configNueva = {
       ...config,
       nombre: nombre.trim() || 'Mi Negocio',
@@ -51,9 +54,15 @@ export default function ConfiguracionModal({
       logo: logo
     };
 
-    alGuardarConfig(configNueva);
-    setGuardadoExitoso(true);
-    setTimeout(() => setGuardadoExitoso(false), 2000);
+    try {
+      await alGuardarConfig(configNueva);
+      setGuardadoExitoso(true);
+      setTimeout(() => setGuardadoExitoso(false), 2000);
+    } catch (err) {
+      alert('Ocurrió un error al guardar en la nube.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -67,7 +76,7 @@ export default function ConfiguracionModal({
       </header>
 
       <main style={styles.cuerpo}>
-        {/* Accesos Rápidos a Módulos de Personal y Cajas */}
+        {/* Accesos a Personal y Cajas */}
         <div style={styles.seccionAccesos}>
           <button type="button" onClick={alAbrirUsuarios} style={styles.btnAcceso}>
             <div style={styles.iconoBoxAcceso}>
@@ -90,7 +99,7 @@ export default function ConfiguracionModal({
           </button>
         </div>
 
-        {/* Formulario de Datos del Negocio y Logo */}
+        {/* Formulario Datos de Negocio */}
         <form onSubmit={guardar} style={styles.cardForm}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
             <Store size={18} color="#0f2a4a" />
@@ -99,7 +108,7 @@ export default function ConfiguracionModal({
             </h3>
           </div>
 
-          {/* Subida y Preview del Logo del Negocio */}
+          {/* Subida y Previsualización del Logo */}
           <div style={styles.cajaLogoSeccion}>
             <label style={styles.label}>Logo del Negocio (Ticket y Pantalla)</label>
             <div style={styles.filaLogoPreview}>
@@ -137,7 +146,7 @@ export default function ConfiguracionModal({
               </div>
             </div>
             <small style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '4px' }}>
-              Se comprime automáticamente para guardarse seguro sin conexión y en tickets.
+              Se guarda automáticamente en tu base de datos y tickets.
             </small>
           </div>
 
@@ -197,11 +206,16 @@ export default function ConfiguracionModal({
             />
           </div>
 
-          <button type="submit" style={styles.btnGuardar}>
-            {guardadoExitoso ? (
+          <button type="submit" disabled={guardando} style={styles.btnGuardar}>
+            {guardando ? (
+              <>
+                <RefreshCw size={16} className="spin" />
+                <span>Guardando en la nube...</span>
+              </>
+            ) : guardadoExitoso ? (
               <>
                 <CheckCircle2 size={16} />
-                <span>¡Cambios Guardados!</span>
+                <span>¡Cambios Guardados con Éxito!</span>
               </>
             ) : (
               <>

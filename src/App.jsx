@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
-  RefreshCw, User, Search, PauseCircle, PlayCircle, Store, Tag, Percent,
-  AlertOctagon, PhoneCall, CheckCircle2, Sparkles
+  RefreshCw, User, Search, PauseCircle, Store
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -24,10 +23,7 @@ import { dbService } from './services/dbService';
 
 const PRODUCTOS_INICIALES = [
   { id: 1, codigo: '7591001000123', nombre: 'Harina PAN Blanca 1kg', costoUSD: 0.92, precioUSD: 1.10, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 0.98, cantMinimaMayor: 3, stock: 50, categoria: 'Víveres', imagen: '' },
-  { id: 2, codigo: '7591002000456', nombre: 'Arroz Blanco Primor 1kg', costoUSD: 1.05, precioUSD: 1.35, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 1.20, cantMinimaMayor: 3, stock: 40, categoria: 'Víveres', imagen: '' },
-  { id: 3, codigo: 'Q-001', nombre: 'Queso Blanco Llanero', costoUSD: 3.50, precioUSD: 4.80, esPesado: true, aplicaPrecioMayor: true, precioMayorUSD: 4.30, cantMinimaMayor: 3, stock: 15.5, categoria: 'Charcutería', imagen: '' },
-  { id: 4, codigo: 'J-002', nombre: 'Jamón de Pierna Plumrose', costoUSD: 6.20, precioUSD: 8.50, esPesado: true, aplicaPrecioMayor: false, precioMayorUSD: 0, cantMinimaMayor: 0, stock: 8.2, categoria: 'Charcutería', imagen: '' },
-  { id: 5, codigo: 'V-003', nombre: 'Tomate Manzano', costoUSD: 1.10, precioUSD: 1.60, esPesado: true, aplicaPrecioMayor: false, precioMayorUSD: 0, cantMinimaMayor: 0, stock: 25.0, categoria: 'Verduras y Frutas', imagen: '' }
+  { id: 2, codigo: '7591002000456', nombre: 'Arroz Blanco Primor 1kg', costoUSD: 1.05, precioUSD: 1.35, esPesado: false, aplicaPrecioMayor: true, precioMayorUSD: 1.20, cantMinimaMayor: 3, stock: 40, categoria: 'Víveres', imagen: '' }
 ];
 
 const CLIENTES_INICIALES = [
@@ -176,10 +172,24 @@ export default function App() {
         setCajeros(cajerosSupabase.map(c => ({ id: c.id, nombre: c.nombre, pin: c.pin || '' })));
       }
 
-      // 2. Sincronizar productos e imágenes
+      // 2. Sincronizar productos con sus fotos
       const prodsCloud = await dbService.getProductos(negId);
       if (Array.isArray(prodsCloud) && prodsCloud.length > 0) {
         setProductos(prodsCloud);
+      }
+
+      // 3. Sincronizar datos y logo del negocio desde Supabase
+      const negData = await dbService.getNegocio(negId);
+      if (negData) {
+        setConfigEmpresa(prev => ({
+          ...prev,
+          nombre: negData.nombre || prev.nombre,
+          rif: negData.rif || prev.rif,
+          direccion: negData.direccion || prev.direccion,
+          telefono: negData.telefono || prev.telefono,
+          logo: negData.logo || prev.logo,
+          mensajePie: negData.mensaje_pie || prev.mensajePie
+        }));
       }
     }
   };
@@ -238,7 +248,8 @@ export default function App() {
         rif: res.negocio.rif || prev.rif,
         direccion: res.negocio.direccion || prev.direccion,
         telefono: res.negocio.telefono || prev.telefono,
-        logo: res.negocio.logo_url || prev.logo
+        logo: res.negocio.logo || prev.logo,
+        mensajePie: res.negocio.mensaje_pie || prev.mensajePie
       }));
       setUsuarioActivo({ rol: 'dueno', nombre: res.usuario.nombre, negocioId: res.negocio.id });
       if (!cajaActiva) setCajaActiva(CAJAS_DEFAULT[0]);

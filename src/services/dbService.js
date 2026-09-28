@@ -79,6 +79,22 @@ export const dbService = {
     }
   },
 
+  async getNegocio(negocioId) {
+    if (!supabase || !negocioId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('negocios')
+        .select('*')
+        .eq('id', negocioId)
+        .maybeSingle();
+
+      if (error || !data) return null;
+      return data;
+    } catch (e) {
+      return null;
+    }
+  },
+
   async actualizarConfigNegocio(negocioId, datosConfig) {
     if (!supabase || !negocioId) return false;
     try {
