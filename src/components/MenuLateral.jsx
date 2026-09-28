@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   Store, ShoppingCart, Package, Users, Receipt, Clock, 
   BarChart3, Settings, HelpCircle, LogOut, X, Wifi, WifiOff,
-  Truck
+  Truck, ShieldCheck, ChevronRight
 } from 'lucide-react';
 
 export default function MenuLateral({
@@ -20,85 +20,136 @@ export default function MenuLateral({
 
   const esDueno = usuarioActivo?.rol === 'dueno';
 
-  const items = [
-    { id: 'pos', label: 'Caja Mostrador (Ventas)', icon: ShoppingCart },
-    { id: 'caja', label: 'Arqueo y Cierre de Caja (Z)', icon: Clock },
-    { id: 'inventario', label: 'Inventario y Catálogo', icon: Package },
-    { id: 'creditos', label: `Créditos y Clientes ${clientesMorosos > 0 ? `(${clientesMorosos})` : ''}`, icon: Users, badge: clientesMorosos > 0 },
-    { id: 'proveedores', label: 'Proveedores y Compras', icon: Truck, soloDueno: true },
-    { id: 'historial', label: 'Historial de Ventas', icon: Receipt },
-    { id: 'metricas', label: 'Rendimiento y Finanzas', icon: BarChart3, soloDueno: true },
-    { id: 'configuracion', label: 'Configuración del Negocio', icon: Settings, soloDueno: true },
-    { id: 'soporte', label: 'Soporte y Asistencia', icon: HelpCircle }
+  const secciones = [
+    {
+      titulo: 'OPERACIONES DE CAJA',
+      items: [
+        { id: 'pos', label: 'Caja Mostrador (Ventas)', icon: ShoppingCart, color: '#00b050' },
+        { id: 'caja', label: 'Arqueo y Cierre de Caja (Z)', icon: Clock, color: '#0052cc' }
+      ]
+    },
+    {
+      titulo: 'GESTIÓN COMERCIAL',
+      items: [
+        { id: 'inventario', label: 'Inventario y Catálogo', icon: Package, color: '#d97706' },
+        { id: 'proveedores', label: 'Compras y Proveedores', icon: Truck, color: '#7c3aed', soloDueno: true },
+        { 
+          id: 'creditos', 
+          label: 'Créditos y Clientes', 
+          icon: Users, 
+          color: '#0284c7',
+          badge: clientesMorosos > 0 ? `${clientesMorosos} por cobrar` : null 
+        }
+      ]
+    },
+    {
+      titulo: 'AUDITORÍA Y FINANZAS',
+      items: [
+        { id: 'historial', label: 'Historial de Ventas', icon: Receipt, color: '#475569' },
+        { id: 'metricas', label: 'Rendimiento y Ganancias', icon: BarChart3, color: '#059669', soloDueno: true },
+        { id: 'configuracion', label: 'Configuración del Sistema', icon: Settings, color: '#334155', soloDueno: true },
+        { id: 'soporte', label: 'Soporte y Asistencia', icon: HelpCircle, color: '#64748b' }
+      ]
+    }
   ];
 
   return (
     <div style={styles.overlay} onClick={alCerrar} translate="no">
       <div style={styles.drawer} onClick={(e) => e.stopPropagation()}>
-        {/* Cabecera */}
-        <div style={styles.header}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {configEmpresa?.logo ? (
-              <img src={configEmpresa.logo} alt="Logo" style={styles.logoImg} />
-            ) : (
-              <div style={styles.avatarBox}><Store size={20} color="#0f2a4a" /></div>
-            )}
-            <div style={{ minWidth: 0 }}>
-              <h3 style={styles.nombreNegocio}>{configEmpresa?.nombre || 'Mi Bodega POS'}</h3>
-              <span style={styles.usuarioTag}>
-                {usuarioActivo?.nombre} ({esDueno ? 'Dueño' : cajaActiva?.nombre || 'Cajero'})
-              </span>
-            </div>
-          </div>
-          <button type="button" onClick={alCerrar} style={styles.btnCerrar}>
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Estado de Red */}
-        <div style={styles.badgeConexion}>
-          {onlineBackend ? (
-            <>
-              <Wifi size={13} color="#00b050" />
-              <span style={{ color: '#00b050', fontWeight: 'bold' }}>Sincronizado en la Nube</span>
-            </>
-          ) : (
-            <>
-              <WifiOff size={13} color="#f59e0b" />
-              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>Modo Local (Offline)</span>
-            </>
-          )}
-        </div>
-
-        {/* Lista de Opciones */}
-        <nav style={styles.listaNav}>
-          {items.map(it => {
-            if (it.soloDueno && !esDueno) return null;
-            const Icon = it.icon;
-            return (
-              <button
-                key={it.id}
-                type="button"
-                onClick={() => {
-                  alNavegar(it.id);
-                  alCerrar();
-                }}
-                style={styles.itemBtn}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <Icon size={18} color="#0f2a4a" />
-                  <span style={styles.itemTexto}>{it.label}</span>
+        {/* Cabecera Ejecutiva Azul Marino */}
+        <div style={styles.cabeceraHero}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {configEmpresa?.logo ? (
+                <img src={configEmpresa.logo} alt="Logo" style={styles.logoEmpresa} />
+              ) : (
+                <div style={styles.avatarComercio}>
+                  <Store size={22} color="#0f2a4a" />
                 </div>
-              </button>
+              )}
+              <div style={{ minWidth: 0 }}>
+                <h3 style={styles.nombreComercio}>{configEmpresa?.nombre || 'FACILITO POS'}</h3>
+                <div style={styles.badgeRol}>
+                  <ShieldCheck size={11} color="#00b050" />
+                  <span>{usuarioActivo?.nombre || 'Angel Pantoja'} ({esDueno ? 'Dueño' : cajaActiva?.nombre || 'Cajero'})</span>
+                </div>
+              </div>
+            </div>
+            <button type="button" onClick={alCerrar} style={styles.btnCerrarDrawer}>
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Estado de Sincronización en la Nube */}
+          <div style={styles.tarjetaStatusNube}>
+            {onlineBackend ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={styles.puntoVerdePulsante} />
+                <Wifi size={12} color="#4ade80" />
+                <span style={{ fontSize: '0.68rem', color: '#f0fdf4', fontWeight: 'bold' }}>
+                  Conectado y Sincronizado en la Nube
+                </span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <WifiOff size={12} color="#fcd34d" />
+                <span style={{ fontSize: '0.68rem', color: '#fef3c7', fontWeight: 'bold' }}>
+                  Modo Local Operativo (Offline)
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Lista de Navegación Segmentada */}
+        <nav style={styles.cuerpoNav}>
+          {secciones.map((sec, sIdx) => {
+            const itemsVisibles = sec.items.filter(it => !it.soloDueno || esDueno);
+            if (itemsVisibles.length === 0) return null;
+
+            return (
+              <div key={sIdx} style={styles.seccionGrupo}>
+                <span style={styles.tituloSeccionTag}>{sec.titulo}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  {itemsVisibles.map(it => {
+                    const Icon = it.icon;
+                    return (
+                      <button
+                        key={it.id}
+                        type="button"
+                        onClick={() => {
+                          alNavegar(it.id);
+                          alCerrar();
+                        }}
+                        style={styles.itemNavegacionBtn}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ ...styles.cajaIcono, backgroundColor: `${it.color}15`, color: it.color }}>
+                            <Icon size={16} />
+                          </div>
+                          <span style={styles.labelItem}>{it.label}</span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {it.badge && (
+                            <span style={styles.badgeNotificacion}>{it.badge}</span>
+                          )}
+                          <ChevronRight size={14} color="#94a3b8" />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </nav>
 
-        {/* Pie: Cerrar Sesión */}
-        <div style={styles.footer}>
-          <button type="button" onClick={() => { alCerrarSesion(); alCerrar(); }} style={styles.btnSalir}>
+        {/* Pie con Botón de Salir */}
+        <div style={styles.footerDrawer}>
+          <button type="button" onClick={() => { alCerrarSesion(); alCerrar(); }} style={styles.btnCerrarSesion}>
             <LogOut size={16} />
-            <span>Cerrar Sesión</span>
+            <span>Cerrar Turno y Salir</span>
           </button>
         </div>
       </div>
@@ -110,58 +161,67 @@ const styles = {
   overlay: {
     position: 'fixed',
     inset: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    backdropFilter: 'blur(3px)',
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backdropFilter: 'blur(4px)',
     zIndex: 999999999,
-    display: 'flex'
+    display: 'flex',
+    animation: 'fadeIn 0.2s ease-out'
   },
   drawer: {
-    width: '280px',
+    width: '300px',
     height: '100%',
     backgroundColor: '#ffffff',
     display: 'flex',
     flexDirection: 'column',
-    boxShadow: '4px 0 25px rgba(0,0,0,0.15)'
+    boxShadow: '8px 0 35px rgba(0,0,0,0.2)',
+    boxSizing: 'border-box'
   },
-  header: {
-    padding: '14px',
-    borderBottom: '1px solid #f1f5f9',
+  cabeceraHero: {
+    backgroundColor: '#0f2a4a',
+    padding: '16px 14px 14px 14px',
+    color: '#ffffff',
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center'
+    flexDirection: 'column',
+    gap: '10px',
+    flexShrink: 0
   },
-  logoImg: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '8px',
+  logoEmpresa: {
+    width: '42px',
+    height: '42px',
+    borderRadius: '10px',
     objectFit: 'contain',
-    border: '1px solid #cbd5e1'
+    backgroundColor: '#ffffff',
+    padding: '2px',
+    border: '1.5px solid rgba(255,255,255,0.2)'
   },
-  avatarBox: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '8px',
-    backgroundColor: '#eff6ff',
+  avatarComercio: {
+    width: '42px',
+    height: '42px',
+    borderRadius: '10px',
+    backgroundColor: '#ffffff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    border: '1px solid #bfdbfe'
+    flexShrink: 0
   },
-  nombreNegocio: {
-    margin: 0,
-    fontSize: '0.88rem',
-    fontWeight: '800',
-    color: '#0f2a4a',
+  nombreComercio: {
+    margin: '0 0 2px 0',
+    fontSize: '0.94rem',
+    fontWeight: '900',
+    color: '#ffffff',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis'
   },
-  usuarioTag: {
-    fontSize: '0.68rem',
-    color: '#64748b'
+  badgeRol: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '0.66rem',
+    color: '#94a3b8'
   },
-  btnCerrar: {
-    background: '#f1f5f9',
+  btnCerrarDrawer: {
+    background: 'rgba(255,255,255,0.12)',
     border: 'none',
     borderRadius: '50%',
     width: '28px',
@@ -170,47 +230,84 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    color: '#64748b'
+    color: '#ffffff'
   },
-  badgeConexion: {
-    padding: '6px 14px',
-    backgroundColor: '#f8fafc',
-    borderBottom: '1px solid #e2e8f0',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '0.66rem'
-  },
-  listaNav: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '10px 8px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px'
-  },
-  itemBtn: {
+  tarjetaStatusNube: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: '8px',
+    padding: '6px 10px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '10px 12px',
+    border: '1px solid rgba(255,255,255,0.1)'
+  },
+  puntoVerdePulsante: {
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
+    backgroundColor: '#00b050',
+    boxShadow: '0 0 8px #00b050'
+  },
+  cuerpoNav: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '12px 10px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px'
+  },
+  seccionGrupo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px'
+  },
+  tituloSeccionTag: {
+    fontSize: '0.62rem',
+    fontWeight: '800',
+    color: '#94a3b8',
+    letterSpacing: '0.6px',
+    padding: '0 8px 3px 8px'
+  },
+  itemNavegacionBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '8px 10px',
     borderRadius: '10px',
     border: 'none',
     backgroundColor: 'transparent',
     cursor: 'pointer',
-    textAlign: 'left',
-    transition: 'background 0.15s'
+    textAlign: 'left'
   },
-  itemTexto: {
+  cajaIcono: {
+    width: '30px',
+    height: '30px',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0
+  },
+  labelItem: {
     fontSize: '0.8rem',
     fontWeight: '700',
-    color: '#334155'
+    color: '#1e293b'
   },
-  footer: {
+  badgeNotificacion: {
+    backgroundColor: '#fee2e2',
+    color: '#dc2626',
+    fontSize: '0.62rem',
+    fontWeight: 'bold',
+    padding: '1px 6px',
+    borderRadius: '6px',
+    border: '1px solid #fecaca'
+  },
+  footerDrawer: {
     padding: '12px 14px',
-    borderTop: '1px solid #f1f5f9'
+    borderTop: '1px solid #f1f5f9',
+    backgroundColor: '#ffffff'
   },
-  btnSalir: {
+  btnCerrarSesion: {
     width: '100%',
     padding: '10px',
     backgroundColor: '#fee2e2',
