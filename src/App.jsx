@@ -19,6 +19,7 @@ import LoginModal from './components/LoginModal';
 import UsuariosModal from './components/UsuariosModal';
 import TerminalesModal from './components/TerminalesModal';
 import ModalPeso from './components/ModalPeso';
+import SoporteModal from './components/SoporteModal';
 import { dbService } from './services/dbService';
 
 const PRODUCTOS_INICIALES = [
@@ -308,20 +309,12 @@ export default function App() {
     const negocioId = 'neg_' + Date.now().toString(36);
     const duenoId = 'usr_' + Date.now();
 
-    const cuentaFinal = {
-      ...datos,
-      negocioId,
-      duenoId
-    };
+    const cuentaFinal = { ...datos, negocioId, duenoId };
 
-    const res = await dbService.registrarNegocio(
+    await dbService.registrarNegocio(
       { id: negocioId, nombre: datos.nombreNegocio },
       { id: duenoId, nombre: datos.nombreDueno, correo: datos.correo, password: datos.password }
     );
-
-    if (!res.success) {
-      console.warn('Advertencia Supabase:', res.error);
-    }
 
     setCuentaMaster(cuentaFinal);
     setConfigEmpresa(prev => ({ ...prev, nombre: datos.nombreNegocio }));
@@ -331,11 +324,8 @@ export default function App() {
     return true;
   };
 
-  // INICIO DE SESIÓN DIRECTO CONTRA SUPABASE
   const iniciarSesionDueno = async (correo, password) => {
     const correoLimpio = correo.toLowerCase().trim();
-
-    // 1. Consultar a Supabase para verificar credenciales y recuperar el negocio exacto
     const res = await dbService.loginDueno(correoLimpio, password);
     if (res && res.usuario) {
       const cuentaRecuperada = {
@@ -354,7 +344,6 @@ export default function App() {
       return true;
     }
 
-    // 2. Respaldo por si está offline y tiene datos en localStorage
     if (cuentaMaster && (cuentaMaster.correo?.toLowerCase() === correoLimpio)) {
       if (cuentaMaster.password === password) {
         setUsuarioActivo({ rol: 'dueno', nombre: cuentaMaster.nombreDueno || 'Dueño', negocioId: cuentaMaster.negocioId || 'neg_local' });
@@ -902,6 +891,13 @@ export default function App() {
         alCerrar={() => setProductoParaPesar(null)}
       />
 
+      {vistaActual === 'soporte' && (
+        <SoporteModal 
+          nombreNegocio={configEmpresa.nombre}
+          alVolver={() => setVistaActual(esDueno ? 'configuracion' : 'pos')}
+        />
+      )}
+
       {vistaActual === 'configuracion' && esDueno && (
         <ConfiguracionModal 
           config={configEmpresa}
@@ -913,6 +909,7 @@ export default function App() {
           alExportarBackup={exportarBackupCompleto}
           alImportarBackup={importarBackupCompleto}
           alAbrirTerminales={() => setVistaActual('terminales')}
+          alAbrirSoporte={() => setVistaActual('soporte')}
           alVolver={() => setVistaActual('pos')}
         />
       )}
