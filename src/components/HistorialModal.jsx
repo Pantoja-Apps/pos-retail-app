@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ArrowLeft, Search, Receipt, Eye, Ban, CheckCircle2, 
-  X, Calendar, DollarSign, AlertTriangle, RefreshCw
+  X, Calendar, DollarSign, AlertTriangle, Filter
 } from 'lucide-react';
 
 export default function HistorialModal({
@@ -15,21 +15,25 @@ export default function HistorialModal({
 }) {
   const [busqueda, setBusqueda] = useState('');
   const [pestana, setPestana] = useState('activas'); // 'activas' | 'anuladas'
+  const [filtroTurno, setFiltroTurno] = useState('todas'); // 'todas' | 'turno_activo'
   const [modalAnularId, setModalAnularId] = useState(null);
   const [motivoAnulacion, setMotivoAnulacion] = useState('');
 
   const tasa = Number(tasaCambio) || 1;
 
-  // Separar activas vs anuladas
+  // Filtrado de activas vs anuladas
   const ventasActivas = transacciones.filter(t => !t.anulada);
   const ventasAnuladas = transacciones.filter(t => Boolean(t.anulada));
 
-  // Cálculo preciso de Totales Activos
-  const totalUSD = ventasActivas.reduce((acc, t) => acc + Number(t.totalUSD || 0), 0);
-  const totalBS = ventasActivas.reduce((acc, t) => acc + Number(t.totalBS || (Number(t.totalUSD || 0) * tasa)), 0);
+  // Aplicar filtro de turno si se solicita
+  const listaBase = pestana === 'activas' 
+    ? (filtroTurno === 'turno_activo' ? ventasActivas.filter(t => !t.cerradoEnTurno) : ventasActivas)
+    : ventasAnuladas;
 
-  // Lista según pestaña y búsqueda
-  const listaBase = pestana === 'activas' ? ventasActivas : ventasAnuladas;
+  // Totales
+  const totalUSD = listaBase.reduce((acc, t) => acc + Number(t.totalUSD || 0), 0);
+  const totalBS = listaBase.reduce((acc, t) => acc + Number(t.totalBS || (Number(t.totalUSD || 0) * tasa)), 0);
+
   const listaFiltrada = listaBase.filter(t => {
     const q = busqueda.toLowerCase().trim();
     const matchId = (t.correlativo || t.id || '').toLowerCase().includes(q);
@@ -53,11 +57,9 @@ export default function HistorialModal({
 
   const confirmarAnulacion = (e) => {
     e.preventDefault();
-    if (!motivoAnulacion.trim()) return alert('Por favor ingresa el motivo de la anulación.');
+    if (!motivoAnulacion.trim()) return alert('Ingresa el motivo de anulación');
 
-    if (alAnularVenta) {
-      alAnularVenta(modalAnularId, motivoAnulacion.trim());
-    }
+    if (alAnularVenta) alAnularVenta(modalAnularId, motivoAnulacion.trim());
     setModalAnularId(null);
     setMotivoAnulacion('');
   };
@@ -72,13 +74,13 @@ export default function HistorialModal({
         <div style={{ flex: 1, textAlign: 'center' }}>
           <h2 style={styles.tituloHeader}>Historial y Registro de Ventas</h2>
           <small style={{ color: '#64748b', fontSize: '0.72rem' }}>
-            Terminales sincronizadas · Tasa BCV: <strong>Bs. {tasa.toFixed(2)}</strong>
+            Auditoría de facturación · Tasa BCV: <strong>Bs. {tasa.toFixed(2)}</strong>
           </small>
         </div>
         <div style={{ width: '32px' }} />
       </header>
 
-      {/* Pestañas Activas / Anuladas */}
+      {/* Pestañas */}
       <div style={styles.tabsFila}>
         <button
           type="button"
@@ -108,17 +110,45 @@ export default function HistorialModal({
       </div>
 
       <main style={styles.cuerpo}>
-        {/* Tarjeta de Resumen Total Corporativo */}
+        {/* Tarjeta de Resumen Total */}
+        <div style={styles.tarjetaTotal}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={styles.etiquetaTotal}>
+              {filtroTurno === 'turno_activo' ? 'TOTAL TURNO ABIERTO' : 'TOTAL FACTURADO (GLOBAL)'}
+            </span>
+            <span style={styles.badgeFacturas}>{listaBase.length} Factura(s)</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '4px' }}>
+            <div style={styles.cifraUSD}>${totalUSD.toFixed(2)}</div>
+            <div style={styles.cifraBS}>Bs. {totalBS.toFixed(2)}</div>
+          </div>
+        </div>
+
+        {/* Selector de Filtro de Turno */}
         {pestana === 'activas' && (
-          <div style={styles.tarjetaTotal}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={styles.etiquetaTotal}>TOTAL FACTURADO (GLOBAL)</span>
-              <span style={styles.badgeFacturas}>{ventasActivas.length} Factura(s)</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '4px' }}>
-              <div style={styles.cifraUSD}>${totalUSD.toFixed(2)}</div>
-              <div style={styles.cifraBS}>Bs. {totalBS.toFixed(2)}</div>
-            </div>
+          <div style={styles.filaFiltroTurnos}>
+            <button
+              type="button"
+              onClick={() => setFiltroTurno('todas')}
+              style={{
+                ...styles.btnFiltroTurno,
+                backgroundColor: filtroTurno === 'todas' ? '#0f2a4a' : '#f1f5f9',
+                color: filtroTurno === 'todas' ? '#fff' : '#64748b'
+              }}
+            >
+              Todas las Ventas (Histórico)
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroTurno('turno_activo')}
+              style={{
+                ...styles.btnFiltroTurno,
+                backgroundColor: filtroTurno === 'turno_activo' ? '#00b050' : '#f1f5f9',
+                color: filtroTurno === 'turno_activo' ? '#fff' : '#64748b'
+              }}
+            >
+              Solo Turno Actual Abierto
+            </button>
           </div>
         )}
 
@@ -144,7 +174,7 @@ export default function HistorialModal({
           <div style={styles.vacioBox}>
             <Receipt size={42} color="#cbd5e1" />
             <p style={{ margin: '8px 0 0 0', fontSize: '0.84rem', color: '#64748b' }}>
-              {pestana === 'activas' ? 'No hay ventas activas registradas.' : 'No hay facturas anuladas.'}
+              No se encontraron ventas para este filtro.
             </p>
           </div>
         ) : (
@@ -162,7 +192,7 @@ export default function HistorialModal({
                   key={v.id} 
                   style={{
                     ...styles.cardFactura,
-                    borderLeft: esAnulada ? '4px solid #dc2626' : '4px solid #00b050'
+                    borderLeft: esAnulada ? '4px solid #dc2626' : (v.cerradoEnTurno ? '4px solid #64748b' : '4px solid #00b050')
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -171,6 +201,8 @@ export default function HistorialModal({
                         <strong style={styles.correlativoText}>Ticket {correlativoMostrar}</strong>
                         {esAnulada ? (
                           <span style={styles.badgeAnulada}>ANULADA</span>
+                        ) : v.cerradoEnTurno ? (
+                          <span style={styles.badgeCerrado}>Turno Cerrado</span>
                         ) : (
                           <span style={styles.badgeMetodo}>{v.metodoPago || 'Efectivo'}</span>
                         )}
@@ -181,11 +213,6 @@ export default function HistorialModal({
                       <div style={styles.horaText}>
                         Fecha: {formatearFechaHora(v.fecha || v.fechaFormateada)}
                       </div>
-                      {v.cajero && (
-                        <div style={styles.cajeroText}>
-                          Cajero: {v.cajero} · {v.caja || 'Caja 01'}
-                        </div>
-                      )}
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
@@ -198,14 +225,12 @@ export default function HistorialModal({
                     </div>
                   </div>
 
-                  {/* Motivo de anulación si aplica */}
                   {esAnulada && v.motivoAnulacion && (
                     <div style={styles.cajaMotivoAnulada}>
                       <strong>Motivo:</strong> {v.motivoAnulacion}
                     </div>
                   )}
 
-                  {/* Acciones */}
                   <div style={styles.accionesFila}>
                     <button type="button" onClick={() => alVerTicket(v)} style={styles.btnVerTicket}>
                       <Eye size={14} />
@@ -233,7 +258,7 @@ export default function HistorialModal({
         )}
       </main>
 
-      {/* Modal para Anular con Motivo */}
+      {/* Modal para Anular */}
       {modalAnularId && (
         <div style={styles.overlayModal}>
           <div style={styles.modalBox}>
@@ -250,7 +275,7 @@ export default function HistorialModal({
             </div>
 
             <p style={{ fontSize: '0.74rem', color: '#64748b', margin: '0 0 10px 0' }}>
-              Esta acción reversará la transacción y repondrá automáticamente el stock de los productos.
+              Esta acción reversará la transacción y repondrá automáticamente el stock al inventario.
             </p>
 
             <form onSubmit={confirmarAnulacion} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -258,7 +283,7 @@ export default function HistorialModal({
                 <label style={styles.labelForm}>Motivo de la anulación *</label>
                 <input
                   type="text"
-                  placeholder="Ej: Error en cantidad / Devolución de cliente"
+                  placeholder="Ej: Error en cantidad / Devolución..."
                   value={motivoAnulacion}
                   onChange={(e) => setMotivoAnulacion(e.target.value)}
                   style={styles.inputModal}
@@ -377,6 +402,19 @@ const styles = {
     fontWeight: '700',
     color: '#bfdbfe'
   },
+  filaFiltroTurnos: {
+    display: 'flex',
+    gap: '6px'
+  },
+  btnFiltroTurno: {
+    flex: 1,
+    padding: '6px 8px',
+    borderRadius: '8px',
+    border: 'none',
+    fontSize: '0.72rem',
+    fontWeight: 'bold',
+    cursor: 'pointer'
+  },
   cajaBuscador: {
     display: 'flex',
     alignItems: 'center',
@@ -437,6 +475,15 @@ const styles = {
     borderRadius: '4px',
     border: '1px solid #fecaca'
   },
+  badgeCerrado: {
+    backgroundColor: '#f1f5f9',
+    color: '#64748b',
+    fontSize: '0.62rem',
+    fontWeight: 'bold',
+    padding: '1px 6px',
+    borderRadius: '4px',
+    border: '1px solid #cbd5e1'
+  },
   badgeMetodo: {
     backgroundColor: '#eff6ff',
     color: '#0052cc',
@@ -454,11 +501,6 @@ const styles = {
   horaText: {
     fontSize: '0.68rem',
     color: '#64748b',
-    marginTop: '1px'
-  },
-  cajeroText: {
-    fontSize: '0.66rem',
-    color: '#94a3b8',
     marginTop: '1px'
   },
   montoUSDCard: {

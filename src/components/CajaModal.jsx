@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ArrowLeft, Receipt, DollarSign, Smartphone, CreditCard, Banknote, 
-  MinusCircle, CheckCircle2, X, Printer, Share2, ShieldCheck, AlertCircle
+  MinusCircle, CheckCircle2, X, Printer, Share2, ShieldCheck, MapPin, Phone
 } from 'lucide-react';
 
 export default function CajaModal({
@@ -26,10 +26,10 @@ export default function CajaModal({
 
   const tasa = Number(tasaCambio) || 1;
 
-  // Filtrar ventas del turno actual no anuladas
+  // Filtrar ventas del turno actual (no cerradas ni anuladas)
   const ventasTurno = transacciones.filter(t => !t.anulada && !t.cerradoEnTurno);
 
-  // Totales de Ventas del Turno
+  // Totales del Turno
   let totalVentasUSD = 0;
   let totalVentasBS = 0;
   let ventasEfectivoUSD = 0;
@@ -65,7 +65,7 @@ export default function CajaModal({
     }
   });
 
-  // Gastos del turno actual
+  // Gastos discriminados por origen real
   let gastosEfectivoUSD = 0;
   let gastosEfectivoBS = 0;
   let gastosPagoMovilBS = 0;
@@ -83,7 +83,7 @@ export default function CajaModal({
     }
   });
 
-  // Saldos Netos en Gaveta y Banco
+  // Saldos Netos
   const efectivoNetoUSD = Math.max(0, ventasEfectivoUSD - gastosEfectivoUSD);
   const efectivoNetoBS = Math.max(0, ventasEfectivoBS - gastosEfectivoBS);
   const pagoMovilNetoBS = Math.max(0, ventasPagoMovilBS - gastosPagoMovilBS);
@@ -93,7 +93,7 @@ export default function CajaModal({
     e.preventDefault();
     const val = parseFloat(montoGasto) || 0;
     if (val <= 0 || !descripcionGasto.trim()) {
-      return alert('Ingresa una descripción y un monto válido');
+      return alert('Ingresa concepto y monto válido mayor a 0');
     }
 
     const nuevoGasto = {
@@ -146,35 +146,37 @@ export default function CajaModal({
     let t = `*📊 REPORTE DE CIERRE DE CAJA (CORTE Z)*\n`;
     t += `*${(configEmpresa?.nombre || 'FACILITO POS').toUpperCase()}*\n`;
     if (configEmpresa?.rif) t += `RIF: ${configEmpresa.rif}\n`;
+    if (configEmpresa?.direccion) t += `DIR: ${configEmpresa.direccion}\n`;
+    if (configEmpresa?.telefono) t += `TEL: ${configEmpresa.telefono}\n`;
+    t += `================================\n`;
+    t += `FECHA: ${r.fechaHora}\n`;
+    t += `RESPONSABLE: ${r.cajero} · ${r.caja}\n`;
+    t += `TOTAL VENTAS: ${r.ventasCount} ticket(s)\n`;
+    t += `================================\n`;
+    t += `*1. VENTAS TOTALES FACTURADAS:*\n`;
+    t += `  • Total en Dólares ($): $${r.totalVentasUSD.toFixed(2)}\n`;
+    t += `  • Total en Bolívares (Bs): Bs. ${r.totalVentasBS.toFixed(2)}\n`;
     t += `--------------------------------\n`;
-    t += `Fecha/Hora: ${r.fechaHora}\n`;
-    t += `Responsable: ${r.cajero} · ${r.caja}\n`;
-    t += `Total Ventas: ${r.ventasCount} ticket(s)\n`;
+    t += `*2. EFECTIVO EN GAVETA (NETO):*\n`;
+    t += `  • Dólares en Efectivo ($): $${r.efectivoNetoUSD.toFixed(2)}\n`;
+    t += `  • Bolívares en Efectivo (Bs): Bs. ${r.efectivoNetoBS.toFixed(2)}\n`;
     t += `--------------------------------\n`;
-    t += `*VENTAS TOTALES DEL TURNO:*\n`;
-    t += `  • Total USD: $${r.totalVentasUSD.toFixed(2)}\n`;
-    t += `  • Total Bs:  Bs. ${r.totalVentasBS.toFixed(2)}\n`;
-    t += `--------------------------------\n`;
-    t += `*EFECTIVO EN GAVETA (NETO):*\n`;
-    t += `  • Dólares ($):    $${r.efectivoNetoUSD.toFixed(2)}\n`;
-    t += `  • Bolívares (Bs): Bs. ${r.efectivoNetoBS.toFixed(2)}\n`;
-    t += `--------------------------------\n`;
-    t += `*BANCO / DIGITAL (NETO):*\n`;
+    t += `*3. RECAUDO BANCARIO (DIGITAL):*\n`;
     t += `  • Pago Móvil:    Bs. ${r.pagoMovilNetoBS.toFixed(2)}\n`;
     t += `  • Punto Débito:  Bs. ${r.ventasPuntoBS.toFixed(2)}\n`;
 
     if (r.gastosDetalle && r.gastosDetalle.length > 0) {
       t += `--------------------------------\n`;
-      t += `*DETALLE DE GASTOS / SALIDAS:*\n`;
+      t += `*4. SALIDAS Y GASTOS (${r.gastosDetalle.length}):*\n`;
       r.gastosDetalle.forEach(g => {
         const m = g.origen === 'efectivo_usd' ? `$${Number(g.monto).toFixed(2)}` : `Bs. ${Number(g.monto).toFixed(2)}`;
         t += `  • ${g.descripcion}: -${m}\n`;
       });
     }
 
-    t += `--------------------------------\n`;
-    t += `Tasa BCV de Cierre: Bs. ${r.tasa.toFixed(2)}\n`;
-    t += `Auditoría completada exitosamente.\n`;
+    t += `================================\n`;
+    t += `Tasa Oficial BCV: Bs. ${r.tasa.toFixed(2)} / USD\n`;
+    t += `Auditoría contable completada exitosamente.\n`;
 
     const url = `https://wa.me/?text=${encodeURIComponent(t)}`;
     window.open(url, '_blank');
@@ -440,14 +442,14 @@ export default function CajaModal({
         </div>
       )}
 
-      {/* MODAL REPORTE DE CIERRE Z CON LOGO Y DETALLE PROFESIONAL */}
+      {/* MODAL REPORTE DE CIERRE Z CON ENCABEZADO COMPLETO Y MÁRGENES FLUIDOS */}
       {reporteZGenerado && (
         <div style={styles.overlayModal}>
           <div style={styles.modalBoxReporteZ}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={styles.barraControlZ}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle2 size={18} color="#00b050" />
-                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f2a4a' }}>
+                <CheckCircle2 size={17} color="#00b050" />
+                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '800', color: '#0f2a4a' }}>
                   Cierre de Turno Z
                 </h3>
               </div>
@@ -456,7 +458,7 @@ export default function CajaModal({
               </button>
             </div>
 
-            {/* Recibo Térmico del Cierre Z con Logo */}
+            {/* Recibo Térmico del Cierre Z */}
             <div id="area-ticket-cierre-z" style={styles.papelReporteZ}>
               <div style={{ textAlign: 'center', lineHeight: 1.35 }}>
                 {configEmpresa?.logo && (
@@ -466,7 +468,10 @@ export default function CajaModal({
                   {(configEmpresa?.nombre || 'FACILITO POS').toUpperCase()}
                 </h3>
                 {configEmpresa?.rif && <div style={{ fontSize: '0.66rem', color: '#475569' }}>RIF: {configEmpresa.rif}</div>}
-                <div style={{ fontSize: '0.68rem', color: '#0052cc', fontWeight: 'bold', marginTop: '2px' }}>
+                {configEmpresa?.direccion && <div style={{ fontSize: '0.64rem', color: '#64748b' }}>{configEmpresa.direccion}</div>}
+                {configEmpresa?.telefono && <div style={{ fontSize: '0.64rem', color: '#64748b' }}>TEL: {configEmpresa.telefono}</div>}
+                
+                <div style={styles.badgeCorteZTag}>
                   REPORTE FISCAL Y CONTABLE DE CIERRE (CORTE Z)
                 </div>
               </div>
@@ -581,7 +586,7 @@ export default function CajaModal({
                 <span>WhatsApp</span>
               </button>
               <button type="button" onClick={finalizarCierreDefinitivo} style={styles.btnFinalizarCierre}>
-                <span>Finalizar y Salir</span>
+                <span>Finalizar</span>
               </button>
             </div>
           </div>
@@ -779,7 +784,8 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '14px',
+    padding: '12px',
+    boxSizing: 'border-box',
     zIndex: 99999999
   },
   modalBoxGasto: {
@@ -793,16 +799,24 @@ const styles = {
     flexDirection: 'column'
   },
   modalBoxReporteZ: {
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
     borderRadius: '24px',
     maxWidth: '360px',
     width: '100%',
-    maxHeight: '94vh',
-    overflowY: 'auto',
-    padding: '16px',
-    boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
+    height: '90vh',
     display: 'flex',
-    flexDirection: 'column'
+    flexDirection: 'column',
+    boxShadow: '0 25px 60px rgba(0,0,0,0.35)',
+    overflow: 'hidden'
+  },
+  barraControlZ: {
+    padding: '12px 14px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottom: '1px solid #f1f5f9',
+    backgroundColor: '#ffffff',
+    flexShrink: 0
   },
   btnCerrarX: {
     background: '#f1f5f9',
@@ -855,20 +869,29 @@ const styles = {
     cursor: 'pointer'
   },
   papelReporteZ: {
+    flex: 1,
+    overflowY: 'auto',
     backgroundColor: '#ffffff',
-    borderRadius: '12px',
-    padding: '14px 12px',
-    border: '1px solid #cbd5e1',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+    padding: '14px 14px 20px 14px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: '0.72rem',
     color: '#0f172a'
   },
   logoTicketZ: {
-    maxHeight: '44px',
+    maxHeight: '48px',
     maxWidth: '120px',
     objectFit: 'contain',
-    marginBottom: '4px'
+    marginBottom: '6px'
+  },
+  badgeCorteZTag: {
+    display: 'inline-block',
+    fontSize: '0.62rem',
+    color: '#0052cc',
+    fontWeight: 'bold',
+    marginTop: '4px',
+    backgroundColor: '#eff6ff',
+    padding: '2px 8px',
+    borderRadius: '6px'
   },
   lineaDobleCorte: {
     borderTop: '2px dashed #94a3b8',
@@ -881,7 +904,7 @@ const styles = {
   infoReporteZ: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '2px',
+    gap: '3px',
     fontSize: '0.68rem',
     color: '#1e293b'
   },
@@ -901,13 +924,16 @@ const styles = {
     fontSize: '0.7rem'
   },
   accionesReporteZFila: {
+    padding: '10px 14px 14px 14px',
+    backgroundColor: '#ffffff',
+    borderTop: '1px solid #f1f5f9',
     display: 'flex',
     gap: '6px',
-    marginTop: '12px'
+    flexShrink: 0
   },
   btnImprimirZ: {
     flex: 1,
-    padding: '9px',
+    padding: '10px',
     backgroundColor: '#0f2a4a',
     color: '#fff',
     border: 'none',
@@ -922,7 +948,7 @@ const styles = {
   },
   btnWhatsAppZ: {
     flex: 1.2,
-    padding: '9px',
+    padding: '10px',
     backgroundColor: '#00b050',
     color: '#fff',
     border: 'none',
@@ -936,7 +962,7 @@ const styles = {
     gap: '4px'
   },
   btnFinalizarCierre: {
-    padding: '9px 12px',
+    padding: '10px 14px',
     backgroundColor: '#f1f5f9',
     color: '#0f2a4a',
     border: '1px solid #cbd5e1',
