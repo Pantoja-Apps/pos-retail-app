@@ -228,6 +228,24 @@ export default function App() {
     return () => clearInterval(intervalo);
   }, [cuentaMaster, usuarioActivo]);
 
+  // Manejo de Cédula en el Mostrador con Búsqueda Automática
+  const manejarDocMostrador = (docValor) => {
+    const docLimpio = docValor.replace(/[^0-9]/g, '');
+    const encontrado = clientes.find(c => (c.doc || '').replace(/[^0-9]/g, '') === docLimpio);
+
+    if (encontrado) {
+      setClienteActual(encontrado);
+    } else {
+      setClienteActual({
+        id: 'cli_temp',
+        doc: docValor,
+        nombre: docLimpio.length > 5 ? 'Cliente No Registrado' : 'Consumidor Final',
+        telefono: '',
+        saldoPendienteUSD: 0
+      });
+    }
+  };
+
   const manejarCambioBusqueda = (texto) => {
     setBusquedaInput(texto);
     if (!texto.trim()) {
@@ -361,7 +379,7 @@ export default function App() {
 
   const guardarClienteEnDB = (cli) => {
     setClientes(prev => {
-      const idx = prev.findIndex(c => c.doc?.toUpperCase().trim() === cli.doc?.toUpperCase().trim());
+      const idx = prev.findIndex(c => (c.doc || '').replace(/[^0-9]/g, '') === (cli.doc || '').replace(/[^0-9]/g, ''));
       if (idx >= 0) {
         const cp = [...prev];
         cp[idx] = { ...cp[idx], ...cli };
@@ -371,7 +389,7 @@ export default function App() {
     });
   };
 
-  // FINALIZAR VENTA COMPLETA
+  // FINALIZAR VENTA COMPLETA (Efectivo, Digital o Fiar / Crédito)
   const alFinalizarVenta = async (datosVenta) => {
     const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
     const ahora = new Date();
@@ -390,16 +408,54 @@ export default function App() {
       totalBS: parseFloat(datosVenta.totalBS || totalBS),
       tasaCambio: parseFloat(tasaCambio),
       metodoPago: datosVenta.metodoPago || 'efectivo_usd',
+      esCredito: Boolean(datosVenta.esCredito),
       montoRecibido: parseFloat(datosVenta.montoRecibido || datosVenta.totalUSD || totalUSD),
       vueltoUSD: parseFloat(datosVenta.vueltoUSD || 0),
       vueltoBS: parseFloat(datosVenta.vueltoBS || 0)
     };
 
-    // 1. Guardar en el turno actual (Caja e Historial)
+    // 1. Si es a crédito / fiado, asentar saldo deudor en el cliente
+    if (ventaCompleta.esCredito) {
+      setClientes(prev => {
+        const docBuscado = (ventaCompleta.cliente?.doc || '').replace(/[^0-9]/g, '');
+        const idx = prev.findIndex(c => (c.doc || '').replace(/[^0-9]/g, '') === docBuscado);
+        const registroCredito = {
+          id: 'crd_' + Date.now(),
+          fecha: ventaCompleta.fechaFormateada,
+          montoUSD: ventaCompleta.totalUSD,
+          montoBS: ventaCompleta.totalBS,
+          items: ventaCompleta.items
+        };
+
+        if (idx >= 0) {
+          const cp = [...prev];
+          const clienteExistente = cp[idx];
+          const nuevoSaldo = (Number(clienteExistente.saldoPendienteUSD || 0) + ventaCompleta.totalUSD).toFixed(2);
+          cp[idx] = {
+            ...clienteExistente,
+            saldoPendienteUSD: parseFloat(nuevoSaldo),
+            historialCreditos: [registroCredito, ...(clienteExistente.historialCreditos || [])]
+          };
+          return cp;
+        } else {
+          return [...prev, {
+            id: Date.now(),
+            doc: ventaCompleta.cliente?.doc || 'V-00000000',
+            nombre: ventaCompleta.cliente?.nombre || 'Cliente',
+            telefono: ventaCompleta.cliente?.telefono || '',
+            saldoPendienteUSD: ventaCompleta.totalUSD,
+            historialCreditos: [registroCredito],
+            historialAbonos: []
+          }];
+        }
+      });
+    }
+
+    // 2. Guardar en el turno actual (Caja e Historial local)
     setTransacciones(prev => [ventaCompleta, ...prev]);
     setHistoricoVentasGlobal(prev => [ventaCompleta, ...prev]);
 
-    // 2. Descontar Stock
+    // 3. Descontar Stock
     setProductos(prevProds => {
       const copia = [...prevProds];
       ventaCompleta.items.forEach(itemVendido => {
@@ -415,7 +471,7 @@ export default function App() {
       return copia;
     });
 
-    // 3. Persistir en Supabase
+    // 4. Persistir en Supabase
     await dbService.registrarVenta({
       id: ventaCompleta.id,
       negocio_id: negId,
@@ -430,7 +486,7 @@ export default function App() {
       detalles: ventaCompleta
     });
 
-    // 4. Limpiar caja y desplegar ticket
+    // 5. Limpiar caja y desplegar ticket
     setCarrito([]);
     setClienteActual(CLIENTES_INICIALES[0]);
     setModalCobroAbierto(false);
@@ -653,17 +709,37 @@ export default function App() {
         />
       )}
 
+      {/* LIBRETA DE CRÉDITOS Y FIADOS */}
       {vistaActual === 'creditos' && (
         <CreditosModal 
           clientes={clientes}
           tasaCambio={tasaCambio}
           transacciones={transacciones}
-          alRegistrarAbono={() => {}}
+          alRegistrarAbono={(clienteId, montoAbonoUSD) => {
+            setClientes(prev => {
+              const idx = prev.findIndex(c => String(c.id) === String(clienteId));
+              if (idx >= 0) {
+                const cp = [...prev];
+                const cli = cp[idx];
+                const nuevoSaldo = Math.max(0, Number(cli.saldoPendienteUSD || 0) - Number(montoAbonoUSD)).toFixed(2);
+                cp[idx] = {
+                  ...cli,
+                  saldoPendienteUSD: parseFloat(nuevoSaldo),
+                  historialAbonos: [
+                    { id: 'abn_' + Date.now(), fecha: new Date().toLocaleString(), montoUSD: Number(montoAbonoUSD) },
+                    ...(cli.historialAbonos || [])
+                  ]
+                };
+                return cp;
+              }
+              return prev;
+            });
+          }}
           alVolver={() => setVistaActual('pos')}
         />
       )}
 
-      {/* CAJA Y CUADRE Z CONECTADO DIRECTO */}
+      {/* CAJA Y CUADRE Z */}
       {vistaActual === 'caja' && (
         <CajaModal 
           transacciones={transacciones}
@@ -753,6 +829,7 @@ export default function App() {
             </div>
           </header>
 
+          {/* BARRA DE CLIENTE CON AUTOCOMPLETADO AL ESCRIBIR CÉDULA */}
           <section style={styles.barraClienteMostrador}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
               <User color="#0f2a4a" size={16} style={{ flexShrink: 0 }} />
@@ -760,12 +837,18 @@ export default function App() {
                 type="text"
                 placeholder="Cédula cliente..."
                 value={clienteActual.doc === 'V-00000000' ? '' : clienteActual.doc}
-                onChange={(e) => setClienteActual(prev => ({ ...prev, doc: e.target.value }))}
+                onChange={(e) => manejarDocMostrador(e.target.value)}
                 style={styles.inputDocMostrador}
               />
             </div>
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <span style={styles.nombreClienteTag}>{clienteActual.nombre}</span>
+              <span style={{
+                ...styles.nombreClienteTag,
+                color: clienteActual.nombre === 'Consumidor Final' ? '#64748b' : '#0052cc',
+                fontWeight: 'bold'
+              }}>
+                {clienteActual.nombre}
+              </span>
             </div>
           </section>
 
@@ -1012,7 +1095,7 @@ const styles = {
   inputTasaMini: { width: '64px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.78rem', color: '#0f172a', outline: 'none' },
   barraClienteMostrador: { backgroundColor: '#fff', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', gap: '8px', flexShrink: 0 },
   inputDocMostrador: { border: 'none', background: '#f1f5f9', padding: '6px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', width: '130px', outline: 'none' },
-  nombreClienteTag: { fontSize: '0.78rem', color: '#334155', fontWeight: '600', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' },
+  nombreClienteTag: { fontSize: '0.78rem', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' },
   seccionBuscador: { padding: '6px 12px', backgroundColor: '#fff', display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', flexShrink: 0, position: 'relative' },
   inputBuscador: { width: '100%', boxSizing: 'border-box', padding: '8px 28px 8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.85rem', outline: 'none' },
   btnLimpiarInput: { position: 'absolute', right: '86px', top: '10px', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 },
