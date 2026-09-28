@@ -5,14 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#ffffff" />
     <meta name="description" content="Facilito POS - Sistema de Facturación y Control" />
-    <link rel="icon" type="image/png" href="/pwa-splash-logo-192.png" />
-    <link rel="manifest" href="/manifest.json?v=4" />
+    <link rel="icon" type="image/png" href="/pwa-v3-launcher-192.png" />
+    <link rel="manifest" href="/manifest.json?v=5" />
     <title>Facilito POS Pro</title>
     <style>
+      * {
+        box-sizing: border-box;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #ffffff;
+        overflow: hidden;
+      }
       #app-splash {
         position: fixed;
-        top: 0;
-        left: 0;
+        inset: 0;
         width: 100vw;
         height: 100vh;
         background-color: #ffffff;
@@ -20,33 +30,38 @@
         flex-direction: column;
         align-items: center;
         justifyContent: center;
-        z-index: 99999999;
-        transition: opacity 0.4s ease-out;
+        z-index: 999999999;
+        pointer-events: none;
+        transition: opacity 0.35s ease-out;
       }
       #app-splash img {
-        width: 220px;
-        height: 220px;
+        width: 82%;
+        max-width: 320px;
+        height: auto;
         object-fit: contain;
+        display: block;
+        margin: 0 auto;
       }
     </style>
   </head>
-  <body style="margin: 0; background-color: #ffffff;">
-    <!-- Splash Screen Instantáneo con Texto Completo -->
+  <body>
+    <!-- Splash Screen Centrado en Ejes X e Y -->
     <div id="app-splash">
-      <img src="/pwa-splash-logo-512.png" alt="Facilito POS" />
+      <img src="/logo_splash_centrado.png" alt="Facilito POS" />
     </div>
 
     <div id="root"></div>
 
     <script>
-      window.addEventListener('DOMContentLoaded', () => {
+      // Ocultar suavemente cuando React monte el DOM
+      window.addEventListener('load', () => {
         setTimeout(() => {
           const splash = document.getElementById('app-splash');
           if (splash) {
             splash.style.opacity = '0';
-            setTimeout(() => splash.remove(), 400);
+            setTimeout(() => splash.remove(), 350);
           }
-        }, 500);
+        }, 300);
       });
     </script>
     <script type="module" src="/src/main.jsx"></script>
