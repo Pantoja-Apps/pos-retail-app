@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   DollarSign, Smartphone, CreditCard, Banknote, CheckCircle2, 
-  X, User, Phone, BookOpen, AlertCircle, ArrowRight
+  X, User, Phone, BookOpen, AlertCircle
 } from 'lucide-react';
 
 export default function ModalCobro({
@@ -95,11 +95,11 @@ export default function ModalCobro({
 
     if (esCredito) {
       if (!docCliente.trim() || docCliente === 'V-00000000' || nombreCliente === 'Consumidor Final') {
-        return alert('Para fiar debes ingresar la Cédula y Nombre del cliente.');
+        return alert('Para fiar o vender a crédito debes registrar la Cédula y Nombre del cliente.');
       }
     } else {
       if (totalAbonadoUSD < (totalUSDNum - 0.01)) {
-        return alert(`Faltan $${saldoRestanteUSD.toFixed(2)} para completar el pago.`);
+        return alert(`Faltan $${saldoRestanteUSD.toFixed(2)} (Bs. ${saldoRestanteBS.toFixed(2)}) para completar el monto.`);
       }
     }
 
@@ -116,7 +116,7 @@ export default function ModalCobro({
     if (numUSD > 0) pagosDesglose.push({ metodo: 'Efectivo ($)', montoUSD: numUSD, montoBS: numUSD * tasaNum });
     if (numEfBS > 0) pagosDesglose.push({ metodo: 'Efectivo (Bs)', montoUSD: numEfBS / tasaNum, montoBS: numEfBS });
     if (numPMBS > 0) pagosDesglose.push({ metodo: 'Pago Móvil', montoUSD: numPMBS / tasaNum, montoBS: numPMBS });
-    if (numPTBS > 0) pagosDesglose.push({ metodo: 'Punto de Venta', montoUSD: numPTBS / tasaNum, montoBS: numPTBS });
+    if (numPTBS > 0) pagosDesglose.push({ metodo: 'Punto Débito', montoUSD: numPTBS / tasaNum, montoBS: numPTBS });
 
     const metodoPrincipal = esCredito ? 'credito' : (
       pagosDesglose.length > 1 ? 'Mixto' : (pagosDesglose[0]?.metodo || 'Efectivo ($)')
@@ -145,17 +145,15 @@ export default function ModalCobro({
   return (
     <div style={styles.overlay} translate="no">
       <div style={styles.modalBox}>
-        {/* Cabecera */}
+        {/* Cabecera Corporativa */}
         <div style={styles.header}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={styles.badgeIcono}>
+            <div style={styles.iconoBox}>
               <DollarSign size={18} color="#00b050" />
             </div>
             <div>
-              <h3 style={styles.titulo}>Finalizar Venta / Cobro</h3>
-              <div style={styles.subtituloChip}>
-                BCV Oficial: <strong>Bs. {tasaNum.toFixed(2)}</strong>
-              </div>
+              <h3 style={styles.titulo}>Módulo de Cobro</h3>
+              <span style={styles.subtitulo}>Tasa BCV: <strong>Bs. {tasaNum.toFixed(2)}</strong></span>
             </div>
           </div>
           <button type="button" onClick={alCerrar} style={styles.btnCerrar}>
@@ -163,36 +161,31 @@ export default function ModalCobro({
           </button>
         </div>
 
-        {/* Tarjeta de Total Principal */}
+        {/* Tarjeta de Total con Colores Corporativos */}
         <div style={styles.tarjetaTotal}>
           <span style={styles.etiquetaTotal}>TOTAL A COBRAR</span>
           <div style={styles.cifraUSD}>${totalUSDNum.toFixed(2)}</div>
           <div style={styles.cifraBS}>Bs. {totalBSNum.toFixed(2)}</div>
         </div>
 
-        {/* Formulario Cliente */}
+        {/* Datos del Cliente */}
         <div style={styles.seccionCliente}>
-          <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '8px' }}>
-            <div style={styles.inputWrapper}>
-              <User size={13} color="#94a3b8" style={{ marginLeft: '8px' }} />
-              <input
-                type="text"
-                placeholder="Cédula cliente..."
-                value={docCliente}
-                onChange={(e) => manejarCambioDoc(e.target.value)}
-                style={styles.inputLimpio}
-              />
-            </div>
-            <div style={styles.inputWrapper}>
-              <input
-                type="text"
-                placeholder="Nombre del cliente"
-                value={nombreCliente}
-                onChange={(e) => setNombreCliente(e.target.value)}
-                style={{ ...styles.inputLimpio, paddingLeft: '10px' }}
-                required
-              />
-            </div>
+          <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1.1fr 1.4fr', gap: '6px' }}>
+            <input
+              type="text"
+              placeholder="Cédula cliente..."
+              value={docCliente}
+              onChange={(e) => manejarCambioDoc(e.target.value)}
+              style={styles.inputCliente}
+            />
+            <input
+              type="text"
+              placeholder="Nombre del cliente"
+              value={nombreCliente}
+              onChange={(e) => setNombreCliente(e.target.value)}
+              style={styles.inputCliente}
+              required
+            />
 
             {sugerencias.length > 0 && (
               <div style={styles.desplegableSugerencias}>
@@ -206,19 +199,19 @@ export default function ModalCobro({
             )}
           </div>
 
-          <div style={{ ...styles.inputWrapper, marginTop: '8px' }}>
-            <Phone size={13} color="#94a3b8" style={{ marginLeft: '8px' }} />
+          <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={styles.iconoInputBox}><Phone size={13} color="#64748b" /></div>
             <input
               type="text"
-              placeholder="Teléfono móvil (WhatsApp para enviar comprobante)"
+              placeholder="Teléfono (WhatsApp para enviar ticket)..."
               value={telefonoCliente}
               onChange={(e) => setTelefonoCliente(e.target.value)}
-              style={styles.inputLimpio}
+              style={styles.inputCliente}
             />
           </div>
         </div>
 
-        {/* Switch Fiar / Crédito */}
+        {/* Botón Fiar / A Crédito */}
         <div 
           onClick={() => {
             setEsCredito(!esCredito);
@@ -235,28 +228,26 @@ export default function ModalCobro({
             borderColor: esCredito ? '#ef4444' : '#e2e8f0'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ ...styles.iconoFiar, backgroundColor: esCredito ? '#fee2e2' : '#f1f5f9' }}>
-              <BookOpen size={16} color={esCredito ? '#dc2626' : '#64748b'} />
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <BookOpen size={16} color={esCredito ? '#dc2626' : '#64748b'} />
             <div>
-              <strong style={{ fontSize: '0.82rem', color: esCredito ? '#dc2626' : '#0f2a4a', display: 'block' }}>
+              <strong style={{ fontSize: '0.8rem', color: esCredito ? '#dc2626' : '#0f2a4a', display: 'block' }}>
                 Vender a Crédito / Fiar Pedido
               </strong>
-              <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                Se sumará a la cuenta deudora del cliente
-              </span>
+              <small style={{ fontSize: '0.66rem', color: '#64748b' }}>
+                Se sumará a la cuenta pendiente del cliente en Créditos
+              </small>
             </div>
           </div>
           <input
             type="checkbox"
             checked={esCredito}
             onChange={() => {}}
-            style={{ width: '18px', height: '18px', accentColor: '#dc2626', cursor: 'pointer' }}
+            style={{ width: '16px', height: '16px', accentColor: '#dc2626', cursor: 'pointer' }}
           />
         </div>
 
-        {/* Opciones de Cobro */}
+        {/* Métodos de Pago con Pagar Todo */}
         {!esCredito && (
           <div style={styles.gridPagos}>
             {/* Divisas $ */}
@@ -264,7 +255,7 @@ export default function ModalCobro({
               <div style={styles.filaMetodoTop}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <DollarSign size={14} color="#00b050" />
-                  <strong style={styles.labelMetodo}>Divisas ($)</strong>
+                  <strong style={styles.labelMetodo}>Divisas ($):</strong>
                 </div>
                 <button type="button" onClick={() => pagarTodoEn('usd')} style={styles.btnPagarTodoPill}>
                   Pagar Todo
@@ -285,7 +276,7 @@ export default function ModalCobro({
               <div style={styles.filaMetodoTop}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <Banknote size={14} color="#00b050" />
-                  <strong style={styles.labelMetodo}>Efectivo (Bs)</strong>
+                  <strong style={styles.labelMetodo}>Efectivo (Bs):</strong>
                 </div>
                 <button type="button" onClick={() => pagarTodoEn('efectivo_bs')} style={styles.btnPagarTodoPill}>
                   Pagar Todo
@@ -306,7 +297,7 @@ export default function ModalCobro({
               <div style={styles.filaMetodoTop}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <Smartphone size={14} color="#0052cc" />
-                  <strong style={styles.labelMetodo}>Pago Móvil (Bs)</strong>
+                  <strong style={styles.labelMetodo}>Pago Móvil (Bs):</strong>
                 </div>
                 <button type="button" onClick={() => pagarTodoEn('pago_movil')} style={styles.btnPagarTodoPill}>
                   Pagar Todo
@@ -327,7 +318,7 @@ export default function ModalCobro({
               <div style={styles.filaMetodoTop}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <CreditCard size={14} color="#7c3aed" />
-                  <strong style={styles.labelMetodo}>Punto Débito (Bs)</strong>
+                  <strong style={styles.labelMetodo}>Punto Débito (Bs):</strong>
                 </div>
                 <button type="button" onClick={() => pagarTodoEn('punto')} style={styles.btnPagarTodoPill}>
                   Pagar Todo
@@ -345,23 +336,23 @@ export default function ModalCobro({
           </div>
         )}
 
-        {/* Resumen de Pago */}
+        {/* Resumen de Cobro */}
         <div style={styles.tarjetaResumen}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '700' }}>TOTAL ABONADO:</span>
+            <span style={{ fontSize: '0.74rem', color: '#0f2a4a', fontWeight: '800' }}>TOTAL ABONADO:</span>
             <strong style={{ fontSize: '1.05rem', color: '#00b050' }}>+${totalAbonadoUSD.toFixed(2)}</strong>
           </div>
 
           {vueltoUSD > 0.005 ? (
             <div style={styles.alertaVueltoBox}>
-              <span style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: '700' }}>CAMBIO / VUELTO:</span>
+              <span style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: '800' }}>CAMBIO / VUELTO:</span>
               <strong style={{ fontSize: '1rem', color: '#b45309' }}>
                 ${vueltoUSD.toFixed(2)} <small style={{ fontSize: '0.74rem' }}>(Bs. {vueltoBS.toFixed(2)})</small>
               </strong>
             </div>
           ) : (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #f1f5f9' }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>FALTANTE:</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '0.72rem', color: '#64748b' }}>FALTANTE:</span>
               <strong style={{ fontSize: '0.84rem', color: saldoRestanteUSD > 0.01 ? '#ea580c' : '#00b050' }}>
                 ${saldoRestanteUSD.toFixed(2)} (Bs. {saldoRestanteBS.toFixed(2)})
               </strong>
@@ -369,7 +360,7 @@ export default function ModalCobro({
           )}
         </div>
 
-        {/* Botón de Confirmación */}
+        {/* Botón Principal */}
         <button
           type="button"
           onClick={procesarVenta}
@@ -391,36 +382,35 @@ const styles = {
     position: 'fixed',
     inset: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    backdropFilter: 'blur(4px)',
+    backdropFilter: 'blur(3px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '12px',
+    padding: '8px',
     zIndex: 99999999
   },
   modalBox: {
     backgroundColor: '#ffffff',
-    borderRadius: '24px',
-    maxWidth: '380px',
+    borderRadius: '20px',
     width: '100%',
-    maxHeight: '94vh',
+    maxWidth: '430px',
+    maxHeight: '96vh',
     overflowY: 'auto',
-    padding: '16px',
-    boxShadow: '0 25px 60px rgba(15, 23, 42, 0.35)',
+    padding: '14px',
+    boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px'
+    gap: '8px'
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: '2px'
+    alignItems: 'center'
   },
-  badgeIcono: {
-    width: '34px',
-    height: '34px',
-    borderRadius: '10px',
+  iconoBox: {
+    width: '32px',
+    height: '32px',
+    borderRadius: '8px',
     backgroundColor: '#eff6ff',
     display: 'flex',
     alignItems: 'center',
@@ -432,10 +422,9 @@ const styles = {
     fontWeight: '900',
     color: '#0f2a4a'
   },
-  subtituloChip: {
+  subtitulo: {
     fontSize: '0.68rem',
-    color: '#64748b',
-    marginTop: '1px'
+    color: '#64748b'
   },
   btnCerrar: {
     background: '#f1f5f9',
@@ -450,53 +439,51 @@ const styles = {
     color: '#64748b'
   },
   tarjetaTotal: {
-    background: 'linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%)',
-    borderRadius: '16px',
-    border: '1px solid #e2e8f0',
-    padding: '12px 14px',
-    textAlign: 'center'
+    backgroundColor: '#0f2a4a',
+    borderRadius: '14px',
+    padding: '10px 14px',
+    textAlign: 'center',
+    color: '#ffffff'
   },
   etiquetaTotal: {
-    fontSize: '0.68rem',
+    fontSize: '0.66rem',
     fontWeight: '800',
     letterSpacing: '0.8px',
-    color: '#64748b'
+    color: '#94a3b8'
   },
   cifraUSD: {
-    fontSize: '1.8rem',
+    fontSize: '1.75rem',
     fontWeight: '900',
     color: '#00b050',
     lineHeight: 1.1,
-    margin: '3px 0'
+    margin: '2px 0'
   },
   cifraBS: {
-    fontSize: '0.86rem',
-    fontWeight: '800',
-    color: '#0052cc'
+    fontSize: '0.84rem',
+    fontWeight: '700',
+    color: '#bfdbfe'
   },
   seccionCliente: {
     backgroundColor: '#f8fafc',
-    borderRadius: '14px',
+    borderRadius: '12px',
     padding: '8px',
     border: '1px solid #e2e8f0'
   },
-  inputWrapper: {
-    display: 'flex',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: '10px',
-    border: '1px solid #cbd5e1'
-  },
-  inputLimpio: {
+  inputCliente: {
     width: '100%',
     boxSizing: 'border-box',
-    padding: '7px 8px',
-    border: 'none',
-    background: 'transparent',
-    fontSize: '0.78rem',
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid #cbd5e1',
+    fontSize: '0.8rem',
     outline: 'none',
-    color: '#0f2a4a',
-    fontWeight: '600'
+    backgroundColor: '#ffffff'
+  },
+  iconoInputBox: {
+    width: '20px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   desplegableSugerencias: {
     position: 'absolute',
@@ -505,10 +492,10 @@ const styles = {
     right: 0,
     backgroundColor: '#fff',
     border: '1px solid #cbd5e1',
-    borderRadius: '10px',
-    boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+    borderRadius: '8px',
+    boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
     zIndex: 99999,
-    maxHeight: '150px',
+    maxHeight: '140px',
     overflowY: 'auto'
   },
   itemSugerencia: {
@@ -520,18 +507,10 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '9px 12px',
-    borderRadius: '12px',
+    padding: '8px 12px',
+    borderRadius: '10px',
     border: '1px solid',
     cursor: 'pointer'
-  },
-  iconoFiar: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
   },
   gridPagos: {
     display: 'flex',
@@ -540,20 +519,19 @@ const styles = {
   },
   cajaPagoMetodo: {
     backgroundColor: '#ffffff',
-    borderRadius: '12px',
+    borderRadius: '10px',
     border: '1px solid #e2e8f0',
-    padding: '8px 10px'
+    padding: '6px 10px'
   },
   filaMetodoTop: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '4px'
+    marginBottom: '3px'
   },
   labelMetodo: {
     fontSize: '0.74rem',
-    color: '#0f2a4a',
-    fontWeight: '700'
+    color: '#0f2a4a'
   },
   btnPagarTodoPill: {
     backgroundColor: '#eff6ff',
@@ -569,41 +547,41 @@ const styles = {
     width: '100%',
     boxSizing: 'border-box',
     padding: '6px 8px',
-    borderRadius: '8px',
-    border: '1px solid #e2e8f0',
-    backgroundColor: '#f8fafc',
-    fontSize: '0.86rem',
+    borderRadius: '6px',
+    border: '1px solid #cbd5e1',
+    fontSize: '0.84rem',
     fontWeight: 'bold',
     outline: 'none',
+    backgroundColor: '#f8fafc',
     color: '#0f2a4a'
   },
   tarjetaResumen: {
     backgroundColor: '#f0fdf4',
-    borderRadius: '12px',
+    borderRadius: '10px',
     border: '1px solid #bbf7d0',
-    padding: '10px 12px'
+    padding: '8px 12px'
   },
   alertaVueltoBox: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: '6px',
-    paddingTop: '6px',
+    marginTop: '4px',
+    paddingTop: '4px',
     borderTop: '1px dashed #bbf7d0'
   },
   btnCompletarPrincipal: {
     width: '100%',
     padding: '12px',
-    color: '#fff',
+    color: '#ffffff',
     border: 'none',
-    borderRadius: '12px',
+    borderRadius: '10px',
     fontSize: '0.88rem',
-    fontWeight: '900',
+    fontWeight: 'bold',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: '6px',
-    boxShadow: '0 4px 14px rgba(0, 176, 80, 0.35)'
+    boxShadow: '0 4px 12px rgba(0, 176, 80, 0.3)'
   }
 };

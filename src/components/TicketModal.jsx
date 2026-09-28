@@ -15,20 +15,24 @@ export default function TicketModal({
   const items = datos.items || [];
   const cliente = datos.cliente || { nombre: 'Consumidor Final', doc: 'V-00000000', telefono: '' };
 
+  // Cantidad total de artículos vendidos
+  const cantidadTotalPiezas = items.reduce((acc, it) => acc + Number(it.cantidad || 0), 0);
+
   const imprimir = () => {
     window.print();
   };
 
   const compartirWhatsApp = () => {
-    let texto = `*🧾 COMPROBANTE DE PAGO*\n`;
+    let texto = `*🧾 FACTURA / TICKET DE VENTA*\n`;
     texto += `*${(config?.nombre || 'FACILITO POS').toUpperCase()}*\n`;
     if (config?.rif) texto += `RIF: ${config.rif}\n`;
     if (config?.telefono) texto += `TEL: ${config.telefono}\n`;
     texto += `--------------------------------\n`;
-    texto += `CONTROL: #${datos.correlativo || datos.id}\n`;
+    texto += `TICKET #: ${datos.correlativo || datos.id}\n`;
     texto += `FECHA: ${datos.fechaFormateada || new Date().toLocaleString()}\n`;
     texto += `CLIENTE: ${cliente.nombre}\n`;
-    texto += `DOC: ${cliente.doc}\n`;
+    texto += `CÉDULA / RIF: ${cliente.doc}\n`;
+    if (cliente.telefono) texto += `TELÉFONO: ${cliente.telefono}\n`;
     texto += `PAGO: ${datos.esCredito ? 'A CRÉDITO (FIADO)' : (datos.metodoPago || 'EFECTIVO')}\n`;
     texto += `--------------------------------\n`;
 
@@ -39,11 +43,11 @@ export default function TicketModal({
     });
 
     texto += `--------------------------------\n`;
-    texto += `*TOTAL FACTURA: $${totalUSD.toFixed(2)}*\n`;
-    texto += `*TOTAL BOLÍVARES: Bs. ${totalBS.toFixed(2)}*\n`;
+    texto += `*TOTAL A PAGAR: $${totalUSD.toFixed(2)}*\n`;
+    texto += `*TOTAL EN BS: Bs. ${totalBS.toFixed(2)}*\n`;
     texto += `Tasa Oficial BCV: Bs. ${tasa.toFixed(2)}\n`;
     if (datos.vueltoUSD > 0) {
-      texto += `Vuelto Entregado: $${datos.vueltoUSD.toFixed(2)} (Bs. ${datos.vueltoBS.toFixed(2)})\n`;
+      texto += `Vuelto: $${datos.vueltoUSD.toFixed(2)} (Bs. ${datos.vueltoBS.toFixed(2)})\n`;
     }
     texto += `--------------------------------\n`;
     if (config?.mensajePie) texto += `${config.mensajePie}\n`;
@@ -61,39 +65,39 @@ export default function TicketModal({
 
   return (
     <div style={styles.overlay} translate="no">
-      <div style={styles.modalContenedor}>
+      <div style={styles.modalBox}>
         {/* Barra superior de control */}
-        <div style={styles.barraControl}>
+        <div style={styles.barraHeader}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <CheckCircle2 color="#00b050" size={17} />
             <span style={{ fontSize: '0.86rem', fontWeight: '800', color: '#0f2a4a' }}>
-              Venta Procesada con Éxito
+              Comprobante Generado
             </span>
           </div>
-          <button type="button" onClick={alCerrar} style={styles.btnCerrarModal}>
+          <button type="button" onClick={alCerrar} style={styles.btnCerrar}>
             <X size={16} />
           </button>
         </div>
 
-        {/* TICKET TÉRMICO REAL (Estilo Rollo Continuo 80mm) */}
-        <div id="area-ticket-impresion" style={styles.rolloTicket}>
-          {/* Cabecera / Logo */}
-          <div style={styles.cabeceraCentro}>
+        {/* TICKET FORMAL ESTRUCTURADO */}
+        <div id="area-ticket-impresion" style={styles.ticketCuerpo}>
+          {/* Logo y Encabezado */}
+          <div style={styles.encabezadoFiscal}>
             {config?.logo && (
               <img src={config.logo} alt="Logo" style={styles.logoTicket} />
             )}
-            <h2 style={styles.nombreEmpresa}>{(config?.nombre || 'FACILITO POS').toUpperCase()}</h2>
-            <div style={styles.datosFiscales}>{config?.rif || 'RIF: J-50000000-0'}</div>
-            {config?.direccion && <div style={styles.datosFiscales}>{config.direccion}</div>}
-            {config?.telefono && <div style={styles.datosFiscales}>TEL: {config.telefono}</div>}
+            <h2 style={styles.nombreNegocio}>{(config?.nombre || 'FACILITO POS').toUpperCase()}</h2>
+            <div style={styles.textoSub}>{config?.rif || 'RIF: J-50000000-0'}</div>
+            {config?.direccion && <div style={styles.textoSub}>{config.direccion}</div>}
+            {config?.telefono && <div style={styles.textoSub}>TEL: {config.telefono}</div>}
           </div>
 
-          <div style={styles.lineaCorteDoble} />
+          <div style={styles.separadorLineas} />
 
-          {/* Información de la Transacción */}
-          <div style={styles.gridMetadata}>
+          {/* Datos del Comprobante */}
+          <div style={styles.gridInfo}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>COMPROBANTE: <strong>#{datos.correlativo || datos.id}</strong></span>
+              <span>CONTROL: <strong>#{datos.correlativo || datos.id}</strong></span>
               <span>{datos.fechaFormateada || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
             <div>CAJERO: {datos.cajero || 'Angel Pantoja'} · CAJA: {datos.caja || 'Caja 01'}</div>
@@ -105,21 +109,22 @@ export default function TicketModal({
             </div>
           </div>
 
-          <div style={styles.lineaCorteDoble} />
+          <div style={styles.separadorLineas} />
 
-          {/* Tabla de Artículos */}
+          {/* Tabla de Artículos Estructurada con Cabecera */}
           <div style={styles.tablaHeader}>
             <span style={{ flex: 1.8 }}>DESCRIPCIÓN</span>
-            <span style={{ width: '38px', textAlign: 'center' }}>CANT</span>
+            <span style={{ width: '42px', textAlign: 'center' }}>CANT</span>
             <span style={{ width: '48px', textAlign: 'right' }}>P.U</span>
             <span style={{ width: '56px', textAlign: 'right' }}>TOTAL</span>
           </div>
 
           <div style={styles.lineaFina} />
 
+          {/* Renglones */}
           <div style={styles.listaProductos}>
             {items.map((it, idx) => (
-              <div key={idx} style={styles.filaProducto}>
+              <div key={idx} style={styles.itemFila}>
                 <div style={styles.colNombre}>{it.nombre}</div>
                 <div style={styles.colCant}>{it.cantidad}{it.esPesado ? 'kg' : ''}</div>
                 <div style={styles.colPu}>${Number(it.precioUSD).toFixed(2)}</div>
@@ -128,19 +133,31 @@ export default function TicketModal({
             ))}
           </div>
 
-          <div style={styles.lineaCorteDoble} />
+          <div style={styles.separadorLineas} />
 
-          {/* Totales */}
-          <div style={styles.seccionTotales}>
-            <div style={styles.filaTotalGrandeUSD}>
-              <span>TOTAL FACTURA:</span>
+          {/* Desglose de Totales y Monedas */}
+          <div style={styles.seccionDesglose}>
+            <div style={styles.filaSub}>
+              <span>TOTAL ARTÍCULOS:</span>
+              <strong>{cantidadTotalPiezas.toFixed(cantidadTotalPiezas % 1 === 0 ? 0 : 3)} unids</strong>
+            </div>
+
+            <div style={styles.filaSub}>
+              <span>BASE IMPONIBLE (EXENTO):</span>
               <span>${totalUSD.toFixed(2)}</span>
             </div>
-            <div style={styles.filaTotalGrandeBS}>
-              <span>TOTAL BS:</span>
+
+            <div style={styles.filaTotalUSD}>
+              <span>TOTAL A PAGAR:</span>
+              <span>${totalUSD.toFixed(2)}</span>
+            </div>
+
+            <div style={styles.filaTotalBS}>
+              <span>TOTAL BOLÍVARES:</span>
               <span>Bs. {totalBS.toFixed(2)}</span>
             </div>
-            <div style={styles.tasaOficialTag}>
+
+            <div style={styles.tasaTag}>
               TASA OFICIAL BCV: Bs. {tasa.toFixed(2)} / USD
             </div>
 
@@ -152,16 +169,15 @@ export default function TicketModal({
             )}
           </div>
 
-          <div style={styles.lineaCorteDoble} />
+          <div style={styles.separadorLineas} />
 
-          {/* Pie de Página y Código de Barras Decorativo */}
-          <div style={styles.pieCentro}>
+          {/* Pie de Ticket y Código de Barras */}
+          <div style={styles.pieFiscal}>
             <p style={styles.mensajePie}>{config?.mensajePie || '¡Gracias por su compra!'}</p>
             
-            {/* Código de barras decorativo tipo ticket supermercado */}
-            <div style={styles.codigoBarrasBox}>
-              <div style={styles.barrasLineas} />
-              <span style={styles.textoControl}>* {datos.correlativo || datos.id} *</span>
+            <div style={styles.contenedorBarras}>
+              <div style={styles.barrasGraficas} />
+              <span style={styles.codigoControl}>* {datos.correlativo || datos.id} *</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', color: '#64748b', fontSize: '0.62rem', marginTop: '6px' }}>
@@ -172,16 +188,16 @@ export default function TicketModal({
         </div>
 
         {/* Botones de Acción */}
-        <div style={styles.filaBotonesAccion}>
-          <button type="button" onClick={imprimir} style={styles.btnAccionImprimir}>
+        <div style={styles.filaBotones}>
+          <button type="button" onClick={imprimir} style={styles.btnImprimir}>
             <Printer size={15} />
             <span>Imprimir</span>
           </button>
-          <button type="button" onClick={compartirWhatsApp} style={styles.btnAccionWhatsApp}>
+          <button type="button" onClick={compartirWhatsApp} style={styles.btnWhatsApp}>
             <Share2 size={15} />
-            <span>{cliente.telefono ? 'Enviar al WhatsApp' : 'WhatsApp'}</span>
+            <span>{cliente.telefono ? 'Enviar WhatsApp' : 'WhatsApp'}</span>
           </button>
-          <button type="button" onClick={alCerrar} style={styles.btnAccionListo}>
+          <button type="button" onClick={alCerrar} style={styles.btnListo}>
             <span>Listo</span>
           </button>
         </div>
@@ -195,100 +211,99 @@ const styles = {
     position: 'fixed',
     inset: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    backdropFilter: 'blur(4px)',
+    backdropFilter: 'blur(3px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '12px',
+    padding: '8px',
     zIndex: 999999999
   },
-  modalContenedor: {
+  modalBox: {
     backgroundColor: '#ffffff',
-    borderRadius: '24px',
-    maxWidth: '360px',
+    borderRadius: '20px',
     width: '100%',
-    maxHeight: '94vh',
+    maxWidth: '380px',
+    maxHeight: '96vh',
     overflowY: 'auto',
-    padding: '16px',
-    boxShadow: '0 25px 60px rgba(0,0,0,0.35)',
+    padding: '14px',
+    boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
     display: 'flex',
     flexDirection: 'column'
   },
-  barraControl: {
+  barraHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '10px'
   },
-  btnCerrarModal: {
+  btnCerrar: {
     background: '#f1f5f9',
     border: 'none',
     borderRadius: '50%',
-    width: '28px',
-    height: '28px',
+    width: '26px',
+    height: '26px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
     color: '#64748b'
   },
-  rolloTicket: {
+  ticketCuerpo: {
     backgroundColor: '#ffffff',
     borderRadius: '12px',
-    padding: '16px 14px',
+    padding: '14px 12px',
     border: '1px solid #cbd5e1',
-    boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
-    fontFamily: '"Courier New", Courier, monospace',
-    fontSize: '0.74rem',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontSize: '0.72rem',
     color: '#0f172a'
   },
-  cabeceraCentro: {
+  encabezadoFiscal: {
     textAlign: 'center',
     lineHeight: 1.35
   },
   logoTicket: {
-    maxHeight: '50px',
-    maxWidth: '130px',
+    maxHeight: '48px',
+    maxWidth: '120px',
     objectFit: 'contain',
-    marginBottom: '6px'
+    marginBottom: '4px'
   },
-  nombreEmpresa: {
+  nombreNegocio: {
     margin: '0 0 2px 0',
-    fontSize: '0.96rem',
+    fontSize: '0.94rem',
     fontWeight: '900',
-    color: '#0f2a4a',
-    letterSpacing: '0.5px'
+    color: '#0f2a4a'
   },
-  datosFiscales: {
+  textoSub: {
     fontSize: '0.66rem',
     color: '#475569'
   },
-  lineaCorteDoble: {
-    borderTop: '2px dashed #94a3b8',
-    margin: '8px 0'
+  separadorLineas: {
+    borderTop: '1px dashed #cbd5e1',
+    margin: '7px 0'
   },
-  lineaFina: {
-    borderTop: '1px solid #cbd5e1',
-    margin: '4px 0'
-  },
-  gridMetadata: {
+  gridInfo: {
     fontSize: '0.68rem',
-    lineHeight: 1.5,
+    lineHeight: 1.45,
     color: '#1e293b'
   },
   tablaHeader: {
     display: 'flex',
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: '0.66rem',
     color: '#0f2a4a',
     padding: '2px 0'
   },
+  lineaFina: {
+    borderTop: '1px solid #e2e8f0',
+    margin: '3px 0'
+  },
   listaProductos: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '5px'
+    gap: '4px'
   },
-  filaProducto: {
+  itemFila: {
     display: 'flex',
     alignItems: 'baseline',
     fontSize: '0.7rem'
@@ -298,11 +313,11 @@ const styles = {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#0f2a4a'
   },
   colCant: {
-    width: '38px',
+    width: '42px',
     textAlign: 'center',
     color: '#475569'
   },
@@ -314,29 +329,36 @@ const styles = {
   colTotal: {
     width: '56px',
     textAlign: 'right',
-    fontWeight: '900',
+    fontWeight: 'bold',
     color: '#0f2a4a'
   },
-  seccionTotales: {
+  seccionDesglose: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '3px'
+    gap: '2px'
   },
-  filaTotalGrandeUSD: {
+  filaSub: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '1.1rem',
+    fontSize: '0.66rem',
+    color: '#64748b'
+  },
+  filaTotalUSD: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '1.05rem',
     fontWeight: '900',
-    color: '#00b050'
+    color: '#00b050',
+    marginTop: '3px'
   },
-  filaTotalGrandeBS: {
+  filaTotalBS: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '0.94rem',
+    fontSize: '0.92rem',
     fontWeight: '900',
     color: '#0052cc'
   },
-  tasaOficialTag: {
+  tasaTag: {
     fontSize: '0.64rem',
     color: '#64748b',
     textAlign: 'right',
@@ -345,80 +367,80 @@ const styles = {
   filaVueltoTag: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '0.7rem',
+    fontSize: '0.68rem',
     color: '#b45309',
     fontWeight: 'bold',
-    marginTop: '4px'
+    marginTop: '3px'
   },
-  pieCentro: {
+  pieFiscal: {
     textAlign: 'center',
     lineHeight: 1.35
   },
   mensajePie: {
-    margin: '0 0 6px 0',
+    margin: '0 0 4px 0',
     fontWeight: 'bold',
     fontSize: '0.72rem',
     color: '#0f2a4a'
   },
-  codigoBarrasBox: {
+  contenedorBarras: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     marginTop: '4px'
   },
-  barrasLineas: {
-    width: '140px',
-    height: '24px',
+  barrasGraficas: {
+    width: '130px',
+    height: '22px',
     background: 'repeating-linear-gradient(90deg, #0f2a4a, #0f2a4a 2px, transparent 2px, transparent 4px, #0f2a4a 4px, #0f2a4a 7px, transparent 7px, transparent 9px)'
   },
-  textoControl: {
+  codigoControl: {
     fontSize: '0.62rem',
     color: '#64748b',
     letterSpacing: '2px',
     marginTop: '2px'
   },
-  filaBotonesAccion: {
+  filaBotones: {
     display: 'flex',
     gap: '6px',
-    marginTop: '12px'
+    marginTop: '10px'
   },
-  btnAccionImprimir: {
+  btnImprimir: {
     flex: 1,
-    padding: '10px',
+    padding: '9px',
     backgroundColor: '#0f2a4a',
     color: '#fff',
     border: 'none',
-    borderRadius: '12px',
-    fontSize: '0.78rem',
+    borderRadius: '10px',
+    fontSize: '0.76rem',
     fontWeight: 'bold',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '5px'
+    gap: '4px'
   },
-  btnAccionWhatsApp: {
+  btnWhatsApp: {
     flex: 1.3,
-    padding: '10px',
+    padding: '9px',
     backgroundColor: '#00b050',
     color: '#fff',
     border: 'none',
-    borderRadius: '12px',
-    fontSize: '0.78rem',
+    borderRadius: '10px',
+    fontSize: '0.76rem',
     fontWeight: 'bold',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '5px'
+    gap: '4px'
   },
-  btnAccionListo: {
-    padding: '10px 14px',
+  btnListo: {
+    padding: '9px 12px',
     backgroundColor: '#f1f5f9',
     color: '#0f2a4a',
     border: '1px solid #cbd5e1',
-    borderRadius: '12px',
-    fontSize: '0.78rem',
+    borderRadius: '10px',
+    fontSize: '0.76rem',
     fontWeight: 'bold',
     cursor: 'pointer'
   }
