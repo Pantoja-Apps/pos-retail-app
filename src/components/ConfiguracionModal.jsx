@@ -1,61 +1,59 @@
 import React, { useState } from 'react';
 import { 
-  ArrowLeft, Store, Save, ShieldAlert, Monitor, Users,
-  Download, Upload, Image as ImageIcon, Trash2
+  ArrowLeft, Store, Save, Users, Smartphone, Image as ImageIcon, 
+  Trash2, UploadCloud, CheckCircle2, Shield
 } from 'lucide-react';
+import { optimizarImagen } from '../utils/imageOptimizer';
 
-export default function ConfiguracionModal({ 
-  config, 
-  cajas = [], 
+export default function ConfiguracionModal({
+  config,
+  cajas = [],
   cajeros = [],
-  infoLicencia, 
-  alGuardarConfig, 
-  alExportarBackup, 
-  alImportarBackup, 
+  alGuardarConfig,
   alAbrirTerminales,
   alAbrirUsuarios,
-  alVolver 
+  alVolver
 }) {
-  const [datos, setDatos] = useState({ ...config });
+  const [nombre, setNombre] = useState(config.nombre || '');
+  const [rif, setRif] = useState(config.rif || '');
+  const [direccion, setDireccion] = useState(config.direccion || '');
+  const [telefono, setTelefono] = useState(config.telefono || '');
+  const [mensajePie, setMensajePie] = useState(config.mensajePie || '');
+  const [logo, setLogo] = useState(config.logo || '');
+  const [procesandoLogo, setProcesandoLogo] = useState(false);
   const [guardadoExitoso, setGuardadoExitoso] = useState(false);
 
-  const handleSubmit = (e) => {
+  const manejarSubidaLogo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setProcesandoLogo(true);
+    try {
+      // Comprime a 250px maximo para el encabezado y ticket
+      const base64Optimo = await optimizarImagen(file, 250, 0.8);
+      setLogo(base64Optimo);
+    } catch (err) {
+      alert('Error optimizando el logo.');
+    } finally {
+      setProcesandoLogo(false);
+    }
+  };
+
+  const guardar = (e) => {
     e.preventDefault();
-    alGuardarConfig(datos);
+    const configNueva = {
+      ...config,
+      nombre: nombre.trim() || 'Mi Negocio',
+      rif: rif.trim(),
+      direccion: direccion.trim(),
+      telefono: telefono.trim(),
+      mensajePie: mensajePie.trim(),
+      logo: logo
+    };
+
+    alGuardarConfig(configNueva);
     setGuardadoExitoso(true);
     setTimeout(() => setGuardadoExitoso(false), 2000);
-  };
-
-  const handleSubirLogo = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      alert('La imagen no debe superar los 2MB');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (evento) => {
-      setDatos(prev => ({ ...prev, logo: evento.target.result }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubirArchivo = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evento) => {
-      try {
-        const json = JSON.parse(evento.target.result);
-        if (confirm('¿Restaurar respaldo completo? Los datos actuales serán reemplazados por este archivo.')) {
-          alImportarBackup(json);
-          alert('¡Respaldo importado correctamente!');
-        }
-      } catch (err) {
-        alert('Archivo de respaldo inválido o dañado.');
-      }
-    };
-    reader.readAsText(file);
   };
 
   return (
@@ -64,176 +62,155 @@ export default function ConfiguracionModal({
         <button type="button" onClick={alVolver} style={styles.btnAtras}>
           <ArrowLeft size={18} />
         </button>
-        <div style={{ flex: 1, textAlign: 'center' }}>
-          <h2 style={styles.tituloHeader}>Ajustes del Sistema</h2>
-          <small style={{ color: '#64748b', fontSize: '0.72rem' }}>Configuración general y comercio</small>
-        </div>
+        <h2 style={styles.tituloHeader}>Ajustes y Configuración</h2>
         <div style={{ width: '32px' }} />
       </header>
 
       <main style={styles.cuerpo}>
-        <form onSubmit={handleSubmit} style={styles.formulario}>
-          {/* Tarjeta de Logo e Identidad */}
-          <div style={styles.cardSeccion}>
-            <div style={styles.tituloSeccion}>
-              <Store size={16} color="#0052cc" />
-              <span>Logotipo del Negocio</span>
+        {/* Accesos Rápidos a Módulos de Personal y Cajas */}
+        <div style={styles.seccionAccesos}>
+          <button type="button" onClick={alAbrirUsuarios} style={styles.btnAcceso}>
+            <div style={styles.iconoBoxAcceso}>
+              <Users size={18} color="#0f2a4a" />
             </div>
+            <div style={{ textAlign: 'left', flex: 1 }}>
+              <strong style={{ fontSize: '0.84rem', color: '#0f2a4a', display: 'block' }}>Personal y Cajeros</strong>
+              <small style={{ fontSize: '0.7rem', color: '#64748b' }}>{cajeros.length} usuario(s) registrados</small>
+            </div>
+          </button>
 
-            <div style={styles.cajaLogoFlex}>
+          <button type="button" onClick={alAbrirTerminales} style={styles.btnAcceso}>
+            <div style={{ ...styles.iconoBoxAcceso, backgroundColor: '#f0fdf4' }}>
+              <Smartphone size={18} color="#00b050" />
+            </div>
+            <div style={{ textAlign: 'left', flex: 1 }}>
+              <strong style={{ fontSize: '0.84rem', color: '#0f2a4a', display: 'block' }}>Cajas y Terminales</strong>
+              <small style={{ fontSize: '0.7rem', color: '#64748b' }}>{cajas.length} caja(s) activas</small>
+            </div>
+          </button>
+        </div>
+
+        {/* Formulario de Datos del Negocio y Logo */}
+        <form onSubmit={guardar} style={styles.cardForm}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <Store size={18} color="#0f2a4a" />
+            <h3 style={{ margin: 0, fontSize: '0.92rem', color: '#0f2a4a', fontWeight: '800' }}>
+              Datos del Establecimiento
+            </h3>
+          </div>
+
+          {/* Subida y Preview del Logo del Negocio */}
+          <div style={styles.cajaLogoSeccion}>
+            <label style={styles.label}>Logo del Negocio (Ticket y Pantalla)</label>
+            <div style={styles.filaLogoPreview}>
               <div style={styles.previewLogoBox}>
-                {datos.logo ? (
-                  <img src={datos.logo} alt="Logo" style={styles.logoImg} />
+                {logo ? (
+                  <img src={logo} alt="Logo" style={styles.imgLogoPreview} />
                 ) : (
-                  <div style={styles.logoVacio}>
-                    <ImageIcon size={26} color="#94a3b8" />
-                    <span style={{ fontSize: '0.62rem', color: '#94a3b8', marginTop: '2px' }}>Sin Logo</span>
-                  </div>
+                  <ImageIcon size={28} color="#94a3b8" />
                 )}
               </div>
-              <div style={styles.accionesLogoCol}>
-                <label style={styles.btnSubirLogo}>
-                  <Upload size={13} />
-                  <span>{datos.logo ? 'Cambiar Imagen' : 'Cargar Imagen'}</span>
-                  <input type="file" accept="image/*" onChange={handleSubirLogo} style={{ display: 'none' }} />
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                <label style={styles.btnSubirArchivo}>
+                  <UploadCloud size={14} />
+                  <span>{procesandoLogo ? 'Comprimiendo...' : (logo ? 'Cambiar Logo' : 'Subir Imagen')}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={manejarSubidaLogo}
+                    disabled={procesandoLogo}
+                    style={{ display: 'none' }}
+                  />
                 </label>
-                {datos.logo && (
-                  <button 
-                    type="button" 
-                    onClick={() => setDatos(prev => ({ ...prev, logo: '' }))} 
+
+                {logo && (
+                  <button
+                    type="button"
+                    onClick={() => setLogo('')}
                     style={styles.btnQuitarLogo}
                   >
-                    <Trash2 size={13} /> Eliminar Logo
+                    <Trash2 size={13} />
+                    <span>Eliminar</span>
                   </button>
                 )}
-                <span style={styles.textoAyudaLogo}>Se muestra en tickets y en el menú.</span>
               </div>
             </div>
+            <small style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '4px' }}>
+              Se comprime automáticamente para guardarse seguro sin conexión y en tickets.
+            </small>
           </div>
 
-          {/* Tarjeta de Datos Fiscales y Dirección */}
-          <div style={styles.cardSeccion}>
-            <div style={styles.tituloSeccion}>
-              <Store size={16} color="#0052cc" />
-              <span>Datos del Comercio</span>
-            </div>
-
-            <div style={styles.campo}>
-              <label style={styles.label}>Nombre Comercial</label>
-              <input 
-                type="text" 
-                value={datos.nombre || ''} 
-                onChange={(e) => setDatos({ ...datos, nombre: e.target.value })} 
-                style={styles.input} 
-                required 
-              />
-            </div>
-
-            <div style={styles.campo}>
-              <label style={styles.label}>RIF / Cédula</label>
-              <input 
-                type="text" 
-                value={datos.rif || ''} 
-                onChange={(e) => setDatos({ ...datos, rif: e.target.value })} 
-                style={styles.input} 
-              />
-            </div>
-
-            <div style={styles.campo}>
-              <label style={styles.label}>Teléfono Contacto</label>
-              <input 
-                type="text" 
-                value={datos.telefono || ''} 
-                onChange={(e) => setDatos({ ...datos, telefono: e.target.value })} 
-                style={styles.input} 
-              />
-            </div>
-
-            <div style={styles.campo}>
-              <label style={styles.label}>Dirección del Negocio</label>
-              <input 
-                type="text" 
-                value={datos.direccion || ''} 
-                onChange={(e) => setDatos({ ...datos, direccion: e.target.value })} 
-                style={styles.input} 
-              />
-            </div>
-
-            <div style={styles.campo}>
-              <label style={styles.label}>Mensaje al pie del ticket</label>
-              <input 
-                type="text" 
-                value={datos.mensajePie || ''} 
-                onChange={(e) => setDatos({ ...datos, mensajePie: e.target.value })} 
-                style={styles.input} 
-              />
-            </div>
-
-            <button type="submit" style={styles.btnGuardar}>
-              <Save size={15} />
-              <span>{guardadoExitoso ? '¡Datos Guardados Exitosamente!' : 'Guardar Cambios'}</span>
-            </button>
+          <div style={styles.campo}>
+            <label style={styles.label}>Nombre Comercial</label>
+            <input
+              type="text"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              style={styles.input}
+              placeholder="Ej. MiniMarket JJJP"
+              required
+            />
           </div>
+
+          <div style={styles.campo}>
+            <label style={styles.label}>RIF / Cédula Fiscal</label>
+            <input
+              type="text"
+              value={rif}
+              onChange={(e) => setRif(e.target.value)}
+              style={styles.input}
+              placeholder="Ej. J-50000000-0"
+            />
+          </div>
+
+          <div style={styles.campo}>
+            <label style={styles.label}>Teléfono de Contacto</label>
+            <input
+              type="text"
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+              style={styles.input}
+              placeholder="0412-0000000"
+            />
+          </div>
+
+          <div style={styles.campo}>
+            <label style={styles.label}>Dirección Física</label>
+            <input
+              type="text"
+              value={direccion}
+              onChange={(e) => setDireccion(e.target.value)}
+              style={styles.input}
+              placeholder="Calle principal, local 1"
+            />
+          </div>
+
+          <div style={styles.campo}>
+            <label style={styles.label}>Mensaje al pie del ticket</label>
+            <input
+              type="text"
+              value={mensajePie}
+              onChange={(e) => setMensajePie(e.target.value)}
+              style={styles.input}
+              placeholder="¡Gracias por su compra! Revise su mercancía"
+            />
+          </div>
+
+          <button type="submit" style={styles.btnGuardar}>
+            {guardadoExitoso ? (
+              <>
+                <CheckCircle2 size={16} />
+                <span>¡Cambios Guardados!</span>
+              </>
+            ) : (
+              <>
+                <Save size={16} />
+                <span>Guardar Ajustes</span>
+              </>
+            )}
+          </button>
         </form>
-
-        {/* Cajas y Usuarios */}
-        <div style={styles.cardSeccion}>
-          <div style={styles.tituloSeccion}>
-            <Monitor size={16} color="#0052cc" />
-            <span>Gestión de Cajas y Personal</span>
-          </div>
-
-          <button type="button" onClick={alAbrirUsuarios} style={styles.btnModuloItem}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ ...styles.iconoPill, backgroundColor: '#eff6ff', color: '#0052cc' }}>
-                <Users size={16} />
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <strong style={{ fontSize: '0.84rem', color: '#1e293b' }}>Personal y Cajeros</strong>
-                <span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b' }}>
-                  {cajeros.length} cajero(s) registrado(s) · Control de PIN
-                </span>
-              </div>
-            </div>
-            <ArrowLeft size={16} style={{ transform: 'rotate(180deg)', color: '#94a3b8' }} />
-          </button>
-
-          <button type="button" onClick={alAbrirTerminales} style={{ ...styles.btnModuloItem, marginTop: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ ...styles.iconoPill, backgroundColor: '#f0f9ff', color: '#0284c7' }}>
-                <Monitor size={16} />
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <strong style={{ fontSize: '0.84rem', color: '#1e293b' }}>Cajas y Terminales POS</strong>
-                <span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b' }}>
-                  {cajas.length} caja(s) configurada(s) · Enlace QR
-                </span>
-              </div>
-            </div>
-            <ArrowLeft size={16} style={{ transform: 'rotate(180deg)', color: '#94a3b8' }} />
-          </button>
-        </div>
-
-        {/* Respaldos */}
-        <div style={styles.cardSeccion}>
-          <div style={styles.tituloSeccion}>
-            <ShieldAlert size={16} color="#ea580c" />
-            <span>Respaldo y Seguridad</span>
-          </div>
-          <p style={{ margin: '0 0 10px 0', fontSize: '0.74rem', color: '#64748b', lineHeight: 1.4 }}>
-            Descarga un respaldo seguro con todos tus productos, clientes y transacciones para guardarlo en tu computadora o pendrive.
-          </p>
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button type="button" onClick={alExportarBackup} style={styles.btnBackup}>
-              <Download size={14} /> Exportar JSON
-            </button>
-            <label style={styles.btnBackupImport}>
-              <Upload size={14} /> Importar JSON
-              <input type="file" accept=".json" onChange={handleSubirArchivo} style={{ display: 'none' }} />
-            </label>
-          </div>
-        </div>
       </main>
     </div>
   );
@@ -272,7 +249,7 @@ const styles = {
     margin: 0,
     fontSize: '0.96rem',
     fontWeight: '800',
-    color: '#0f172a'
+    color: '#0f2a4a'
   },
   cuerpo: {
     flex: 1,
@@ -282,102 +259,101 @@ const styles = {
     flexDirection: 'column',
     gap: '14px'
   },
-  formulario: {
+  seccionAccesos: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '10px'
+  },
+  btnAcceso: {
+    backgroundColor: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '14px',
+    padding: '12px 10px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    cursor: 'pointer',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+  },
+  iconoBoxAcceso: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '10px',
+    backgroundColor: '#eff6ff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0
+  },
+  cardForm: {
+    backgroundColor: '#fff',
+    borderRadius: '18px',
+    padding: '16px',
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
     display: 'flex',
     flexDirection: 'column',
-    gap: '14px'
+    gap: '12px'
   },
-  cardSeccion: {
-    backgroundColor: '#fff',
-    borderRadius: '16px',
-    padding: '14px',
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+  cajaLogoSeccion: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    paddingBottom: '8px',
+    borderBottom: '1px dashed #e2e8f0'
   },
-  tituloSeccion: {
+  filaLogoPreview: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    fontSize: '0.84rem',
-    fontWeight: '800',
-    color: '#0f172a',
-    marginBottom: '12px'
-  },
-  cajaLogoFlex: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '14px',
-    backgroundColor: '#f8fafc',
-    padding: '12px',
-    borderRadius: '12px',
-    border: '1px solid #e2e8f0'
+    gap: '12px',
+    marginTop: '4px'
   },
   previewLogoBox: {
     width: '64px',
     height: '64px',
     borderRadius: '12px',
-    border: '1px dashed #cbd5e1',
-    backgroundColor: '#fff',
+    border: '1px solid #cbd5e1',
+    backgroundColor: '#f8fafc',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
     flexShrink: 0
   },
-  logoImg: {
+  imgLogoPreview: {
     width: '100%',
     height: '100%',
     objectFit: 'contain'
   },
-  logoVacio: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  accionesLogoCol: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px'
-  },
-  btnSubirLogo: {
-    backgroundColor: '#0052cc',
+  btnSubirArchivo: {
+    backgroundColor: '#0f2a4a',
     color: '#fff',
     padding: '7px 12px',
     borderRadius: '8px',
     fontSize: '0.74rem',
     fontWeight: 'bold',
     cursor: 'pointer',
-    display: 'inline-flex',
+    display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: '6px'
   },
   btnQuitarLogo: {
-    backgroundColor: '#fee2e2',
+    background: 'none',
+    border: 'none',
     color: '#dc2626',
-    border: '1px solid #fecaca',
-    padding: '6px 12px',
-    borderRadius: '8px',
     fontSize: '0.72rem',
     fontWeight: 'bold',
     cursor: 'pointer',
-    display: 'inline-flex',
+    display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: '4px'
-  },
-  textoAyudaLogo: {
-    fontSize: '0.66rem',
-    color: '#64748b'
+    gap: '4px',
+    padding: 0
   },
   campo: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '4px',
-    marginBottom: '10px',
-    width: '100%'
+    gap: '3px'
   },
   label: {
     fontSize: '0.72rem',
@@ -395,69 +371,20 @@ const styles = {
     backgroundColor: '#f8fafc'
   },
   btnGuardar: {
+    marginTop: '6px',
     width: '100%',
-    boxSizing: 'border-box',
     padding: '11px',
-    backgroundColor: '#0052cc',
+    backgroundColor: '#00b050',
     color: '#fff',
     border: 'none',
     borderRadius: '10px',
-    fontSize: '0.84rem',
+    fontSize: '0.86rem',
     fontWeight: 'bold',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: '6px',
-    marginTop: '6px'
-  },
-  btnModuloItem: {
-    width: '100%',
-    backgroundColor: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    borderRadius: '12px',
-    padding: '10px 12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    cursor: 'pointer'
-  },
-  iconoPill: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  btnBackup: {
-    flex: 1,
-    padding: '8px 10px',
-    backgroundColor: '#fff7ed',
-    border: '1px solid #fed7aa',
-    color: '#ea580c',
-    borderRadius: '8px',
-    fontSize: '0.74rem',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '5px'
-  },
-  btnBackupImport: {
-    flex: 1,
-    padding: '8px 10px',
-    backgroundColor: '#f8fafc',
-    border: '1px solid #cbd5e1',
-    color: '#475569',
-    borderRadius: '8px',
-    fontSize: '0.74rem',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '5px'
+    boxShadow: '0 4px 12px rgba(0, 176, 80, 0.25)'
   }
 };

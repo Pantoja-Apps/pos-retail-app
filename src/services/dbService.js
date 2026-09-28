@@ -37,6 +37,45 @@ export const dbService = {
     }
   },
 
+  async actualizarConfigNegocio(negocioId, datosConfig) {
+    if (!supabase || !negocioId) return false;
+    try {
+      const { error } = await supabase
+        .from('negocios')
+        .update({
+          nombre: datosConfig.nombre,
+          rif: datosConfig.rif,
+          direccion: datosConfig.direccion,
+          telefono: datosConfig.telefono,
+          logo_url: datosConfig.logo || null,
+          mensaje_pie: datosConfig.mensajePie
+        })
+        .eq('id', negocioId);
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  async subirImagenStorage(negocioId, nombreArchivo, base64Data) {
+    if (!supabase || !negocioId || !base64Data) return base64Data;
+    try {
+      // Si el bucket existe, subir; sino devolver base64 directo
+      const blob = await (await fetch(base64Data)).blob();
+      const path = `${negocioId}/${Date.now()}_${nombreArchivo}`;
+      const { data, error } = await supabase.storage.from('pos-imagenes').upload(path, blob, {
+        contentType: blob.type,
+        upsert: true
+      });
+      if (error || !data) return base64Data;
+
+      const { data: pubData } = supabase.storage.from('pos-imagenes').getPublicUrl(path);
+      return pubData?.publicUrl || base64Data;
+    } catch (e) {
+      return base64Data;
+    }
+  },
+
   async loginDueno(correo, password) {
     if (!supabase) return null;
     try {
@@ -74,7 +113,7 @@ export const dbService = {
   async upsertCajero(cajero) {
     if (!supabase) return null;
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('usuarios')
         .upsert([{
           id: String(cajero.id),
@@ -111,18 +150,59 @@ export const dbService = {
         .eq('negocio_id', negocioId);
 
       if (error) return [];
-      return data || [];
+      return (data || []).map(p => ({
+        id: String(p.id),
+        codigo: p.codigo,
+        nombre: p.nombre,
+        costoUSD: Number(p.costo_usd || 0),
+        precioUSD: Number(p.precio_usd || 0),
+        esPesado: Boolean(p.es_pesado),
+        aplicaPrecioMayor: Boolean(p.aplica_precio_mayor),
+        precioMayorUSD: Number(p.precio_mayor_usd || 0),
+        cantMinimaMayor: Number(p.cant_minima_mayor || 3),
+        stock: Number(p.stock || 0),
+        categoria: p.categoria || 'General',
+        imagen: p.imagen_url || ''
+      }));
     } catch (e) {
       return [];
     }
   },
 
-  async upsertProducto(prod) {
-    if (!supabase) return null;
+  async upsertProducto(prod, negocioId) {
+    if (!supabase || !negocioId) return false;
     try {
-      const { data, error } = await supabase
+      const payload = {
+        id: String(prod.id),
+        negocio_id: negocioId,
+        codigo: String(prod.codigo || '').trim(),
+        nombre: prod.nombre,
+        costo_usd: Number(prod.costoUSD || 0),
+        precio_usd: Number(prod.precioUSD || 0),
+        es_pesado: Boolean(prod.esPesado),
+        aplica_precio_mayor: Boolean(prod.aplicaPrecioMayor),
+        precio_mayor_usd: Number(prod.precioMayorUSD || 0),
+        cant_minima_mayor: Number(prod.cantMinimaMayor || 3),
+        stock: Number(prod.stock || 0),
+        categoria: prod.categoria || 'General',
+        imagen_url: prod.imagen || ''
+      };
+
+      const { error } = await supabase.from('productos').upsert([payload]);
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  async eliminarProducto(id, negocioId) {
+    if (!supabase || !negocioId) return false;
+    try {
+      const { error } = await supabase
         .from('productos')
-        .upsert([prod]);
+        .delete()
+        .eq('id', String(id))
+        .eq('negocio_id', negocioId);
       return !error;
     } catch (e) {
       return false;
@@ -132,9 +212,7 @@ export const dbService = {
   async registrarVenta(venta) {
     if (!supabase) return null;
     try {
-      const { data, error } = await supabase
-        .from('ventas')
-        .insert([venta]);
+      const { error } = await supabase.from('ventas').insert([venta]);
       return !error;
     } catch (e) {
       return false;
