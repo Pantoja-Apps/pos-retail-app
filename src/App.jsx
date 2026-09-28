@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
-  RefreshCw, Package, User, BookOpen, Wallet, Search, History, 
-  PauseCircle, PlayCircle, Settings, Store, TrendingUp, Tag, Percent,
-  LogOut, Users, ShieldCheck, UserCheck, Cloud, CloudOff, AlertOctagon, PhoneCall, CheckCircle2, Sparkles, Scale, Monitor, Menu
+  RefreshCw, User, Search, PauseCircle, PlayCircle, Store, Tag, Percent,
+  Cloud, CloudOff, AlertOctagon, PhoneCall, CheckCircle2, Sparkles, Monitor, Menu
 } from 'lucide-react';
 
 import ScannerModal from './components/ScannerModal';
@@ -860,7 +859,6 @@ export default function App() {
 
   return (
     <div style={styles.contenedor} translate="no">
-      {/* Menú Lateral Desplegable */}
       <MenuLateral 
         abierto={menuLateralAbierto}
         alCerrar={() => setMenuLateralAbierto(false)}
@@ -907,7 +905,7 @@ export default function App() {
       {vistaActual === 'soporte' && (
         <SoporteModal 
           nombreNegocio={configEmpresa.nombre}
-          alVolver={() => setVistaActual(esDueno ? 'configuracion' : 'pos')}
+          alVolver={() => setVistaActual('pos')}
         />
       )}
 
@@ -1067,17 +1065,20 @@ export default function App() {
         />
       )}
 
-      {/* MOSTRADOR POS PRINCIPAL */}
+      {/* MOSTRADOR POS PRINCIPAL (Limpio y optimizado) */}
       {vistaActual === 'pos' && (
         <>
           <header style={styles.topHeader}>
             <div style={styles.headerFila1}>
-              {/* Botón que despliega el Menú Lateral */}
+              {/* Botón de Menú a la izquierda + Logo/Avatar */}
               <div 
                 style={styles.marcaContainerClickable} 
                 onClick={() => setMenuLateralAbierto(true)}
-                title="Toca para abrir el menú lateral"
+                title="Toca para abrir el menú"
               >
+                <div style={styles.btnMenuToggle}>
+                  <Menu size={20} color="#0052cc" />
+                </div>
                 {configEmpresa.logo ? (
                   <img src={configEmpresa.logo} alt="Logo" style={styles.logoMini} />
                 ) : (
@@ -1092,9 +1093,8 @@ export default function App() {
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '1px' }}>
-                    <span style={esDueno ? styles.badgeRolDueno : styles.badgeRolCajero}>
-                      {esDueno ? <ShieldCheck size={10} color="#16a34a" /> : <UserCheck size={10} color="#2563eb" />}
-                      <span>{usuarioActivo.nombre}</span>
+                    <span style={styles.badgeUsuarioHeader}>
+                      {usuarioActivo.nombre} ({esDueno ? 'Dueño' : 'Cajero'})
                     </span>
                     <span style={styles.badgeTerminalHeader}>
                       <Monitor size={10} color="#0052cc" /> {cajaActiva.nombre}
@@ -1103,18 +1103,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Botón de Hamburguesa / Menú Lateral */}
-              <button 
-                type="button" 
-                onClick={() => setMenuLateralAbierto(true)} 
-                style={styles.btnMenuToggle}
-                title="Abrir Menú"
-              >
-                <Menu size={18} color="#0052cc" />
-              </button>
-            </div>
-
-            <div style={styles.headerFila2}>
+              {/* Tasa BCV integrada en la cabecera superior derecha */}
               <div style={styles.tasaChip}>
                 <span style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 'bold' }}>BCV</span>
                 <button type="button" onClick={obtenerTasaBCV} style={styles.btnSync} title="Sincronizar BCV">
@@ -1128,56 +1117,10 @@ export default function App() {
                   style={styles.inputTasaMini} 
                 />
               </div>
-
-              {esDueno ? (
-                <div style={styles.grupoBotonesDueno}>
-                  <button type="button" onClick={() => setVistaActual('metricas')} style={styles.btnPillHeader} title="Rendimiento y Ganancias">
-                    <TrendingUp size={13} color="#16a34a" /> <span>Ganancias</span>
-                  </button>
-                  <button type="button" onClick={() => setVistaActual('configuracion')} style={styles.btnPillHeader} title="Configuración">
-                    <Settings size={13} color="#475569" /> <span>Ajustes</span>
-                  </button>
-                </div>
-              ) : (
-                <div style={styles.pillAvisoCajaLive}>
-                  <div style={styles.puntoVerdeLive}></div>
-                  <span>Caja Conectada</span>
-                </div>
-              )}
             </div>
           </header>
 
-          <nav style={styles.barraModulos}>
-            <button type="button" onClick={() => setVistaActual('inventario')} style={styles.btnTabItem}>
-              <div style={{ ...styles.iconoTab, backgroundColor: '#eff6ff', color: '#0052cc' }}>
-                <Package size={17} />
-              </div>
-              <span style={styles.textoTab}>Inventario</span>
-            </button>
-
-            <button type="button" onClick={() => setVistaActual('creditos')} style={styles.btnTabItem}>
-              <div style={{ ...styles.iconoTab, backgroundColor: clientesMorosos > 0 ? '#fff7ed' : '#f8fafc', color: clientesMorosos > 0 ? '#ea580c' : '#475569', border: clientesMorosos > 0 ? '1px solid #fed7aa' : '1px solid #e2e8f0' }}>
-                <BookOpen size={17} />
-                {clientesMorosos > 0 && <span style={styles.badgeAlertaFlotante}>{clientesMorosos}</span>}
-              </div>
-              <span style={{ ...styles.textoTab, color: clientesMorosos > 0 ? '#c2410c' : '#475569', fontWeight: clientesMorosos > 0 ? 'bold' : '600' }}>Créditos</span>
-            </button>
-
-            <button type="button" onClick={() => setVistaActual('caja')} style={styles.btnTabItem}>
-              <div style={{ ...styles.iconoTab, backgroundColor: '#f0fdf4', color: '#16a34a' }}>
-                <Wallet size={17} />
-              </div>
-              <span style={styles.textoTab}>Caja (Z)</span>
-            </button>
-
-            <button type="button" onClick={() => setVistaActual('historial')} style={styles.btnTabItem}>
-              <div style={{ ...styles.iconoTab, backgroundColor: '#faf5ff', color: '#9333ea' }}>
-                <History size={17} />
-              </div>
-              <span style={styles.textoTab}>Mis Ventas</span>
-            </button>
-          </nav>
-
+          {/* Barra del Cliente */}
           <section style={styles.barraClienteMostrador}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
               <User color="#0052cc" size={16} style={{ flexShrink: 0 }} />
@@ -1210,6 +1153,7 @@ export default function App() {
             </div>
           </section>
 
+          {/* Barra del Buscador y Cámara */}
           <section style={styles.seccionBuscador}>
             <div ref={wrapperRef} style={{ position: 'relative', flex: 1, display: 'flex', gap: '6px' }}>
               <form onSubmit={procesarBusquedaOEnter} style={{ display: 'flex', flex: 1, gap: '6px' }}>
@@ -1262,6 +1206,7 @@ export default function App() {
             </button>
           </section>
 
+          {/* Área principal del Carrito */}
           <main style={styles.seccionCarrito}>
             {carrito.length === 0 ? (
               <div style={styles.carritoVacio}>
@@ -1309,6 +1254,7 @@ export default function App() {
             )}
           </main>
 
+          {/* Footer de Cobro */}
           <footer style={styles.footer}>
             {carrito.length > 0 && (
               <div style={styles.barraDescuentoLive}>
@@ -1514,44 +1460,29 @@ export default function App() {
 
 const styles = {
   contenedor: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#f8fafc' },
-  topHeader: { padding: '8px 12px 6px 12px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #e2e8f0', flexShrink: 0, gap: '6px' },
+  topHeader: { padding: '8px 12px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   headerFila1: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' },
   
-  marcaContainerClickable: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, cursor: 'pointer', padding: '2px 4px', borderRadius: '10px' },
+  marcaContainerClickable: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, cursor: 'pointer' },
+  btnMenuToggle: { width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   logoMini: { width: '36px', height: '36px', borderRadius: '10px', objectFit: 'contain', border: '1px solid #e2e8f0', flexShrink: 0, backgroundColor: '#fff' },
   avatarIcon: { width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #bfdbfe' },
   infoNegocio: { display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', flex: 1 },
   nombreNegocio: { margin: 0, fontSize: '0.94rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   
-  badgeRolDueno: { display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#f0fdf4', color: '#15803d' },
-  badgeRolCajero: { display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#eff6ff', color: '#1d4ed8' },
+  badgeUsuarioHeader: { display: 'inline-flex', alignItems: 'center', fontSize: '0.62rem', fontWeight: 'bold', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#334155' },
   badgeTerminalHeader: { display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.62rem', fontWeight: 'bold', backgroundColor: '#f1f5f9', color: '#334155', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' },
   
   badgeOnline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.58rem', fontWeight: 'bold', backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 5px', borderRadius: '4px' },
   badgeOffline: { display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.58rem', fontWeight: 'bold', backgroundColor: '#fef3c7', color: '#b45309', padding: '1px 5px', borderRadius: '4px' },
   
-  btnMenuToggle: { background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '7px 9px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
-  
-  headerFila2: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '6px' },
-  
-  tasaChip: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc', padding: '3px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
+  tasaChip: { display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc', padding: '5px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', flexShrink: 0 },
   btnSync: { background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' },
-  inputTasaMini: { width: '65px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.78rem', color: '#0f172a', outline: 'none' },
+  inputTasaMini: { width: '68px', padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 'bold', fontSize: '0.8rem', color: '#0f172a', outline: 'none' },
   
-  pillAvisoCajaLive: { display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.66rem', color: '#166534', fontWeight: 'bold', backgroundColor: '#f0fdf4', padding: '3px 8px', borderRadius: '6px', border: '1px solid #bbf7d0' },
-  puntoVerdeLive: { width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#16a34a' },
-
-  grupoBotonesDueno: { display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'flex-end' },
-  btnPillHeader: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold', color: '#334155' },
-  
-  barraModulos: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', padding: '6px 12px', backgroundColor: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
-  btnTabItem: { background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', cursor: 'pointer', padding: '2px 0' },
-  iconoTab: { position: 'relative', width: '38px', height: '36px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' },
-  badgeAlertaFlotante: { position: 'absolute', top: '-4px', right: '-4px', backgroundColor: '#ea580c', color: '#fff', fontSize: '0.62rem', fontWeight: 'bold', borderRadius: '50%', minWidth: '15px', height: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 2px' },
-  textoTab: { fontSize: '0.68rem', fontWeight: '600', color: '#475569' },
   barraClienteMostrador: { backgroundColor: '#fff', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', gap: '8px', flexShrink: 0 },
-  inputDocMostrador: { border: 'none', background: '#f1f5f9', padding: '5px 8px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 'bold', width: '130px', outline: 'none' },
-  nombreClienteTag: { fontSize: '0.76rem', color: '#334155', fontWeight: '600', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' },
+  inputDocMostrador: { border: 'none', background: '#f1f5f9', padding: '6px 8px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', width: '130px', outline: 'none' },
+  nombreClienteTag: { fontSize: '0.78rem', color: '#334155', fontWeight: '600', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' },
   seccionBuscador: { padding: '6px 12px', backgroundColor: '#fff', display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 },
   inputIconWrapper: { position: 'relative', flex: 1 },
   iconoInput: { position: 'absolute', left: '8px', top: '9px' },
