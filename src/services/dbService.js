@@ -10,10 +10,9 @@ export const dbService = {
     }
   },
 
-  // REGISTRO SEGURO DE NEGOCIO Y DUEÑO
+  // REGISTRO DE NEGOCIO Y DUEÑO
   async registrarNegocio(datosNegocio, datosDueno) {
     try {
-      // 1. Guardar primero el negocio
       const { error: errNeg } = await supabase.from('negocios').upsert([{
         id: String(datosNegocio.id),
         nombre: datosNegocio.nombre,
@@ -21,11 +20,8 @@ export const dbService = {
         telefono: datosNegocio.telefono || '',
         direccion: datosNegocio.direccion || ''
       }]);
-      if (errNeg) {
-        console.error('Error en tabla negocios:', errNeg);
-      }
+      if (errNeg) console.error('Error en tabla negocios:', errNeg);
 
-      // 2. Guardar el usuario dueño
       const { error: errUsr } = await supabase.from('usuarios').upsert([{
         id: String(datosDueno.id || 'usr_' + Date.now()),
         negocio_id: String(datosNegocio.id),
@@ -33,11 +29,8 @@ export const dbService = {
         rol: 'dueno',
         correo: datosDueno.correo
       }]);
-      if (errUsr) {
-        console.error('Error en tabla usuarios:', errUsr);
-      }
+      if (errUsr) console.error('Error en tabla usuarios:', errUsr);
 
-      // Devuelve éxito aunque haya warning de backend para no trancar la app
       return { success: true };
     } catch (err) {
       console.error('Error general registrando negocio:', err);
@@ -69,6 +62,7 @@ export const dbService = {
     }
   },
 
+  // PRODUCTOS CON SOPORTE DE PESO Y MAYORISTA
   async getProductos(negocioId) {
     try {
       let query = supabase.from('productos').select('*').order('nombre');
@@ -77,8 +71,24 @@ export const dbService = {
       }
       const { data, error } = await query;
       if (error || !data) throw error;
-      localStorage.setItem(`pos_inventario_${negocioId}`, JSON.stringify(data));
-      return data;
+
+      // Mapeo asegurando campos booleanos y numéricos correctos
+      const formateados = data.map(p => ({
+        id: p.id,
+        codigo: p.codigo_barras || '',
+        nombre: p.nombre,
+        precioUSD: Number(p.precio_usd || 0),
+        costoUSD: Number(p.costo_usd || 0),
+        stock: Number(p.stock || 0),
+        categoria: p.departamento || 'General',
+        esPesado: Boolean(p.es_pesado),
+        aplicaPrecioMayor: Boolean(p.aplica_precio_mayor),
+        precioMayorUSD: Number(p.precio_mayor_usd || 0),
+        cantMinimaMayor: Number(p.cant_minima_mayor || 3)
+      }));
+
+      localStorage.setItem(`pos_inventario_${negocioId}`, JSON.stringify(formateados));
+      return formateados;
     } catch (err) {
       console.warn('Usando caché local de productos:', err);
       const cache = localStorage.getItem(`pos_inventario_${negocioId}`);
@@ -88,7 +98,22 @@ export const dbService = {
 
   async upsertProducto(producto) {
     try {
-      const { data, error } = await supabase.from('productos').upsert([producto]).select();
+      const payload = {
+        id: String(producto.id),
+        negocio_id: producto.negocio_id ? String(producto.negocio_id) : undefined,
+        nombre: producto.nombre,
+        codigo_barras: producto.codigo || producto.codigo_barras || '',
+        precio_usd: Number(producto.precioUSD ?? producto.precio_usd ?? 0),
+        costo_usd: Number(producto.costoUSD ?? producto.costo_usd ?? 0),
+        stock: Number(producto.stock ?? 0),
+        departamento: producto.categoria || producto.departamento || 'General',
+        es_pesado: Boolean(producto.esPesado ?? producto.es_pesado),
+        aplica_precio_mayor: Boolean(producto.aplicaPrecioMayor ?? producto.aplica_precio_mayor),
+        precio_mayor_usd: Number(producto.precioMayorUSD ?? producto.precio_mayor_usd ?? 0),
+        cant_minima_mayor: Number(producto.cantMinimaMayor ?? producto.cant_minima_mayor ?? 3)
+      };
+
+      const { data, error } = await supabase.from('productos').upsert([payload]).select();
       if (error) throw error;
       return { success: true, data };
     } catch (err) {
