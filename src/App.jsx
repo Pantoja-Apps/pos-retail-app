@@ -119,7 +119,6 @@ export default function App() {
       const g = localStorage.getItem(`pos_txs_${currentNegocioId}`);
       if (g) {
         const arr = JSON.parse(g);
-        // Filtrar facturas corruptas en 0 sin items
         return arr.filter(t => Number(t.totalUSD || 0) > 0 || (t.items && t.items.length > 0));
       }
     } catch (e) {}
@@ -204,7 +203,6 @@ export default function App() {
         }));
       }
 
-      // Sincronizar sin sobrescribir el cierre local del turno
       const ventasSupabase = await dbService.getVentas(negId);
       if (Array.isArray(ventasSupabase) && ventasSupabase.length > 0) {
         setTransacciones(actuales => {
@@ -541,11 +539,11 @@ export default function App() {
     alert(`Factura #${ventaTarget.correlativo || ventaTarget.id} anulada.`);
   };
 
-  // CIERRE DE TURNO: Limpia el turno actual y marca las ventas como cerradas
+  // CIERRE DE TURNO
   const cerrarTurnoActual = () => {
     setTransacciones(prev => prev.map(t => ({ ...t, cerradoEnTurno: true })));
     setGastosCaja([]);
-    alert('Turno cerrado exitosamente. La caja ha quedado en $0.00 para el nuevo turno.');
+    alert('Turno cerrado exitosamente.');
   };
 
   const registrarDueno = async (datos) => {
@@ -694,7 +692,6 @@ export default function App() {
         alCerrarSesion={cerrarSesion}
       />
 
-      {/* VISTAS MODALES */}
       {vistaActual === 'soporte' && (
         <SoporteModal nombreNegocio={configEmpresa.nombre} alVolver={() => setVistaActual('pos')} />
       )}
@@ -793,7 +790,6 @@ export default function App() {
         />
       )}
 
-      {/* CAJA Y CUADRE Z */}
       {vistaActual === 'caja' && (
         <CajaModal 
           transacciones={transacciones}
@@ -809,7 +805,6 @@ export default function App() {
         />
       )}
 
-      {/* HISTORIAL GLOBAL */}
       {vistaActual === 'historial' && (
         <HistorialModal 
           transacciones={transacciones}
@@ -822,6 +817,7 @@ export default function App() {
         />
       )}
 
+      {/* MÉTRICAS Y RENDIMIENTO CON FUENTES INDEPENDIENTES */}
       {vistaActual === 'metricas' && esDueno && (
         <MetricasModal 
           transaccionesTurno={transacciones}
@@ -832,7 +828,7 @@ export default function App() {
         />
       )}
 
-      {/* PANTALLA PRINCIPAL CAJA */}
+      {/* PANTALLA PRINCIPAL */}
       {vistaActual === 'pos' && (
         <>
           <header style={styles.topHeader}>
@@ -898,7 +894,6 @@ export default function App() {
             </div>
           </section>
 
-          {/* BUSCADOR */}
           <section style={styles.seccionBuscador}>
             <form onSubmit={ejecutarBusquedaDirecta} style={{ position: 'relative', flex: 1, display: 'flex', gap: '6px' }}>
               <input
@@ -1028,7 +1023,6 @@ export default function App() {
         </>
       )}
 
-      {/* BALANZA DIGITAL */}
       {productoParaPesar && (
         <ModalPeso
           producto={productoParaPesar}
@@ -1041,7 +1035,6 @@ export default function App() {
         />
       )}
 
-      {/* CUENTAS EN PAUSA */}
       {modalPausadosAbierto && (
         <div style={styles.overlayPausados}>
           <div style={styles.boxPausados}>
@@ -1088,7 +1081,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL COBRO */}
       <ModalCobro 
         abierto={modalCobroAbierto}
         alCerrar={() => setModalCobroAbierto(false)}
@@ -1102,7 +1094,6 @@ export default function App() {
         alFinalizarVenta={alFinalizarVenta}
       />
 
-      {/* MODAL TICKET */}
       {ticketModalData && (
         <TicketModal
           datos={ticketModalData}
