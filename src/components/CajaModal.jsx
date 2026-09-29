@@ -37,12 +37,18 @@ export default function CajaModal({
   let ventasPagoMovilBS = 0;
   let ventasPuntoBS = 0;
 
+  // Liquidación de IVA del Turno
+  let totalExentoTurnoUSD = 0;
+  let totalBaseGravableTurnoUSD = 0;
+  let totalIvaRecaudadoTurnoUSD = 0;
+
   ventasTurno.forEach(v => {
     const usd = Number(v.totalUSD || 0);
     const bs = Number(v.totalBS || (usd * tasa));
     totalVentasUSD += usd;
     totalVentasBS += bs;
 
+    // Métodos de pago
     if (Array.isArray(v.pagos) && v.pagos.length > 0) {
       v.pagos.forEach(p => {
         const met = (p.metodo || '').toLowerCase();
@@ -63,6 +69,21 @@ export default function CajaModal({
       else if (met.includes('punto') || met === 'punto_venta') ventasPuntoBS += bs;
       else ventasEfectivoBS += bs;
     }
+
+    // Desglose de IVA en los ítems
+    const items = Array.isArray(v.items) ? v.items : [];
+    items.forEach(it => {
+      const cant = Number(it.cantidad || 0);
+      const sub = Number(it.precioUSD || 0) * cant;
+      const esGravable = it.ivaTipo === '16' || it.iva === 16 || it.exentoIVA === false;
+      if (esGravable) {
+        const base = sub / 1.16;
+        totalBaseGravableTurnoUSD += base;
+        totalIvaRecaudadoTurnoUSD += (sub - base);
+      } else {
+        totalExentoTurnoUSD += sub;
+      }
+    });
   });
 
   // Gastos discriminados por origen real
@@ -83,7 +104,7 @@ export default function CajaModal({
     }
   });
 
-  // Saldos Netos
+  // Saldos Netos en Gaveta y Banco
   const efectivoNetoUSD = Math.max(0, ventasEfectivoUSD - gastosEfectivoUSD);
   const efectivoNetoBS = Math.max(0, ventasEfectivoBS - gastosEfectivoBS);
   const pagoMovilNetoBS = Math.max(0, ventasPagoMovilBS - gastosPagoMovilBS);
@@ -120,6 +141,9 @@ export default function CajaModal({
       caja: cajaActiva?.nombre || 'Caja 01',
       totalVentasUSD,
       totalVentasBS,
+      totalExentoTurnoUSD,
+      totalBaseGravableTurnoUSD,
+      totalIvaRecaudadoTurnoUSD,
       ventasEfectivoUSD,
       ventasEfectivoBS,
       ventasPagoMovilBS,
@@ -146,28 +170,30 @@ export default function CajaModal({
     let t = `*📊 REPORTE DE CIERRE DE CAJA (CORTE Z)*\n`;
     t += `*${(configEmpresa?.nombre || 'FACILITO POS').toUpperCase()}*\n`;
     if (configEmpresa?.rif) t += `RIF: ${configEmpresa.rif}\n`;
-    if (configEmpresa?.direccion) t += `DIR: ${configEmpresa.direccion}\n`;
-    if (configEmpresa?.telefono) t += `TEL: ${configEmpresa.telefono}\n`;
     t += `================================\n`;
     t += `FECHA: ${r.fechaHora}\n`;
     t += `RESPONSABLE: ${r.cajero} · ${r.caja}\n`;
-    t += `TOTAL VENTAS: ${r.ventasCount} ticket(s)\n`;
+    t += `TOTAL OPERACIONES: ${r.ventasCount} ticket(s)\n`;
     t += `================================\n`;
-    t += `*1. VENTAS TOTALES FACTURADAS:*\n`;
-    t += `  • Total en Dólares ($): $${r.totalVentasUSD.toFixed(2)}\n`;
-    t += `  • Total en Bolívares (Bs): Bs. ${r.totalVentasBS.toFixed(2)}\n`;
+    t += `*VENTAS TOTALES DEL TURNO:*\n`;
+    t += `  • Total USD: $${r.totalVentasUSD.toFixed(2)}\n`;
+    t += `  • Total Bs:  Bs. ${r.totalVentasBS.toFixed(2)}\n`;
+    if (r.totalIvaRecaudadoTurnoUSD > 0) {
+      t += `  • Base Imponible (G): $${r.totalBaseGravableTurnoUSD.toFixed(2)}\n`;
+      t += `  • IVA 16% Recaudado:  $${r.totalIvaRecaudadoTurnoUSD.toFixed(2)} (Bs. ${(r.totalIvaRecaudadoTurnoUSD * tasa).toFixed(2)})\n`;
+    }
     t += `--------------------------------\n`;
-    t += `*2. EFECTIVO EN GAVETA (NETO):*\n`;
-    t += `  • Dólares en Efectivo ($): $${r.efectivoNetoUSD.toFixed(2)}\n`;
-    t += `  • Bolívares en Efectivo (Bs): Bs. ${r.efectivoNetoBS.toFixed(2)}\n`;
+    t += `*EFECTIVO EN GAVETA (NETO):*\n`;
+    t += `  • Dólares ($):    $${r.efectivoNetoUSD.toFixed(2)}\n`;
+    t += `  • Bolívares (Bs): Bs. ${r.efectivoNetoBS.toFixed(2)}\n`;
     t += `--------------------------------\n`;
-    t += `*3. RECAUDO BANCARIO (DIGITAL):*\n`;
+    t += `*RECAUDO BANCARIO (DIGITAL):*\n`;
     t += `  • Pago Móvil:    Bs. ${r.pagoMovilNetoBS.toFixed(2)}\n`;
     t += `  • Punto Débito:  Bs. ${r.ventasPuntoBS.toFixed(2)}\n`;
 
     if (r.gastosDetalle && r.gastosDetalle.length > 0) {
       t += `--------------------------------\n`;
-      t += `*4. SALIDAS Y GASTOS (${r.gastosDetalle.length}):*\n`;
+      t += `*SALIDAS Y GASTOS (${r.gastosDetalle.length}):*\n`;
       r.gastosDetalle.forEach(g => {
         const m = g.origen === 'efectivo_usd' ? `$${Number(g.monto).toFixed(2)}` : `Bs. ${Number(g.monto).toFixed(2)}`;
         t += `  • ${g.descripcion}: -${m}\n`;
@@ -176,7 +202,7 @@ export default function CajaModal({
 
     t += `================================\n`;
     t += `Tasa Oficial BCV: Bs. ${r.tasa.toFixed(2)} / USD\n`;
-    t += `Auditoría contable completada exitosamente.\n`;
+    t += `Auditoría completada exitosamente.\n`;
 
     const url = `https://wa.me/?text=${encodeURIComponent(t)}`;
     window.open(url, '_blank');
@@ -442,7 +468,7 @@ export default function CajaModal({
         </div>
       )}
 
-      {/* MODAL REPORTE DE CIERRE Z CON ENCABEZADO COMPLETO Y MÁRGENES FLUIDOS */}
+      {/* MODAL REPORTE DE CIERRE Z CON DETALLE FISCAL Y CONTABLE */}
       {reporteZGenerado && (
         <div style={styles.overlayModal}>
           <div style={styles.modalBoxReporteZ}>
@@ -503,7 +529,7 @@ export default function CajaModal({
 
               <div style={styles.lineaDobleCorte} />
 
-              {/* Bloque 1: Ventas Totales */}
+              {/* Bloque 1: Ventas Totales y Liquidación Fiscal SENIAT */}
               <div style={styles.seccionDesgloseZ}>
                 <strong style={{ fontSize: '0.72rem', color: '#0f2a4a', display: 'block', marginBottom: '3px' }}>
                   1. VENTAS TOTALES FACTURADAS
@@ -516,6 +542,20 @@ export default function CajaModal({
                   <span>Total en Bolívares (Bs):</span>
                   <strong style={{ color: '#0052cc' }}>Bs. {reporteZGenerado.totalVentasBS.toFixed(2)}</strong>
                 </div>
+
+                {/* Desglose de IVA Recaudado */}
+                {reporteZGenerado.totalIvaRecaudadoTurnoUSD > 0 && (
+                  <div style={{ backgroundColor: '#fff7ed', padding: '4px 6px', borderRadius: '6px', margin: '4px 0', border: '1px solid #ffedd5' }}>
+                    <div style={{ ...styles.filaZ, color: '#9a3412', fontSize: '0.66rem' }}>
+                      <span>Base Gravable (16%):</span>
+                      <strong>${reporteZGenerado.totalBaseGravableTurnoUSD.toFixed(2)}</strong>
+                    </div>
+                    <div style={{ ...styles.filaZ, color: '#ea580c', fontSize: '0.68rem', fontWeight: 'bold' }}>
+                      <span>IVA Recaudado (SENIAT):</span>
+                      <strong>+${reporteZGenerado.totalIvaRecaudadoTurnoUSD.toFixed(2)} (Bs. {(reporteZGenerado.totalIvaRecaudadoTurnoUSD * tasa).toFixed(2)})</strong>
+                    </div>
+                  </div>
+                )}
 
                 <div style={styles.lineaFinaZ} />
 
@@ -878,10 +918,10 @@ const styles = {
     color: '#0f172a'
   },
   logoTicketZ: {
-    maxHeight: '48px',
+    maxHeight: '44px',
     maxWidth: '120px',
     objectFit: 'contain',
-    marginBottom: '6px'
+    marginBottom: '4px'
   },
   badgeCorteZTag: {
     display: 'inline-block',
@@ -904,7 +944,7 @@ const styles = {
   infoReporteZ: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '3px',
+    gap: '2px',
     fontSize: '0.68rem',
     color: '#1e293b'
   },
@@ -933,7 +973,7 @@ const styles = {
   },
   btnImprimirZ: {
     flex: 1,
-    padding: '10px',
+    padding: '9px',
     backgroundColor: '#0f2a4a',
     color: '#fff',
     border: 'none',
@@ -948,7 +988,7 @@ const styles = {
   },
   btnWhatsAppZ: {
     flex: 1.2,
-    padding: '10px',
+    padding: '9px',
     backgroundColor: '#00b050',
     color: '#fff',
     border: 'none',
@@ -962,7 +1002,7 @@ const styles = {
     gap: '4px'
   },
   btnFinalizarCierre: {
-    padding: '10px 14px',
+    padding: '9px 12px',
     backgroundColor: '#f1f5f9',
     color: '#0f2a4a',
     border: '1px solid #cbd5e1',

@@ -16,22 +16,42 @@ export default function TicketModal({
   const cliente = datos.cliente || { nombre: 'Consumidor Final', doc: 'V-00000000', telefono: '' };
   const pagos = Array.isArray(datos.pagos) ? datos.pagos : [];
 
-  // Discriminación matemática: Artículos por unidad vs Peso
+  // Discriminación matemática estricta: Artículos por unidad vs Peso
   let totalPiezasUnid = 0;
   let totalPesoKg = 0;
   let hayUnidades = false;
   let hayPesados = false;
 
+  // Discriminación Fiscal SENIAT: Exento (E) vs Gravable (G)
+  let subtotalExentoUSD = 0;
+  let baseImponibleGravableUSD = 0;
+  let impuestoIva16USD = 0;
+
   items.forEach(it => {
     const cant = Number(it.cantidad || 0);
-    const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
+    const precio = Number(it.precioUSD || 0);
+    const subtotalRenglon = precio * cant;
 
+    // Clasificación física
+    const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
     if (esRealmentePesado) {
       totalPesoKg += cant;
       hayPesados = true;
     } else {
       totalPiezasUnid += Math.round(cant);
       hayUnidades = true;
+    }
+
+    // Clasificación fiscal: Es gravable si tiene ivaTipo === '16' o iva === 16 o exentoIVA === false
+    const esGravable = it.ivaTipo === '16' || it.iva === 16 || it.exentoIVA === false;
+
+    if (esGravable) {
+      const baseRenglon = subtotalRenglon / 1.16;
+      const ivaRenglon = subtotalRenglon - baseRenglon;
+      baseImponibleGravableUSD += baseRenglon;
+      impuestoIva16USD += ivaRenglon;
+    } else {
+      subtotalExentoUSD += subtotalRenglon;
     }
   });
 
@@ -76,13 +96,19 @@ export default function TicketModal({
       const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
       const sub = (it.precioUSD * cant).toFixed(2);
       const etiquetaCant = esRealmentePesado ? `${cant.toFixed(3)}kg` : `${Math.round(cant)} unid`;
-      texto += `• ${it.nombre}\n`;
+      const indicadorFiscal = (it.ivaTipo === '16' || it.iva === 16 || it.exentoIVA === false) ? '(G)' : '(E)';
+      texto += `• ${it.nombre} ${indicadorFiscal}\n`;
       texto += `  ${etiquetaCant} x $${Number(it.precioUSD).toFixed(2)} = $${sub}\n`;
     });
 
     texto += `--------------------------------\n`;
     if (hayUnidades) texto += `Total Artículos: ${totalPiezasUnid} unids\n`;
     if (hayPesados) texto += `Peso Total: ${totalPesoKg.toFixed(3)} KG\n`;
+    if (subtotalExentoUSD > 0) texto += `Subtotal Exento (E): $${subtotalExentoUSD.toFixed(2)}\n`;
+    if (baseImponibleGravableUSD > 0) {
+      texto += `Base Imponible (G): $${baseImponibleGravableUSD.toFixed(2)}\n`;
+      texto += `IVA (16%): $${impuestoIva16USD.toFixed(2)}\n`;
+    }
     texto += `*TOTAL FACTURA: $${totalUSD.toFixed(2)}*\n`;
     texto += `*TOTAL EN BS: Bs. ${totalBS.toFixed(2)}*\n`;
     texto += `Tasa Oficial BCV: Bs. ${tasa.toFixed(2)}\n`;
@@ -119,7 +145,7 @@ export default function TicketModal({
           </button>
         </div>
 
-        {/* TICKET FORMAL ESTRUCTURADO */}
+        {/* TICKET FORMAL FISCAL Y CONTABLE */}
         <div id="area-ticket-impresion" style={styles.ticketCuerpo}>
           {/* Logo y Encabezado */}
           <div style={styles.encabezadoFiscal}>
@@ -168,7 +194,7 @@ export default function TicketModal({
               </div>
             )}
 
-            {/* Desglose Limpio de Forma de Pago */}
+            {/* Desglose de Forma de Pago */}
             <div style={styles.bloqueFormaPago}>
               <div style={styles.filaMeta}>
                 <span style={styles.metaLabel}>FORMA DE PAGO:</span>
@@ -209,14 +235,18 @@ export default function TicketModal({
 
           <div style={styles.lineaFina} />
 
-          {/* Renglones */}
+          {/* Renglones con Marcador Fiscal (E) vs (G) */}
           <div style={styles.listaProductos}>
             {items.map((it, idx) => {
               const cant = Number(it.cantidad || 0);
               const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
+              const esGravable = it.ivaTipo === '16' || it.iva === 16 || it.exentoIVA === false;
+
               return (
                 <div key={idx} style={styles.itemFila}>
-                  <div style={styles.colNombre}>{it.nombre}</div>
+                  <div style={styles.colNombre}>
+                    {it.nombre} <small style={{ color: esGravable ? '#ea580c' : '#00b050', fontWeight: 'bold' }}>{esGravable ? '(G)' : '(E)'}</small>
+                  </div>
                   <div style={styles.colCant}>
                     {esRealmentePesado ? `${cant.toFixed(3)}kg` : `${Math.round(cant)}`}
                   </div>
@@ -229,7 +259,7 @@ export default function TicketModal({
 
           <div style={styles.separadorLineas} />
 
-          {/* Desglose de Totales */}
+          {/* Desglose de Totales y Liquidación Fiscal */}
           <div style={styles.seccionDesglose}>
             {hayUnidades && (
               <div style={styles.filaSub}>
@@ -245,13 +275,28 @@ export default function TicketModal({
               </div>
             )}
 
-            <div style={styles.filaSub}>
-              <span>BASE IMPONIBLE (EXENTO):</span>
-              <span>${totalUSD.toFixed(2)}</span>
-            </div>
+            {subtotalExentoUSD > 0 && (
+              <div style={styles.filaSub}>
+                <span>SUBTOTAL EXENTO (E):</span>
+                <span>${subtotalExentoUSD.toFixed(2)}</span>
+              </div>
+            )}
+
+            {baseImponibleGravableUSD > 0 && (
+              <>
+                <div style={styles.filaSub}>
+                  <span>BASE IMPONIBLE GRAVABLE (G):</span>
+                  <span>${baseImponibleGravableUSD.toFixed(2)}</span>
+                </div>
+                <div style={{ ...styles.filaSub, color: '#ea580c', fontWeight: 'bold' }}>
+                  <span>IMPUESTO IVA (16%):</span>
+                  <span>+${impuestoIva16USD.toFixed(2)}</span>
+                </div>
+              </>
+            )}
 
             <div style={styles.filaTotalUSD}>
-              <span>TOTAL A PAGAR:</span>
+              <span>TOTAL FACTURA:</span>
               <span>${totalUSD.toFixed(2)}</span>
             </div>
 
