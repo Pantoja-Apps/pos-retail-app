@@ -34,31 +34,39 @@ export const CreditosModal = ({
 
   // Normalizar lista de deudas consolidada
   const clientesConsolidados = useMemo(() => {
-    return (clientes || []).map(c => {
+    const mapaUnico = new Map();
+
+    (clientes || []).forEach(c => {
       const docClean = String(c.doc || c.cedula || c.rif || '').replace(/[^0-9]/g, '');
-      const saldoDirecto = parseFloat(c.saldo_deudor_usd ?? c.saldoPendienteUSD ?? c.saldoDeudor ?? 0) || 0;
-      
-      // Filtrar compras fiadas
-      const comprasFiadas = (transacciones || []).filter(v => {
-        const docVenta = String(v.cliente?.doc || v.cliente_doc || '').replace(/[^0-9]/g, '');
-        const esFiado = Boolean(v.es_credito || v.esCredito || v.tipoVenta === 'credito');
-        return esFiado && docVenta && docClean && docVenta === docClean;
-      });
+      const key = docClean || c.id || Math.random().toString();
 
-      // Filtrar abonos
-      const abonosCliente = (abonos || []).filter(a => {
-        const docAbono = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || a.cliente?.doc || '').replace(/[^0-9]/g, '');
-        return docAbono && docClean && docAbono === docClean;
-      });
+      if (!mapaUnico.has(key)) {
+        const saldoDirecto = parseFloat(c.saldo_deudor_usd ?? c.saldoPendienteUSD ?? c.saldoDeudor ?? 0) || 0;
 
-      return {
-        ...c,
-        docClean,
-        totalDeudaUSD: Math.max(0, saldoDirecto),
-        comprasFiadas,
-        abonosCliente
-      };
+        // Filtrar compras fiadas correspondientes
+        const comprasFiadas = (transacciones || []).filter(v => {
+          const docVenta = String(v.cliente?.doc || v.cliente_doc || '').replace(/[^0-9]/g, '');
+          const esFiado = Boolean(v.es_credito || v.esCredito || v.tipoVenta === 'credito');
+          return esFiado && docVenta && docClean && docVenta === docClean;
+        });
+
+        // Filtrar historial de abonos correspondientes
+        const abonosCliente = (abonos || []).filter(a => {
+          const docAbono = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || a.cliente?.doc || '').replace(/[^0-9]/g, '');
+          return docAbono && docClean && docAbono === docClean;
+        });
+
+        mapaUnico.set(key, {
+          ...c,
+          docClean,
+          totalDeudaUSD: Math.max(0, saldoDirecto),
+          comprasFiadas,
+          abonosCliente
+        });
+      }
     });
+
+    return Array.from(mapaUnico.values());
   }, [clientes, transacciones, abonos]);
 
   // Filtrar según búsqueda
