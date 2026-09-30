@@ -274,32 +274,45 @@ export default function App() {
     if (!cli || !cli.doc || cli.doc === 'V-00000000') return 0;
     const docLimpio = (cli.doc || '').replace(/[^0-9]/g, '');
 
-    // Si el objeto cli ya trae un saldo calculado o saldoPendienteUSD explícito
-    if (cli.saldoPendienteUSD !== undefined && cli.saldoPendienteUSD !== null) {
-      return parseFloat(cli.saldoPendienteUSD || 0);
-    }
-
-    // Buscar todas las instancias del cliente para unificar abonos
-    const instancias = (clientes || []).filter(item => (item.doc || '').replace(/[^0-9]/g, '') === docLimpio);
-    const todosAbonos = instancias.flatMap(item => item.historialAbonos || []);
-    const totalAbonado = todosAbonos.reduce((sum, a) => sum + parseFloat(a.montoUSD || 0), 0);
-
-    // Calcular suma de tickets fiados no anulados
+    // 1. Sumar todas las facturas a credito vigentes de este cliente
     let totalFiado = 0;
     if (Array.isArray(transacciones)) {
-      const fiados = transacciones.filter(t => {
-        const tDoc = (t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
-        return tDoc === docLimpio && (t.esCredito || t.tipoPago === 'credito' || t.metodoPago === 'credito') && !t.anulada;
-      });
-      totalFiado = fiados.reduce((sum, t) => sum + parseFloat(t.totalUSD || 0), 0);
+      totalFiado = transacciones
+        .filter(t => {
+          const tDoc = (t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
+          const esFiado = t.esCredito || t.tipoPago === 'credito' || t.metodoPago === 'credito' || (t.metodosPago && t.metodosPago.credito > 0);
+          return tDoc === docLimpio && esFiado && !t.anulada;
+        })
+        .reduce((sum, t) => sum + parseFloat(t.totalUSD || t.montoUSD || 0), 0);
     }
+
+    // 2. Unificar todos los abonos registrados para esta cedula (en cli o en la lista clientes)
+    const instancias = (clientes || []).filter(item => (item.doc || '').replace(/[^0-9]/g, '') === docLimpio);
+    const abonosLocales = [
+      ...(cli.historialAbonos || []),
+      ...instancias.flatMap(i => i.historialAbonos || [])
+    ];
+    
+    // Deduplicar abonos por ID
+    const abonosUnicos = [];
+    const idsAbonos = new Set();
+    abonosLocales.forEach(a => {
+      const aId = a.id || (a.fecha + '_' + a.montoUSD);
+      if (!idsAbonos.has(aId)) {
+        idsAbonos.add(aId);
+        abonosUnicos.push(a);
+      }
+    });
+
+    const totalAbonado = abonosUnicos.reduce((sum, a) => sum + parseFloat(a.montoUSD || 0), 0);
 
     if (totalFiado > 0) {
-      return Math.max(0, totalFiado - totalAbonado);
+      return Math.max(0, parseFloat((totalFiado - totalAbonado).toFixed(2)));
     }
 
-    const c = instancias[0] || cli;
-    return parseFloat(c.saldoPendienteUSD || c.saldoDeudor || c.saldoDeudorUSD || 0);
+    // Respaldo por si se asignó saldo manual sin factura
+    const saldoManual = parseFloat(cli.saldoPendienteUSD || cli.saldoDeudor || 0);
+    return Math.max(0, parseFloat((saldoManual - totalAbonado).toFixed(2)));
   };
 
   const manejarDocMostrador = (docValor) => {
@@ -1024,68 +1037,82 @@ export default function App() {
             const montoNum = parseFloat(montoAbonoUSD) || 0;
             if (montoNum <= 0) return;
 
+            const docTarget = String(clienteId || '').replace(/[^0-9]/g, '');
             const nuevoAbono = {
               id: 'abn_' + Date.now(),
               fecha: new Date().toLocaleString(),
               montoUSD: montoNum
             };
 
-            const docTarget = String(clienteId || '').replace(/[^0-9]/g, '');
+            let clienteModificado = null;
 
             setClientes(prev => {
-              return prev.map(cli => {
+              const actualizados = prev.map(cli => {
                 const cDoc = String(cli.doc || '').replace(/[^0-9]/g, '');
-                const cId = String(cli.id || '');
-                if (cDoc === docTarget || cId === String(clienteId)) {
-                  const deudaActual = parseFloat(cli.saldoPendienteUSD ?? cli.saldoDeudor ?? 0);
-                  const nuevoSaldo = Math.max(0, deudaActual - montoNum);
-                  const historial = [nuevoAbono, ...(cli.historialAbonos || [])];
-                  return {
+                if (cDoc === docTarget || String(cli.id) === String(clienteId)) {
+                  const abonosPrevios = cli.historialAbonos || [];
+                  const historial = [nuevoAbono, ...abonosPrevios];
+                  const saldoAnterior = parseFloat(cli.saldoPendienteUSD ?? cli.saldoDeudor ?? 0);
+                  const nuevoSaldo = Math.max(0, parseFloat((saldoAnterior - montoNum).toFixed(2)));
+                  
+                  const objActualizado = {
                     ...cli,
                     saldoPendienteUSD: nuevoSaldo,
                     saldoDeudor: nuevoSaldo,
                     historialAbonos: historial
                   };
+                  clienteModificado = objActualizado;
+                  return objActualizado;
                 }
                 return cli;
               });
+
+              // Si el cliente no estaba en la lista de clientes (por ejemplo, vino de transacciones)
+              if (!clienteModificado) {
+                clienteModificado = {
+                  id: 'cli_' + Date.now(),
+                  doc: docTarget ? ('V-' + docTarget) : clienteId,
+                  nombre: 'Cliente',
+                  saldoPendienteUSD: 0,
+                  saldoDeudor: 0,
+                  historialAbonos: [nuevoAbono]
+                };
+                actualizados.push(clienteModificado);
+              }
+
+              // Guardar de inmediato en LocalStorage
+              localStorage.setItem('pos_clientes', JSON.stringify(actualizados));
+              return actualizados;
             });
 
+            // Guardar en Supabase
             try {
-              // Persistir localmente
-              const clientesActualizados = (clientes || []).map(cli => {
-                const cDoc = String(cli.doc || '').replace(/[^0-9]/g, '');
-                if (cDoc === docTarget || String(cli.id) === String(clienteId)) {
-                  const deudaActual = parseFloat(cli.saldoPendienteUSD ?? cli.saldoDeudor ?? 0);
-                  const nuevoSaldo = Math.max(0, deudaActual - montoNum);
-                  return {
-                    ...cli,
-                    saldoPendienteUSD: nuevoSaldo,
-                    saldoDeudor: nuevoSaldo,
-                    historialAbonos: [nuevoAbono, ...(cli.historialAbonos || [])]
-                  };
-                }
-                return cli;
-              });
+              if (typeof supabase !== 'undefined' && supabase && clienteModificado) {
+                const { data: existente } = await supabase
+                  .from('clientes')
+                  .select('id, historialAbonos')
+                  .eq('doc', clienteModificado.doc)
+                  .maybeSingle();
 
-              localStorage.setItem('pos_clientes', JSON.stringify(clientesActualizados));
-
-              // Persistir en Supabase
-              if (typeof supabase !== 'undefined' && supabase) {
-                const cliTarget = clientesActualizados.find(c => (c.doc || '').replace(/[^0-9]/g, '') === docTarget);
-                if (cliTarget) {
+                if (existente) {
+                  const abonosBD = existente.historialAbonos || [];
                   await supabase
                     .from('clientes')
                     .update({
-                      saldoPendienteUSD: cliTarget.saldoPendienteUSD,
-                      saldoDeudor: cliTarget.saldoPendienteUSD,
-                      historialAbonos: cliTarget.historialAbonos
+                      saldoPendienteUSD: clienteModificado.saldoPendienteUSD,
+                      saldoDeudor: clienteModificado.saldoPendienteUSD,
+                      historialAbonos: [nuevoAbono, ...abonosBD]
                     })
-                    .or(`doc.eq.${cliTarget.doc},id.eq.${cliTarget.id}`);
+                    .eq('id', existente.id);
+                } else {
+                  await supabase
+                    .from('clientes')
+                    .upsert([clienteModificado]);
                 }
+                console.log('Abono guardado exitosamente en Supabase');
               }
             } catch (err) {
-              console.error('Error guardando abono en Supabase:', err);
+              console.error('Error sincronizando abono con Supabase:', err);
             }
           }}
           alVolver={() => setVistaActual('pos')}
