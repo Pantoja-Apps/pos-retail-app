@@ -6,7 +6,6 @@ const normalizarProducto = (p) => {
   const pCosto = parseFloat(p.costo_usd ?? p.costoUSD ?? 0) || 0;
   const stockVal = parseFloat(p.stock ?? 0) || 0;
 
-  // Detección estricta de IVA con las columnas reales: aplica_iva y tasa_iva
   const esGravable = Boolean(p.aplica_iva === true || Number(p.tasa_iva) === 16 || p.ivaTipo === '16');
 
   return {
@@ -18,7 +17,7 @@ const normalizarProducto = (p) => {
     proveedorId: p.proveedor_id || p.proveedorId || '',
     proveedorNombre: p.proveedor_nombre || p.proveedorNombre || '',
     precioUSD: pUSD,
-    precioBS: 0, // Se calcula dinámicamente con la tasa activa
+    precioBS: 0,
     costoUSD: pCosto,
     stock: stockVal,
     esPesado: Boolean(p.es_pesado ?? p.esPesado),
@@ -37,8 +36,42 @@ const normalizarProducto = (p) => {
   };
 };
 
+// Normaliza el cliente desde Supabase
+const normalizarCliente = (c) => ({
+  ...c,
+  id: c.id,
+  nombre: c.nombre || 'Cliente General',
+  cedula: c.doc || c.cedula || '',
+  rif: c.doc || c.rif || '',
+  doc: c.doc || '',
+  telefono: c.telefono || '',
+  direccion: c.direccion || '',
+  limiteCredito: parseFloat(c.limite_credito ?? 0) || 0,
+  saldoDeudor: parseFloat(c.saldo_deudor_usd ?? 0) || 0,
+  saldoDeudorUSD: parseFloat(c.saldo_deudor_usd ?? 0) || 0
+});
+
+// Normaliza las transacciones/ventas desde Supabase
+const normalizarVenta = (v) => {
+  const cerrado = v.estado === 'cerrada' || v.cerradoEnTurno === true;
+  return {
+    ...v,
+    id: v.id,
+    fecha: v.fecha || new Date().toISOString(),
+    totalUSD: parseFloat(v.total_usd ?? v.totalUSD ?? 0) || 0,
+    totalBS: parseFloat(v.total_bs ?? v.totalBS ?? 0) || 0,
+    tasaBCV: parseFloat(v.tasa_bcv ?? v.tasaBCV ?? 1) || 1,
+    items: v.items || [],
+    metodosPago: v.metodos_pago || v.metodosPago || [],
+    cliente: v.cliente || null,
+    estado: v.estado || (cerrado ? 'cerrada' : 'activa'),
+    cerradoEnTurno: cerrado,
+    cajeroNombre: v.cajero_nombre || v.cajeroNombre || '',
+    terminalNombre: v.terminal_nombre || v.terminalNombre || 'Caja 01'
+  };
+};
+
 export const dbService = {
-  // Verificación de conectividad con Supabase
   async checkConnection() {
     try {
       const { error } = await supabase.from('negocios').select('id').limit(1);
@@ -48,7 +81,6 @@ export const dbService = {
     }
   },
 
-  // 1. Iniciar sesión como dueño
   async loginDueno(correo, password) {
     try {
       const { data: usuario, error: errUser } = await supabase
@@ -76,7 +108,6 @@ export const dbService = {
     }
   },
 
-  // 2. Iniciar sesión cajero con PIN
   async loginCajero(pin, negocioId) {
     try {
       let query = supabase.from('usuarios').select('*').eq('pin', pin);
@@ -91,7 +122,6 @@ export const dbService = {
     }
   },
 
-  // Obtener cajeros de un negocio
   async getCajeros(negocioId) {
     try {
       const { data, error } = await supabase
@@ -106,7 +136,6 @@ export const dbService = {
     }
   },
 
-  // 3. Negocio
   async getNegocio(negocioId) {
     try {
       const { data } = await supabase.from('negocios').select('*').eq('id', negocioId).single();
@@ -131,7 +160,7 @@ export const dbService = {
     }
   },
 
-  // 4. Productos
+  // PRODUCTOS
   async getProductos(negocioId) {
     try {
       const { data, error } = await supabase
@@ -149,8 +178,6 @@ export const dbService = {
   async guardarProducto(producto, negocioId) {
     try {
       const esGravable = String(producto.ivaTipo) === '16' || Number(producto.iva) === 16;
-      
-      // Mapeo exacto a las columnas reales de Supabase:
       const itemBD = {
         id: producto.id,
         nombre: producto.nombre || 'Producto sin nombre',
@@ -173,9 +200,7 @@ export const dbService = {
         imagen: producto.imagen || producto.foto || ''
       };
 
-      if (negocioId && !itemBD.negocio_id) {
-        itemBD.negocio_id = negocioId;
-      }
+      if (negocioId && !itemBD.negocio_id) itemBD.negocio_id = negocioId;
 
       const { data, error } = await supabase
         .from('productos')
@@ -207,22 +232,45 @@ export const dbService = {
     }
   },
 
-  // 5. Ventas
-  async registrarVenta(venta) {
+  // VENTAS
+  async registrarVenta(venta, negocioId) {
     try {
+      const itemBD = {
+        id: venta.id,
+        negocio_id: negocioId || venta.negocio_id,
+        fecha: venta.fecha || new Date().toISOString(),
+        cajero_id: venta.cajeroId || venta.cajero_id || null,
+        cajero_nombre: venta.cajeroNombre || venta.cajero_nombre || '',
+        terminal_id: venta.terminalId || venta.terminal_id || 'caja_01',
+        terminal_nombre: venta.terminalNombre || venta.terminal_nombre || 'Caja 01',
+        cliente: venta.cliente || null,
+        items: venta.items || [],
+        total_usd: parseFloat(venta.totalUSD ?? venta.total_usd ?? 0) || 0,
+        total_bs: parseFloat(venta.totalBS ?? venta.total_bs ?? 0) || 0,
+        tasa_bcv: parseFloat(venta.tasaBCV ?? venta.tasa_bcv ?? 1) || 1,
+        metodos_pago: venta.metodosPago || venta.metodos_pago || [],
+        estado: venta.estado || 'activa',
+        es_credito: Boolean(venta.esCredito ?? venta.es_credito),
+        base_imponible_usd: parseFloat(venta.baseImponibleUSD ?? venta.base_imponible_usd ?? 0) || 0,
+        iva_recaudado_usd: parseFloat(venta.ivaRecaudadoUSD ?? venta.iva_recaudado_usd ?? 0) || 0,
+        subtotal_exento_usd: parseFloat(venta.subtotalExentoUSD ?? venta.subtotal_exento_usd ?? 0) || 0,
+        sincronizado: true
+      };
+
       const { data, error } = await supabase
         .from('ventas')
-        .insert([venta])
+        .upsert(itemBD)
         .select()
         .single();
+
       if (error) {
-        console.error('Error al registrar venta:', error);
-        return null;
+        console.error('Error al registrar venta en Supabase:', error);
+        return normalizarVenta(venta);
       }
-      return data;
+      return normalizarVenta(data);
     } catch (err) {
       console.error('Fallo en registrarVenta:', err);
-      return null;
+      return normalizarVenta(venta);
     }
   },
 
@@ -233,14 +281,31 @@ export const dbService = {
         .select('*')
         .eq('negocio_id', negocioId)
         .order('fecha', { ascending: false });
-      if (error) return [];
-      return data || [];
+      if (error || !data) return [];
+      return data.map(normalizarVenta);
     } catch {
       return [];
     }
   },
 
-  // 6. Clientes
+  // Cierre de turno en la nube
+  async cerrarTurno(negocioId) {
+    try {
+      const { error } = await supabase
+        .from('ventas')
+        .update({ estado: 'cerrada' })
+        .eq('negocio_id', negocioId)
+        .eq('estado', 'activa');
+
+      if (error) console.error('Error al cerrar turno en Supabase:', error);
+      return !error;
+    } catch (err) {
+      console.error('Excepción al cerrar turno:', err);
+      return false;
+    }
+  },
+
+  // CLIENTES
   async getClientes(negocioId) {
     try {
       const { data, error } = await supabase
@@ -248,24 +313,41 @@ export const dbService = {
         .select('*')
         .eq('negocio_id', negocioId)
         .order('nombre', { ascending: true });
-      if (error) return [];
-      return data || [];
+      if (error || !data) return [];
+      return data.map(normalizarCliente);
     } catch {
       return [];
     }
   },
 
-  async guardarCliente(cliente) {
+  async guardarCliente(cliente, negocioId) {
     try {
+      const docVal = cliente.doc || cliente.cedula || cliente.rif || '';
+      const itemBD = {
+        id: cliente.id || ('cli_' + Date.now()),
+        negocio_id: negocioId || cliente.negocio_id,
+        nombre: cliente.nombre || 'Cliente General',
+        doc: docVal,
+        telefono: cliente.telefono || '',
+        direccion: cliente.direccion || '',
+        limite_credito: parseFloat(cliente.limiteCredito ?? cliente.limite_credito ?? 0) || 0,
+        saldo_deudor_usd: parseFloat(cliente.saldoDeudorUSD ?? cliente.saldoDeudor ?? cliente.saldo_deudor_usd ?? 0) || 0
+      };
+
       const { data, error } = await supabase
         .from('clientes')
-        .upsert(cliente)
+        .upsert(itemBD)
         .select()
         .single();
-      if (error) return null;
-      return data;
-    } catch {
-      return null;
+
+      if (error) {
+        console.error('Error al guardar cliente en Supabase:', error);
+        return normalizarCliente(cliente);
+      }
+      return normalizarCliente(data);
+    } catch (err) {
+      console.error('Excepción al guardar cliente:', err);
+      return normalizarCliente(cliente);
     }
   }
 };

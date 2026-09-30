@@ -410,16 +410,27 @@ export default function App() {
     }
   };
 
-  const guardarClienteEnDB = (cli) => {
+  const guardarClienteEnDB = async (cli) => {
+    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+    const cliConId = {
+      id: cli.id || ('cli_' + Date.now()),
+      ...cli,
+      saldoPendienteUSD: cli.saldoPendienteUSD || 0,
+      historialCreditos: cli.historialCreditos || [],
+      historialAbonos: cli.historialAbonos || []
+    };
+
     setClientes(prev => {
-      const idx = prev.findIndex(c => (c.doc || '').replace(/[^0-9]/g, '') === (cli.doc || '').replace(/[^0-9]/g, ''));
+      const idx = prev.findIndex(c => (c.doc || c.cedula || '').replace(/[^0-9]/g, '') === (cli.doc || cli.cedula || '').replace(/[^0-9]/g, ''));
       if (idx >= 0) {
         const cp = [...prev];
-        cp[idx] = { ...cp[idx], ...cli };
+        cp[idx] = { ...cp[idx], ...cliConId };
         return cp;
       }
-      return [...prev, { id: Date.now(), ...cli, saldoPendienteUSD: 0, historialCreditos: [], historialAbonos: [] }];
+      return [...prev, cliConId];
     });
+
+    await dbService.guardarCliente(cliConId, negId);
   };
 
   // FINALIZAR VENTA COMPLETA
@@ -565,9 +576,11 @@ export default function App() {
   };
 
   // CIERRE DE TURNO
-  const cerrarTurnoActual = () => {
-    setTransacciones(prev => prev.map(t => ({ ...t, cerradoEnTurno: true })));
+  const cerrarTurnoActual = async () => {
+    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+    setTransacciones(prev => prev.map(t => ({ ...t, cerradoEnTurno: true, estado: 'cerrada' })));
     setGastosCaja([]);
+    await dbService.cerrarTurno(negId);
     alert('Turno cerrado exitosamente.');
   };
 
