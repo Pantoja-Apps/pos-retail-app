@@ -520,19 +520,7 @@ export default function App() {
       return copia;
     });
 
-    await dbService.registrarVenta({
-      id: ventaCompleta.id,
-      negocio_id: negId,
-      fecha: ventaCompleta.fecha,
-      total_usd: ventaCompleta.totalUSD,
-      total_bs: ventaCompleta.totalBS,
-      tasa_cambio: ventaCompleta.tasaCambio,
-      cliente_nombre: ventaCompleta.cliente?.nombre || 'Consumidor Final',
-      cliente_doc: ventaCompleta.cliente?.doc || 'V-00000000',
-      cajero_nombre: ventaCompleta.cajero,
-      caja_nombre: ventaCompleta.caja,
-      detalles: ventaCompleta
-    });
+    await dbService.registrarVenta(ventaCompleta, negId);
 
     setCarrito([]);
     setClienteActual(CLIENTES_INICIALES[0]);
@@ -688,6 +676,17 @@ export default function App() {
 
       const clis = await dbService.getClientes(res.negocio.id);
       if (clis?.length) setClientes(clis);
+
+      const vtas = await dbService.getVentas(res.negocio.id);
+      if (Array.isArray(vtas) && vtas.length > 0) {
+        setTransacciones(vtas.map(v => ({
+          ...v,
+          totalUSD: Number(v.totalUSD || v.total_usd || 0),
+          totalBS: Number(v.totalBS || v.total_bs || 0),
+          cerradoEnTurno: Boolean(v.cerradoEnTurno || v.estado === 'cerrada'),
+          estado: v.estado || (v.cerradoEnTurno ? 'cerrada' : 'activa')
+        })));
+      }
 
       return true;
     }
