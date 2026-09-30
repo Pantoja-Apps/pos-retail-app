@@ -147,18 +147,11 @@ export default function TicketModal({
   return (
     <div style={styles.overlay}>
       {/* Estilos específicos para impresión en rollo térmico 58mm / 80mm */}
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          @page {
-            margin: 0;
-            size: auto;
-          }
-          body * {
-            visibility: hidden;
-          }
-          #ticket-imprimible, #ticket-imprimible * {
-            visibility: visible;
-          }
+          @page { margin: 0; size: auto; }
+          body * { visibility: hidden; }
+          #ticket-imprimible, #ticket-imprimible * { visibility: visible; }
           #ticket-imprimible {
             position: absolute;
             left: 0;
@@ -172,11 +165,9 @@ export default function TicketModal({
             color: #000 !important;
             background: #fff !important;
           }
-          .no-imprimir {
-            display: none !important;
-          }
+          .no-imprimir { display: none !important; }
         }
-      `}</style>
+      ` }} />
 
       <div style={styles.modal}>
         {/* Cabecera del Modal (No se imprime) */}
