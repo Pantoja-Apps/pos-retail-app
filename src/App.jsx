@@ -274,26 +274,11 @@ export default function App() {
     if (!cli || !cli.doc || cli.doc === 'V-00000000') return 0;
     const docLimpio = (cli.doc || '').replace(/[^0-9]/g, '');
 
-    // 1. Saldo directo en el registro del cliente
-    let saldo = parseFloat(cli.saldoPendienteUSD || cli.saldoDeudor || cli.saldoDeudorUSD || 0);
+    // Buscar el cliente en la lista para obtener su saldo base
+    const clienteEncontrado = (clientes || []).find(c => (c.doc || '').replace(/[^0-9]/g, '') === docLimpio) || cli;
+    const saldoBase = parseFloat(clienteEncontrado.saldoPendienteUSD || clienteEncontrado.saldoDeudor || clienteEncontrado.saldoDeudorUSD || 0);
 
-    // Si hay transacciones a crédito registradas para esta cédula o ID
-    if (Array.isArray(transacciones)) {
-      const deudaTransacciones = transacciones
-        .filter(t => {
-          const tDoc = (t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
-          const esMismoCliente = (tDoc && tDoc === docLimpio) || (t.cliente?.id && String(t.cliente.id) === String(cli.id));
-          const esCredito = t.esCredito || t.tipoPago === 'credito' || (t.pagos && t.pagos.credito) || t.estado === 'credito' || t.metodo === 'credito';
-          return esMismoCliente && esCredito && !t.anulada;
-        })
-        .reduce((sum, t) => sum + parseFloat(t.totalUSD || t.montoUSD || (t.pagos?.credito) || 0), 0);
-
-      if (deudaTransacciones > saldo) {
-        saldo = deudaTransacciones;
-      }
-    }
-
-    return saldo;
+    return saldoBase;
   };
 
   const manejarDocMostrador = (docValor) => {
