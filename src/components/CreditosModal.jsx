@@ -8,7 +8,6 @@ import {
 
 export const CreditosModal = ({
   usuarioActivo,
- 
   clientes = [], 
   transacciones = [], 
   abonos = [], 
@@ -69,7 +68,19 @@ export const CreditosModal = ({
   const tasa = parseFloat(tasaCambio) || 1;
   const cerrarVista = alVolver || onVolver;
 
-  // Normalizar lista de deudas consolidada
+  // Lista unificada y desduplicada de abonos (props + Supabase en vivo)
+  const listaAbonosUnificados = useMemo(() => {
+    const mapaAbonos = new Map();
+    [...(abonos || []), ...(abonosSupabase || [])].forEach(a => {
+      const key = a.id || `${a.cliente_doc || a.doc}_${a.fecha}_${a.monto_usd || a.montoUSD}`;
+      if (!mapaAbonos.has(key)) {
+        mapaAbonos.set(key, a);
+      }
+    });
+    return Array.from(mapaAbonos.values());
+  }, [abonos, abonosSupabase]);
+
+  // Normalizar lista de deudas consolidada universal
   const clientesConsolidados = useMemo(() => {
     const mapaUnico = new Map();
 
@@ -83,26 +94,32 @@ export const CreditosModal = ({
         // Filtrar compras fiadas correspondientes
         const comprasFiadas = (transacciones || []).filter(v => {
           const docVenta = String(v.cliente?.doc || v.cliente_doc || '').replace(/[^0-9]/g, '');
-          const esFiado = Boolean(v.es_credito || v.esCredito || v.tipoVenta === 'credito');
+          const esFiado = Boolean(
+            v.es_credito || 
+            v.esCredito || 
+            v.tipoVenta === 'credito' ||
+            (v.metodoPago || '').toLowerCase().includes('crédit') ||
+            (v.metodoPago || '').toLowerCase().includes('credit') ||
+            (v.metodo_pago || '').toLowerCase().includes('credit')
+          );
           return esFiado && docVenta && docClean && docVenta === docClean;
         });
 
         // Filtrar historial de abonos correspondientes
-        const listaAbonosTotal = abonosSupabase.length > 0 ? abonosSupabase : (abonos || []);
-        const abonosCliente = listaAbonosTotal.filter(a => {
+        const abonosCliente = listaAbonosUnificados.filter(a => {
           const docAbono = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || a.cliente?.doc || '').replace(/[^0-9]/g, '');
           return docAbono && docClean && docAbono === docClean;
         });
 
-        // Cálculo dinámico universal: Suma de fiados menos suma de abonos
+        // Cálculo contable dinámico universal: Suma de fiados menos suma de abonos
         const totalFiadoUSD = comprasFiadas.reduce((acc, v) => acc + (parseFloat(v.totalUSD ?? v.total_usd ?? 0) || 0), 0);
         const totalAbonadoUSD = abonosCliente.reduce((acc, a) => acc + (parseFloat(a.montoUSD ?? a.monto_usd ?? 0) || 0), 0);
         
-        let deudaCalculada = totalFiadoUSD > 0 ? Math.max(0, parseFloat((totalFiadoUSD - totalAbonadoUSD).toFixed(2))) : Math.max(0, saldoDirecto);
-
-        // Si saldoDirecto tiene saldo pendiente pero no hay compras fiadas en memoria, respetar saldoDirecto
-        if (deudaCalculada <= 0 && saldoDirecto > 0) {
-          deudaCalculada = saldoDirecto;
+        let deudaCalculada = 0;
+        if (comprasFiadas.length > 0 || abonosCliente.length > 0) {
+          deudaCalculada = Math.max(0, parseFloat((totalFiadoUSD - totalAbonadoUSD).toFixed(2)));
+        } else {
+          deudaCalculada = Math.max(0, saldoDirecto);
         }
 
         mapaUnico.set(key, {
@@ -116,7 +133,7 @@ export const CreditosModal = ({
     });
 
     return Array.from(mapaUnico.values());
-  }, [clientes, transacciones, abonos]);
+  }, [clientes, transacciones, listaAbonosUnificados]);
 
   // Filtrar según búsqueda
   const clientesFiltrados = useMemo(() => {
@@ -232,16 +249,16 @@ export const CreditosModal = ({
       setMontosAbono({ dolares: '', pagomovil: '', punto: '', efectivo_bs: '' });
     }
   };
+
   // Lista reactiva de abonos en tiempo real para el cliente abierto
   const abonosClienteActivo = useMemo(() => {
     if (!clienteHistorial) return [];
     const docTarget = String(clienteHistorial.doc || clienteHistorial.cedula || clienteHistorial.docClean || '').replace(/[^0-9]/g, '');
-    const fuente = abonosSupabase.length > 0 ? abonosSupabase : (abonos || []);
-    return fuente.filter(a => {
+    return listaAbonosUnificados.filter(a => {
       const docA = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || a.cliente?.doc || '').replace(/[^0-9]/g, '');
       return docTarget && docA && docTarget === docA;
     });
-  }, [clienteHistorial, abonosSupabase, abonos]);
+  }, [clienteHistorial, listaAbonosUnificados]);
 
   return (
     <div style={styles.contenedorPrincipal}>
