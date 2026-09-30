@@ -1,5 +1,28 @@
 import { supabase } from './supabaseClient'
 
+// Función para normalizar los campos de Supabase a lo que espera React
+const normalizarProducto = (p) => {
+  const pUSD = parseFloat(p.precioUSD ?? p.precio_usd ?? p.precio ?? 0) || 0;
+  const pBS = parseFloat(p.precioBS ?? p.precio_bs ?? 0) || 0;
+  const pCosto = parseFloat(p.costoUSD ?? p.precio_costo ?? 0) || 0;
+  const stockVal = parseFloat(p.stock ?? 0) || 0;
+
+  return {
+    ...p,
+    id: p.id,
+    nombre: p.nombre || 'Producto sin nombre',
+    codigo: p.codigo || '',
+    categoria: p.categoria || 'General',
+    precioUSD: pUSD,
+    precioBS: pBS,
+    costoUSD: pCosto,
+    stock: stockVal,
+    esPesado: Boolean(p.esPesado ?? p.es_pesado),
+    iva: p.iva ?? p.tasa_iva ?? 'exento',
+    imagen: p.imagen || ''
+  };
+};
+
 export const dbService = {
   // Verificación de conectividad con Supabase
   async checkConnection() {
@@ -94,7 +117,7 @@ export const dbService = {
     }
   },
 
-  // 4. Productos
+  // 4. Productos normalizados
   async getProductos(negocioId) {
     try {
       const { data, error } = await supabase
@@ -102,8 +125,8 @@ export const dbService = {
         .select('*')
         .eq('negocio_id', negocioId)
         .order('nombre', { ascending: true });
-      if (error) return [];
-      return data || [];
+      if (error || !data) return [];
+      return data.map(normalizarProducto);
     } catch {
       return [];
     }
@@ -111,15 +134,23 @@ export const dbService = {
 
   async guardarProducto(producto, negocioId) {
     try {
-      const item = { ...producto };
+      const item = {
+        ...producto,
+        precio_usd: producto.precioUSD ?? producto.precio_usd ?? 0,
+        precio_bs: producto.precioBS ?? producto.precio_bs ?? 0,
+        precio_costo: producto.costoUSD ?? producto.precio_costo ?? 0,
+        es_pesado: Boolean(producto.esPesado ?? producto.es_pesado),
+        tasa_iva: producto.iva ?? producto.tasa_iva ?? 'exento'
+      };
       if (negocioId && !item.negocio_id) item.negocio_id = negocioId;
+
       const { data, error } = await supabase
         .from('productos')
         .upsert(item)
         .select()
         .single();
       if (error) return null;
-      return data;
+      return normalizarProducto(data);
     } catch {
       return null;
     }
@@ -171,7 +202,7 @@ export const dbService = {
     }
   },
 
-  // 6. Clientes y Créditos
+  // 6. Clientes
   async getClientes(negocioId) {
     try {
       const { data, error } = await supabase
