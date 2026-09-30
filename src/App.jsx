@@ -858,7 +858,17 @@ export default function App() {
   const totalUSD = subtotalUSD;
   const totalBS = totalUSD * tasaNum;
 
-  const clientesMorosos = clientes.filter(c => (parseFloat(c.saldoPendienteUSD) || 0) > 0.01).length;
+  const clientesMorosos = (() => {
+    const docsConDeuda = new Set();
+    (clientes || []).forEach(c => {
+      const saldo = parseFloat(c.saldo_deudor_usd ?? c.saldoPendienteUSD ?? c.saldoDeudor ?? 0) || 0;
+      if (saldo > 0.01) {
+        const docClean = String(c.doc || c.cedula || c.rif || c.id || '').replace(/[^0-9]/g, '');
+        if (docClean) docsConDeuda.add(docClean);
+      }
+    });
+    return docsConDeuda.size;
+  })();
 
   if (!usuarioActivo) {
     return (
