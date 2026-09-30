@@ -20,27 +20,17 @@ export const CreditosModal = ({
   const [busqueda, setBusqueda] = useState('');
   const [clienteAbonando, setClienteAbonando] = useState(null);
   const [clienteHistorial, setClienteHistorial] = useState(null);
-  const [tabHistorial, setTabHistorial] = useState('compras'); // 'compras' o 'abonos'
+  const [tabHistorial, setTabHistorial] = useState('compras');
   const [abonosSupabase, setAbonosSupabase] = useState([]);
+  const [procesandoAbono, setProcesandoAbono] = useState(false);
 
-  // Carga directa y reactiva desde Supabase independiente del padre
   const recargarAbonosDirectos = async () => {
     try {
-      let negId = usuarioActivo?.negocio_id ||
+      const negId = usuarioActivo?.negocio_id ||
+                  usuarioActivo?.negocioId ||
                   (clientes && clientes.length > 0 ? (clientes[0]?.negocio_id || clientes[0]?.negocioId) : null) ||
-                  localStorage.getItem('pos_negocio_id') ||
-                  localStorage.getItem('pos_negocioActivo');
+                  localStorage.getItem('pos_negocio_id');
                   
-      if (!negId) {
-        try {
-          const uStr = localStorage.getItem('pos_usuario') || localStorage.getItem('pos_sesion');
-          if (uStr) {
-            const uObj = JSON.parse(uStr);
-            negId = uObj?.negocio_id || uObj?.negocioId;
-          }
-        } catch (_) {}
-      }
-
       if (negId) {
         const data = await dbService.getAbonos(negId);
         if (Array.isArray(data)) {
@@ -56,8 +46,7 @@ export const CreditosModal = ({
     recargarAbonosDirectos();
   }, []);
 
-  // Estados de la Calculadora de Abono
-  const [metodoAbono, setMetodoAbono] = useState('dolares'); // dolares, pagomovil, punto, efectivo_bs
+  const [metodoAbono, setMetodoAbono] = useState('dolares');
   const [montosAbono, setMontosAbono] = useState({
     dolares: '',
     pagomovil: '',
@@ -68,11 +57,12 @@ export const CreditosModal = ({
   const tasa = parseFloat(tasaCambio) || 1;
   const cerrarVista = alVolver || onVolver;
 
-  // Lista unificada y desduplicada de abonos (props + Supabase en vivo)
+  // Unificación de abonos desduplicada por ID o clave única
   const listaAbonosUnificados = useMemo(() => {
     const mapaAbonos = new Map();
     [...(abonos || []), ...(abonosSupabase || [])].forEach(a => {
-      const key = a.id || `${a.cliente_doc || a.doc}_${a.fecha}_${a.monto_usd || a.montoUSD}`;
+      const docA = String(a.cliente_doc || a.doc || a.cedula || '').replace(/[^0-9]/g, '');
+      const key = a.id || `${docA}_${a.fecha}_${a.monto_usd || a.montoUSD}`;
       if (!mapaAbonos.has(key)) {
         mapaAbonos.set(key, a);
       }
@@ -80,19 +70,17 @@ export const CreditosModal = ({
     return Array.from(mapaAbonos.values());
   }, [abonos, abonosSupabase]);
 
-  // Normalizar lista de deudas consolidada universal
+  // Consolidar deudas
   const clientesConsolidados = useMemo(() => {
     const mapaUnico = new Map();
 
     (clientes || []).forEach(c => {
       const docClean = String(c.doc || c.cedula || c.rif || '').replace(/[^0-9]/g, '');
-      const key = docClean || c.id || Math.random().toString();
+      if (!docClean) return;
 
-      if (!mapaUnico.has(key)) {
-        const saldoDirecto = parseFloat(c.saldo_deudor_usd ?? c.saldoPendienteUSD ?? c.saldoDeudor ?? 0) || 0;
-
-        // Filtrar compras fiadas correspondientes
+      if (!mapaUnico.has(docClean)) {
         const comprasFiadas = (transacciones || []).filter(v => {
+          if (v.anulada) return false;
           const docVenta = String(v.cliente?.doc || v.cliente_doc || '').replace(/[^0-9]/g, '');
           const esFiado = Boolean(
             v.es_credito || 
@@ -102,27 +90,25 @@ export const CreditosModal = ({
             (v.metodoPago || '').toLowerCase().includes('credit') ||
             (v.metodo_pago || '').toLowerCase().includes('credit')
           );
-          return esFiado && docVenta && docClean && docVenta === docClean;
+          return esFiado && docVenta === docClean;
         });
 
-        // Filtrar historial de abonos correspondientes
         const abonosCliente = listaAbonosUnificados.filter(a => {
-          const docAbono = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || a.cliente?.doc || '').replace(/[^0-9]/g, '');
-          return docAbono && docClean && docAbono === docClean;
+          const docAbono = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || '').replace(/[^0-9]/g, '');
+          return docAbono === docClean;
         });
 
-        // Cálculo contable dinámico universal: Suma de fiados menos suma de abonos
         const totalFiadoUSD = comprasFiadas.reduce((acc, v) => acc + (parseFloat(v.totalUSD ?? v.total_usd ?? 0) || 0), 0);
         const totalAbonadoUSD = abonosCliente.reduce((acc, a) => acc + (parseFloat(a.montoUSD ?? a.monto_usd ?? 0) || 0), 0);
         
         let deudaCalculada = 0;
-        if (comprasFiadas.length > 0 || abonosCliente.length > 0) {
+        if (totalFiadoUSD > 0 || totalAbonadoUSD > 0) {
           deudaCalculada = Math.max(0, parseFloat((totalFiadoUSD - totalAbonadoUSD).toFixed(2)));
         } else {
-          deudaCalculada = Math.max(0, saldoDirecto);
+          deudaCalculada = Math.max(0, parseFloat(c.saldo_deudor_usd ?? c.saldoPendienteUSD ?? c.saldoDeudor ?? 0) || 0);
         }
 
-        mapaUnico.set(key, {
+        mapaUnico.set(docClean, {
           ...c,
           docClean,
           totalDeudaUSD: deudaCalculada,
@@ -135,7 +121,6 @@ export const CreditosModal = ({
     return Array.from(mapaUnico.values());
   }, [clientes, transacciones, listaAbonosUnificados]);
 
-  // Filtrar según búsqueda
   const clientesFiltrados = useMemo(() => {
     return clientesConsolidados.filter(c => {
       const matchBusqueda = (c.nombre || '').toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -148,7 +133,6 @@ export const CreditosModal = ({
     return clientesConsolidados.reduce((acc, c) => acc + c.totalDeudaUSD, 0);
   }, [clientesConsolidados]);
 
-  // Teclado numérico táctil
   const handleKeypadPress = (val) => {
     setMontosAbono(prev => {
       const current = prev[metodoAbono] || '';
@@ -167,10 +151,6 @@ export const CreditosModal = ({
     });
   };
 
-  const handleKeypadClear = () => {
-    setMontosAbono(prev => ({ ...prev, [metodoAbono]: '' }));
-  };
-
   const handlePagarTotal = () => {
     if (!clienteAbonando) return;
     if (metodoAbono === 'dolares') {
@@ -181,7 +161,6 @@ export const CreditosModal = ({
     }
   };
 
-  // Cálculos del modal de abono
   const montoUSDInput = parseFloat(montosAbono.dolares) || 0;
   const montoBSInput = (parseFloat(montosAbono.pagomovil) || 0) + 
                        (parseFloat(montosAbono.punto) || 0) + 
@@ -199,13 +178,15 @@ export const CreditosModal = ({
 
   const confirmarAbono = async () => {
     if (totalAbonadoUSD <= 0) return alert('Por favor ingresa un monto válido a abonar.');
+    if (procesandoAbono) return;
+
+    setProcesandoAbono(true);
 
     let nombreMetodo = 'Efectivo ($)';
     if (metodoAbono === 'pagomovil') nombreMetodo = 'Pago Móvil (Bs)';
     else if (metodoAbono === 'punto') nombreMetodo = 'Punto Débito (Bs)';
     else if (metodoAbono === 'efectivo_bs') nombreMetodo = 'Efectivo Bs';
 
-    // Respetar de forma contable exacta la moneda ingresada
     const montoBsReal = metodoAbono === 'dolares'
       ? parseFloat((totalAbonadoUSD * tasa).toFixed(2))
       : (parseFloat(montoBSInput) || 0);
@@ -222,32 +203,27 @@ export const CreditosModal = ({
         });
       }
 
-      // Refrescar directamente desde la fuente oficial sin duplicar abonos en memoria
-      if (typeof recargarAbonosDirectos === 'function') {
-        await recargarAbonosDirectos();
-      }
-
+      await recargarAbonosDirectos();
+      setClienteAbonando(null);
+      setMontosAbono({ dolares: '', pagomovil: '', punto: '', efectivo_bs: '' });
     } catch (e) {
       alert("Error procesando abono: " + (e?.message || JSON.stringify(e)));
     } finally {
-      setClienteAbonando(null);
-      setMontosAbono({ dolares: '', pagomovil: '', punto: '', efectivo_bs: '' });
+      setProcesandoAbono(false);
     }
   };
 
-  // Lista reactiva de abonos en tiempo real para el cliente abierto
   const abonosClienteActivo = useMemo(() => {
     if (!clienteHistorial) return [];
     const docTarget = String(clienteHistorial.doc || clienteHistorial.cedula || clienteHistorial.docClean || '').replace(/[^0-9]/g, '');
     return listaAbonosUnificados.filter(a => {
-      const docA = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || a.cliente?.doc || '').replace(/[^0-9]/g, '');
+      const docA = String(a.cliente_doc || a.doc || a.cedula || '').replace(/[^0-9]/g, '');
       return docTarget && docA && docTarget === docA;
     });
   }, [clienteHistorial, listaAbonosUnificados]);
 
   return (
-    <div style={styles.contenedorPrincipal}>
-      {/* HEADER SUPERIOR */}
+    <div style={styles.contenedorPrincipal} translate="no">
       <div style={styles.header}>
         <button onClick={cerrarVista} style={styles.btnAtras}>
           <ArrowLeft size={22} color="#0f2a4a" />
@@ -262,7 +238,6 @@ export const CreditosModal = ({
         </div>
       </div>
 
-      {/* TARJETA TOTALIZADORA */}
       <div style={styles.tarjetaResumen}>
         <div>
           <span style={styles.labelResumen}>TOTAL POR COBRAR (DIVISA)</span>
@@ -275,7 +250,6 @@ export const CreditosModal = ({
         </div>
       </div>
 
-      {/* BUSCADOR */}
       <div style={styles.barraBusqueda}>
         <Search size={18} color="#94a3b8" />
         <input 
@@ -292,7 +266,6 @@ export const CreditosModal = ({
         )}
       </div>
 
-      {/* LISTA DE CLIENTES CON DEUDA */}
       <div style={styles.listaClientes}>
         {clientesFiltrados.length === 0 ? (
           <div style={styles.vacio}>
@@ -340,7 +313,6 @@ export const CreditosModal = ({
         )}
       </div>
 
-      {/* MODAL TÁCTIL CALCULADORA DE ABONOS */}
       {clienteAbonando && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalKeypadCard}>
@@ -355,7 +327,6 @@ export const CreditosModal = ({
               </button>
             </div>
 
-            {/* DEUDA VS NUEVO SALDO */}
             <div style={styles.comparativaSaldos}>
               <div style={styles.colSaldo}>
                 <span style={styles.subColLabel}>DEUDA ACTUAL</span>
@@ -372,7 +343,6 @@ export const CreditosModal = ({
               </div>
             </div>
 
-            {/* SELECTOR DE MÉTODO */}
             <div style={styles.gridMetodos}>
               <button 
                 onClick={() => setMetodoAbono('dolares')} 
@@ -400,7 +370,6 @@ export const CreditosModal = ({
               </button>
             </div>
 
-            {/* PANTALLA INPUT ACTIVO */}
             <div style={styles.displayAbono}>
               <span style={styles.displayMoneda}>
                 {metodoAbono === 'dolares' ? 'USD $' : 'BS.'}
@@ -413,7 +382,6 @@ export const CreditosModal = ({
               </button>
             </div>
 
-            {/* KEYPAD TÁCTIL */}
             <div style={styles.keypadGrid}>
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0'].map(num => (
                 <button key={num} onClick={() => handleKeypadPress(num)} style={styles.keypadBtn}>
@@ -425,15 +393,13 @@ export const CreditosModal = ({
               </button>
             </div>
 
-            {/* CONFIRMACIÓN */}
-            <button onClick={confirmarAbono} style={styles.btnConfirmarFinal}>
-              <CheckCircle size={20} /> Confirmar Abono de ${totalAbonadoUSD.toFixed(2)}
+            <button onClick={confirmarAbono} disabled={procesandoAbono} style={styles.btnConfirmarFinal}>
+              <CheckCircle size={20} /> {procesandoAbono ? 'Registrando...' : `Confirmar Abono de $${totalAbonadoUSD.toFixed(2)}`}
             </button>
           </div>
         </div>
       )}
 
-      {/* MODAL DETALLES / HISTORIAL DE MOVIMIENTOS */}
       {clienteHistorial && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalKeypadCard}>
@@ -515,418 +481,59 @@ export const CreditosModal = ({
 };
 
 const styles = {
-  contenedorPrincipal: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100vh',
-    backgroundColor: '#f8fafc',
-    overflowY: 'auto',
-    padding: '12px'
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    marginBottom: '14px'
-  },
-  btnAtras: {
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    padding: '8px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  tituloHeader: {
-    margin: 0,
-    fontSize: '1.25rem',
-    fontWeight: '900',
-    color: '#0f2a4a'
-  },
-  subtituloHeader: {
-    fontSize: '0.75rem',
-    color: '#64748b',
-    display: 'block'
-  },
-  badgeTasa: {
-    marginLeft: 'auto',
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '8px',
-    padding: '4px 8px',
-    textAlign: 'right',
-    display: 'flex',
-    flexDirection: 'column'
-  },
-  tarjetaResumen: {
-    background: 'linear-gradient(135deg, #0f2a4a 0%, #1e3a8a 100%)',
-    borderRadius: '16px',
-    padding: '18px',
-    color: '#fff',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '14px',
-    boxShadow: '0 4px 14px rgba(15, 42, 74, 0.15)'
-  },
-  labelResumen: {
-    fontSize: '0.75rem',
-    fontWeight: '700',
-    color: '#93c5fd',
-    letterSpacing: '0.5px'
-  },
-  montoResumen: {
-    margin: '4px 0',
-    fontSize: '2rem',
-    fontWeight: '900'
-  },
-  montoResumenBs: {
-    fontSize: '0.85rem',
-    color: '#cbd5e1'
-  },
-  badgeClientes: {
-    background: 'rgba(255, 255, 255, 0.15)',
-    padding: '6px 12px',
-    borderRadius: '20px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '0.8rem',
-    fontWeight: '600'
-  },
-  barraBusqueda: {
-    display: 'flex',
-    alignItems: 'center',
-    background: '#fff',
-    border: '1px solid #cbd5e1',
-    borderRadius: '12px',
-    padding: '8px 14px',
-    marginBottom: '14px',
-    gap: '8px'
-  },
-  inputBusqueda: {
-    border: 'none',
-    outline: 'none',
-    width: '100%',
-    fontSize: '0.95rem',
-    color: '#1e293b'
-  },
-  btnLimpiar: {
-    background: 'transparent',
-    border: 'none',
-    cursor: 'pointer'
-  },
-  listaClientes: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px',
-    paddingBottom: '24px'
-  },
-  tarjetaCliente: {
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '14px',
-    padding: '14px',
-    boxShadow: '0 2px 5px rgba(0, 0, 0, 0.03)'
-  },
-  filaClienteTop: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    marginBottom: '12px'
-  },
-  avatarMini: {
-    width: '42px',
-    height: '42px',
-    borderRadius: '50%',
-    background: '#e0e7ff',
-    color: '#4338ca',
-    fontWeight: '900',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '1.1rem',
-    flexShrink: 0
-  },
-  datosCliente: {
-    flex: 1,
-    minWidth: 0
-  },
-  nombreCliente: {
-    margin: 0,
-    fontSize: '1rem',
-    fontWeight: '800',
-    color: '#0f2a4a',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis'
-  },
-  filaDocTel: {
-    display: 'flex',
-    gap: '8px',
-    marginTop: '3px'
-  },
-  docBadge: {
-    fontSize: '0.75rem',
-    color: '#64748b',
-    background: '#f1f5f9',
-    padding: '2px 6px',
-    borderRadius: '4px'
-  },
-  telBadge: {
-    fontSize: '0.75rem',
-    color: '#64748b'
-  },
-  montoClienteCol: {
-    textAlign: 'right',
-    flexShrink: 0
-  },
-  labelSaldo: {
-    fontSize: '0.65rem',
-    fontWeight: '800',
-    color: '#94a3b8',
-    letterSpacing: '0.5px',
-    display: 'block'
-  },
-  saldoDolares: {
-    fontSize: '1.2rem',
-    fontWeight: '900',
-    color: '#dc2626'
-  },
-  saldoBs: {
-    display: 'block',
-    fontSize: '0.75rem',
-    color: '#64748b'
-  },
-  accionesCliente: {
-    display: 'flex',
-    gap: '8px',
-    borderTop: '1px solid #f1f5f9',
-    paddingTop: '10px'
-  },
-  btnSecundario: {
-    flex: 1,
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    borderRadius: '8px',
-    padding: '8px',
-    fontSize: '0.8rem',
-    fontWeight: '700',
-    color: '#475569',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '6px'
-  },
-  btnAbonar: {
-    flex: 1,
-    background: '#0284c7',
-    border: 'none',
-    borderRadius: '8px',
-    padding: '8px',
-    fontSize: '0.8rem',
-    fontWeight: '700',
-    color: '#fff',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '6px'
-  },
-  modalOverlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 9999,
-    padding: '12px'
-  },
-  modalKeypadCard: {
-    background: '#fff',
-    borderRadius: '20px',
-    width: '100%',
-    maxWidth: '380px',
-    padding: '16px',
-    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-    display: 'flex',
-    flexDirection: 'column',
-    maxHeight: '94vh',
-    overflowY: 'auto'
-  },
-  headerModalAbono: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: '12px'
-  },
-  btnCerrarModal: {
-    background: '#f1f5f9',
-    border: 'none',
-    borderRadius: '50%',
-    width: '32px',
-    height: '32px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  comparativaSaldos: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    borderRadius: '12px',
-    padding: '8px 14px',
-    marginBottom: '12px'
-  },
-  colSaldo: {
-    textAlign: 'center',
-    display: 'flex',
-    flexDirection: 'column'
-  },
-  subColLabel: {
-    fontSize: '0.65rem',
-    fontWeight: '800',
-    color: '#64748b'
-  },
-  gridMetodos: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '6px',
-    marginBottom: '12px'
-  },
-  btnMetodo: {
-    background: '#f8fafc',
-    border: '1px solid #cbd5e1',
-    borderRadius: '8px',
-    padding: '8px',
-    fontSize: '0.75rem',
-    fontWeight: '700',
-    color: '#475569',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '6px'
-  },
-  btnMetodoActivo: {
-    background: '#0f2a4a',
-    borderColor: '#0f2a4a',
-    color: '#fff'
-  },
-  displayAbono: {
-    background: '#f1f5f9',
-    border: '1px solid #cbd5e1',
-    borderRadius: '10px',
-    padding: '10px 14px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: '12px'
-  },
-  displayMoneda: {
-    fontWeight: '900',
-    color: '#64748b',
-    fontSize: '0.9rem'
-  },
-  displayValor: {
-    fontSize: '1.5rem',
-    fontWeight: '900',
-    color: '#0f2a4a'
-  },
-  btnPagarTotal: {
-    background: '#e0e7ff',
-    color: '#4338ca',
-    border: 'none',
-    borderRadius: '6px',
-    padding: '4px 8px',
-    fontSize: '0.75rem',
-    fontWeight: '800',
-    cursor: 'pointer'
-  },
-  keypadGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '8px',
-    marginBottom: '14px'
-  },
-  keypadBtn: {
-    background: '#fff',
-    border: '1px solid #cbd5e1',
-    borderRadius: '10px',
-    padding: '12px',
-    fontSize: '1.25rem',
-    fontWeight: '800',
-    color: '#1e293b',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)'
-  },
-  btnConfirmarFinal: {
-    background: '#10b981',
-    border: 'none',
-    borderRadius: '12px',
-    padding: '12px',
-    color: '#fff',
-    fontSize: '0.95rem',
-    fontWeight: '900',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px'
-  },
-  tabsHistorial: {
-    display: 'flex',
-    borderBottom: '1px solid #e2e8f0',
-    marginBottom: '12px'
-  },
-  tabBtn: {
-    flex: 1,
-    background: 'none',
-    border: 'none',
-    borderBottom: '2px solid transparent',
-    padding: '8px',
-    fontSize: '0.8rem',
-    fontWeight: '700',
-    color: '#64748b',
-    cursor: 'pointer'
-  },
-  tabBtnActivo: {
-    borderBottomColor: '#0f2a4a',
-    color: '#0f2a4a'
-  },
-  cuerpoHistorial: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    maxHeight: '260px',
-    overflowY: 'auto'
-  },
-  itemHistorial: {
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    borderRadius: '8px',
-    padding: '10px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  vacio: {
-    textAlign: 'center',
-    padding: '40px 14px'
-  }
+  contenedorPrincipal: { display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f8fafc', overflowY: 'auto', padding: '12px' },
+  header: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' },
+  btnAtras: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  tituloHeader: { margin: 0, fontSize: '1.25rem', fontWeight: '900', color: '#0f2a4a' },
+  subtituloHeader: { fontSize: '0.75rem', color: '#64748b', display: 'block' },
+  badgeTasa: { marginLeft: 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '4px 8px', textAlign: 'right', display: 'flex', flexDirection: 'column' },
+  tarjetaResumen: { background: 'linear-gradient(135deg, #0f2a4a 0%, #1e3a8a 100%)', borderRadius: '16px', padding: '18px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', boxShadow: '0 4px 14px rgba(15, 42, 74, 0.15)' },
+  labelResumen: { fontSize: '0.75rem', fontWeight: '700', color: '#93c5fd', letterSpacing: '0.5px' },
+  montoResumen: { margin: '4px 0', fontSize: '2rem', fontWeight: '900' },
+  montoResumenBs: { fontSize: '0.85rem', color: '#cbd5e1' },
+  badgeClientes: { background: 'rgba(255, 255, 255, 0.15)', padding: '6px 12px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: '600' },
+  barraBusqueda: { display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '8px 14px', marginBottom: '14px', gap: '8px' },
+  inputBusqueda: { border: 'none', outline: 'none', width: '100%', fontSize: '0.95rem', color: '#1e293b' },
+  btnLimpiar: { background: 'transparent', border: 'none', cursor: 'pointer' },
+  listaClientes: { display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: '24px' },
+  tarjetaCliente: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', boxShadow: '0 2px 5px rgba(0, 0, 0, 0.03)' },
+  filaClienteTop: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' },
+  avatarMini: { width: '42px', height: '42px', borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 },
+  datosCliente: { flex: 1, minWidth: 0 },
+  nombreCliente: { margin: 0, fontSize: '1rem', fontWeight: '800', color: '#0f2a4a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  filaDocTel: { display: 'flex', gap: '8px', marginTop: '3px' },
+  docBadge: { fontSize: '0.75rem', color: '#64748b', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' },
+  telBadge: { fontSize: '0.75rem', color: '#64748b' },
+  montoClienteCol: { textAlign: 'right', flexShrink: 0 },
+  labelSaldo: { fontSize: '0.65rem', fontWeight: '800', color: '#94a3b8', letterSpacing: '0.5px', display: 'block' },
+  saldoDolares: { fontSize: '1.2rem', fontWeight: '900', color: '#dc2626' },
+  saldoBs: { display: 'block', fontSize: '0.75rem', color: '#64748b' },
+  accionesCliente: { display: 'flex', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '10px' },
+  btnSecundario: { flex: 1, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', fontSize: '0.8rem', fontWeight: '700', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' },
+  btnAbonar: { flex: 1, background: '#0284c7', border: 'none', borderRadius: '8px', padding: '8px', fontSize: '0.8rem', fontWeight: '700', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' },
+  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '12px' },
+  modalKeypadCard: { background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '380px', padding: '16px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', maxHeight: '94vh', overflowY: 'auto' },
+  headerModalAbono: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' },
+  btnCerrarModal: { background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  comparativaSaldos: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '8px 14px', marginBottom: '12px' },
+  colSaldo: { textAlign: 'center', display: 'flex', flexDirection: 'column' },
+  subColLabel: { fontSize: '0.65rem', fontWeight: '800', color: '#64748b' },
+  gridMetodos: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '12px' },
+  btnMetodo: { background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px', fontSize: '0.75rem', fontWeight: '700', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' },
+  btnMetodoActivo: { background: '#0f2a4a', borderColor: '#0f2a4a', color: '#fff' },
+  displayAbono: { background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' },
+  displayMoneda: { fontWeight: '900', color: '#64748b', fontSize: '0.9rem' },
+  displayValor: { fontSize: '1.5rem', fontWeight: '900', color: '#0f2a4a' },
+  btnPagarTotal: { background: '#e0e7ff', color: '#4338ca', border: 'none', borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer' },
+  keypadGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '14px' },
+  keypadBtn: { background: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px', fontSize: '1.25rem', fontWeight: '800', color: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)' },
+  btnConfirmarFinal: { background: '#10b981', border: 'none', borderRadius: '12px', padding: '12px', color: '#fff', fontSize: '0.95rem', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' },
+  tabsHistorial: { display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '12px' },
+  tabBtn: { flex: 1, background: 'none', border: 'none', borderBottom: '2px solid transparent', padding: '8px', fontSize: '0.8rem', fontWeight: '700', color: '#64748b', cursor: 'pointer' },
+  tabBtnActivo: { borderBottomColor: '#0f2a4a', color: '#0f2a4a' },
+  cuerpoHistorial: { display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto' },
+  itemHistorial: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  vacio: { textAlign: 'center', padding: '40px 14px' }
 };
 
 export default CreditosModal;
