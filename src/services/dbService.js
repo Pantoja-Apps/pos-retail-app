@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient'
 
 export const dbService = {
-  // 1. Iniciar sesion como dueno
+  // 1. Iniciar sesión como dueño
   async loginDueno(correo, password) {
     try {
       const { data: usuario, error: errUser } = await supabase
@@ -29,7 +29,7 @@ export const dbService = {
     }
   },
 
-  // 2. Iniciar sesion cajero con PIN
+  // 2. Iniciar sesión cajero con PIN
   async loginCajero(pin, negocioId) {
     try {
       let query = supabase.from('usuarios').select('*').eq('pin', pin);
@@ -44,7 +44,7 @@ export const dbService = {
     }
   },
 
-  // 3. Obtener negocio
+  // 3. Negocio
   async getNegocio(negocioId) {
     try {
       const { data } = await supabase.from('negocios').select('*').eq('id', negocioId).single();
@@ -54,7 +54,6 @@ export const dbService = {
     }
   },
 
-  // 4. Actualizar configuracion de negocio
   async actualizarConfigNegocio(negocioId, config) {
     try {
       const { data, error } = await supabase
@@ -70,7 +69,7 @@ export const dbService = {
     }
   },
 
-  // 5. Productos
+  // 4. Productos
   async getProductos(negocioId) {
     try {
       const { data, error } = await supabase
@@ -85,11 +84,13 @@ export const dbService = {
     }
   },
 
-  async guardarProducto(producto) {
+  async guardarProducto(producto, negocioId) {
     try {
+      const item = { ...producto };
+      if (negocioId && !item.negocio_id) item.negocio_id = negocioId;
       const { data, error } = await supabase
         .from('productos')
-        .upsert(producto)
+        .upsert(item)
         .select()
         .single();
       if (error) return null;
@@ -97,6 +98,11 @@ export const dbService = {
     } catch {
       return null;
     }
+  },
+
+  // Alias para compatibilidad con llamadas en App.jsx
+  async upsertProducto(producto, negocioId) {
+    return this.guardarProducto(producto, negocioId);
   },
 
   async eliminarProducto(productoId) {
@@ -108,7 +114,7 @@ export const dbService = {
     }
   },
 
-  // 6. Ventas
+  // 5. Ventas
   async registrarVenta(venta) {
     try {
       const { data, error } = await supabase
@@ -116,9 +122,13 @@ export const dbService = {
         .insert([venta])
         .select()
         .single();
-      if (error) return null;
+      if (error) {
+        console.error('Error al registrar venta:', error);
+        return null;
+      }
       return data;
-    } catch {
+    } catch (err) {
+      console.error('Fallo en registrarVenta:', err);
       return null;
     }
   },
@@ -137,7 +147,7 @@ export const dbService = {
     }
   },
 
-  // 7. Clientes y Creditos
+  // 6. Clientes y Créditos
   async getClientes(negocioId) {
     try {
       const { data, error } = await supabase
