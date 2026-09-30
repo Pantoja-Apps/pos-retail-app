@@ -19,13 +19,13 @@ export default function CreditosModal({ clientes, tasaCambio, transacciones = []
 
   const tasa = parseFloat(tasaCambio) || 1;
 
-  const clientesConDeuda = clientes.filter(c => (parseFloat(c.saldoPendienteUSD) || 0) > 0.009);
+  const clientesConDeuda = clientes.filter(c => ((parseFloat(c.saldoPendienteUSD ?? c.saldoDeudor ?? c.saldo_deudor_usd ?? 0)) || 0) > 0.009);
   const listaFiltrada = clientesConDeuda.filter(c => 
     (c.nombre || '').toLowerCase().includes(busqueda.toLowerCase()) || 
     (c.doc || '').includes(busqueda)
   );
 
-  const totalPorCobrarUSD = clientesConDeuda.reduce((acc, c) => acc + (parseFloat(c.saldoPendienteUSD) || 0), 0);
+  const totalPorCobrarUSD = clientesConDeuda.reduce((acc, c) => acc + ((parseFloat(c.saldoPendienteUSD ?? c.saldoDeudor ?? c.saldo_deudor_usd ?? 0)) || 0), 0);
 
   const abrirModalAbono = (cliente, e) => {
     if (e) e.stopPropagation();
@@ -38,8 +38,8 @@ export default function CreditosModal({ clientes, tasaCambio, transacciones = []
 
   const enviarRecordatorioWhatsApp = (cliente, e) => {
     if (e) e.stopPropagation();
-    const deudaUSD = (parseFloat(cliente.saldoPendienteUSD) || 0).toFixed(2);
-    const deudaBS = ((parseFloat(cliente.saldoPendienteUSD) || 0) * tasa).toFixed(2);
+    const deudaUSD = ((parseFloat(cliente.saldoPendienteUSD ?? cliente.saldoDeudor ?? cliente.saldo_deudor_usd ?? 0)) || 0).toFixed(2);
+    const deudaBS = (((parseFloat(cliente.saldoPendienteUSD ?? cliente.saldoDeudor ?? cliente.saldo_deudor_usd ?? 0)) || 0) * tasa).toFixed(2);
     
     let msg = `*RECORDATORIO DE PAGO PENDIENTE*\n`;
     msg += `Estimado(a) *${cliente.nombre}*,\n`;
@@ -82,7 +82,7 @@ export default function CreditosModal({ clientes, tasaCambio, transacciones = []
 
     const comprasFinal = Array.from(mapaCompras.values());
     const sumaDetalles = comprasFinal.reduce((acc, it) => acc + (parseFloat(it.saldoDeudaUSD) || parseFloat(it.totalUSD) || 0), 0);
-    const deudaTotal = parseFloat(cliente.saldoPendienteUSD) || 0;
+    const deudaTotal = (parseFloat(cliente.saldoPendienteUSD ?? cliente.saldoDeudor ?? cliente.saldo_deudor_usd ?? 0)) || 0;
     const diferencia = deudaTotal - sumaDetalles;
 
     if (diferencia > 0.01) {
@@ -122,7 +122,7 @@ export default function CreditosModal({ clientes, tasaCambio, transacciones = []
   const punto = parseFloat(pagoPunto) || 0;
   const totalAbonadoUSD = usd + ((bsEf + pm + punto) / tasa);
 
-  const saldoActual = clienteAbonando ? (parseFloat(clienteAbonando.saldoPendienteUSD) || 0) : 0;
+  const saldoActual = clienteAbonando ? ((parseFloat(clienteAbonando.saldoPendienteUSD ?? clienteAbonando.saldoDeudor ?? clienteAbonando.saldo_deudor_usd ?? 0)) || 0) : 0;
   const restante = Math.max(0, saldoActual - totalAbonadoUSD);
 
   const procesarAbono = (e) => {
@@ -189,7 +189,7 @@ export default function CreditosModal({ clientes, tasaCambio, transacciones = []
           </div>
         ) : (
           listaFiltrada.map(c => {
-            const deudaUSD = parseFloat(c.saldoPendienteUSD) || 0;
+            const deudaUSD = (parseFloat(c.saldoPendienteUSD ?? c.saldoDeudor ?? c.saldo_deudor_usd ?? 0)) || 0;
             const deudaBS = deudaUSD * tasa;
             return (
               <div 
@@ -257,10 +257,10 @@ export default function CreditosModal({ clientes, tasaCambio, transacciones = []
               <div style={styles.cardBalanceCliente}>
                 <span style={{ fontSize: '0.72rem', color: '#c2410c', fontWeight: 'bold', textTransform: 'uppercase' }}>Deuda Total Acumulada</span>
                 <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#ea580c', margin: '2px 0' }}>
-                  ${(parseFloat(clienteDetalle.saldoPendienteUSD) || 0).toFixed(2)}
+                  ${((parseFloat(clienteDetalle.saldoPendienteUSD ?? clienteDetalle.saldoDeudor ?? clienteDetalle.saldo_deudor_usd ?? 0)) || 0).toFixed(2)}
                 </div>
                 <small style={{ fontSize: '0.76rem', color: '#0052cc', fontWeight: 'bold' }}>
-                  Equivalente: Bs. {((parseFloat(clienteDetalle.saldoPendienteUSD) || 0) * tasa).toFixed(2)}
+                  Equivalente: Bs. {(((parseFloat(clienteDetalle.saldoPendienteUSD ?? clienteDetalle.saldoDeudor ?? clienteDetalle.saldo_deudor_usd ?? 0)) || 0) * tasa).toFixed(2)}
                 </small>
               </div>
 

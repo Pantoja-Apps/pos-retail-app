@@ -474,7 +474,8 @@ export default function App() {
       vueltoBS: parseFloat(datosVenta.vueltoBS || 0)
     };
 
-    if (ventaCompleta.esCredito) {
+        if (ventaCompleta.esCredito) {
+      let clienteActualizadoParaSync = null;
       setClientes(prev => {
         const docBuscado = (ventaCompleta.cliente?.doc || '').replace(/[^0-9]/g, '');
         const idx = prev.findIndex(c => (c.doc || '').replace(/[^0-9]/g, '') === docBuscado);
@@ -485,29 +486,42 @@ export default function App() {
           montoBS: ventaCompleta.totalBS,
           items: ventaCompleta.items
         };
-
         if (idx >= 0) {
           const cp = [...prev];
           const clienteExistente = cp[idx];
-          const nuevoSaldo = (Number(clienteExistente.saldoPendienteUSD || 0) + ventaCompleta.totalUSD).toFixed(2);
-          cp[idx] = {
+          const saldoAnterior = Number(clienteExistente.saldoPendienteUSD || clienteExistente.saldoDeudor || 0);
+          const nuevoSaldo = parseFloat((saldoAnterior + ventaCompleta.totalUSD).toFixed(2));
+          const actualizado = {
             ...clienteExistente,
-            saldoPendienteUSD: parseFloat(nuevoSaldo),
+            saldoPendienteUSD: nuevoSaldo,
+            saldoDeudor: nuevoSaldo,
             historialCreditos: [registroCredito, ...(clienteExistente.historialCreditos || [])]
           };
+          cp[idx] = actualizado;
+          clienteActualizadoParaSync = actualizado;
           return cp;
         } else {
-          return [...prev, {
-            id: Date.now(),
+          const nuevoCliente = {
+            id: 'cli_' + Date.now(),
             doc: ventaCompleta.cliente?.doc || 'V-00000000',
             nombre: ventaCompleta.cliente?.nombre || 'Cliente',
             telefono: ventaCompleta.cliente?.telefono || '',
             saldoPendienteUSD: ventaCompleta.totalUSD,
+            saldoDeudor: ventaCompleta.totalUSD,
             historialCreditos: [registroCredito],
             historialAbonos: []
-          }];
+          };
+          clienteActualizadoParaSync = nuevoCliente;
+          return [...prev, nuevoCliente];
         }
       });
+
+      // Sincronización garantizada en tiempo real con Supabase
+      if (clienteActualizadoParaSync) {
+        dbService.guardarCliente(clienteActualizadoParaSync, negId).catch(err => {
+          console.error("Error sincronizando deuda con Supabase:", err);
+        });
+      }
     }
 
     setTransacciones(prev => [ventaCompleta, ...prev]);

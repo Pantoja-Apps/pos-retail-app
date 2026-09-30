@@ -48,6 +48,7 @@ const normalizarCliente = (c) => ({
   direccion: c.direccion || '',
   limiteCredito: parseFloat(c.limite_credito ?? 0) || 0,
   saldoDeudor: parseFloat(c.saldo_deudor_usd ?? 0) || 0,
+  saldoPendienteUSD: parseFloat(c.saldo_deudor_usd ?? 0) || 0,
   saldoDeudorUSD: parseFloat(c.saldo_deudor_usd ?? 0) || 0
 });
 
@@ -334,7 +335,7 @@ export const dbService = {
         telefono: cliente.telefono || '',
         direccion: cliente.direccion || '',
         limite_credito: parseFloat(cliente.limiteCredito ?? cliente.limite_credito ?? 0) || 0,
-        saldo_deudor_usd: parseFloat(cliente.saldoDeudorUSD ?? cliente.saldoDeudor ?? cliente.saldo_deudor_usd ?? 0) || 0
+        saldo_deudor_usd: parseFloat(cliente.saldoPendienteUSD ?? cliente.saldoDeudor ?? cliente.saldo_deudor_usd ?? 0) || 0 || 0
       };
 
       const { data, error } = await supabase
