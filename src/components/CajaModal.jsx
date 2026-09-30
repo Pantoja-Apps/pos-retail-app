@@ -48,28 +48,44 @@ export default function CajaModal({
     totalVentasUSD += usd;
     totalVentasBS += bs;
 
-    // Métodos de pago
-    if (Array.isArray(v.pagos) && v.pagos.length > 0) {
-      v.pagos.forEach(p => {
-        const met = (p.metodo || '').toLowerCase();
-        if (met.includes('usd') || met.includes('$')) {
-          ventasEfectivoUSD += Number(p.montoUSD || p.monto || 0);
-        } else if (met.includes('móvil') || met.includes('movil')) {
-          ventasPagoMovilBS += Number(p.montoBS || p.monto || 0);
-        } else if (met.includes('punto') || met.includes('tarjeta')) {
-          ventasPuntoBS += Number(p.montoBS || p.monto || 0);
+    // Verificar si es una venta a crédito / fiada
+    const esFiado = Boolean(
+      v.esCredito || 
+      v.es_credito || 
+      v.tipoVenta === 'credito' ||
+      (v.metodoPago || '').toLowerCase().includes('crédit') || 
+      (v.metodoPago || '').toLowerCase().includes('credit') ||
+      (v.metodo_pago || '').toLowerCase().includes('credit')
+    );
+
+    // Si NO es fiado, computar el ingreso real a gaveta física y bancos
+    if (!esFiado) {
+      if (Array.isArray(v.pagos) && v.pagos.length > 0) {
+        v.pagos.forEach(p => {
+          const met = (p.metodo || p.nombre || '').toLowerCase();
+          if (met.includes('credit') || met.includes('crédit')) {
+            return;
+          } else if (met.includes('usd') || met.includes('$') || met === 'efectivo_usd') {
+            ventasEfectivoUSD += Number(p.montoUSD || p.monto || 0);
+          } else if (met.includes('móvil') || met.includes('movil') || met === 'pago_movil') {
+            ventasPagoMovilBS += Number(p.montoBS || p.monto || 0);
+          } else if (met.includes('punto') || met.includes('tarjeta') || met === 'punto_venta') {
+            ventasPuntoBS += Number(p.montoBS || p.monto || 0);
+          } else {
+            ventasEfectivoBS += Number(p.montoBS || p.monto || 0);
+          }
+        });
+      } else {
+        const met = (v.metodoPago || v.metodo_pago || '').toLowerCase();
+        if (met.includes('usd') || met === 'efectivo_usd') {
+          ventasEfectivoUSD += usd;
+        } else if (met.includes('movil') || met.includes('móvil') || met === 'pago_movil') {
+          ventasPagoMovilBS += bs;
+        } else if (met.includes('punto') || met === 'punto_venta' || met.includes('tarjeta')) {
+          ventasPuntoBS += bs;
         } else {
-          ventasEfectivoBS += Number(p.montoBS || p.monto || 0);
+          ventasEfectivoBS += bs;
         }
-      });
-    } else {
-      const esFiado = Boolean(v.esCredito || v.es_credito || (v.metodoPago || '').toLowerCase().includes('crédito') || (v.metodoPago || '').toLowerCase().includes('credito'));
-      if (!esFiado) {
-        const met = (v.metodoPago || '').toLowerCase();
-        if (met.includes('usd') || met === 'efectivo_usd') ventasEfectivoUSD += usd;
-        else if (met.includes('movil') || met === 'pago_movil') ventasPagoMovilBS += bs;
-        else if (met.includes('punto') || met === 'punto_venta') ventasPuntoBS += bs;
-        else ventasEfectivoBS += bs;
       }
     }
 
