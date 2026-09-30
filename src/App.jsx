@@ -1010,25 +1010,60 @@ export default function App() {
           })()}
           tasaCambio={tasaCambio}
           alCerrar={() => setVistaActual('pos')}
-          onAbonar={(clienteId, montoAbonoUSD) => {
+          onAbonar={async (clienteId, montoAbonoUSD) => {
+            const montoNum = parseFloat(montoAbonoUSD) || 0;
+            if (montoNum <= 0) return;
+
+            const nuevoAbono = {
+              id: 'abn_' + Date.now(),
+              fecha: new Date().toLocaleString(),
+              montoUSD: montoNum
+            };
+
+            let clienteActualizado = null;
+
             setClientes(prev => {
-              const idx = prev.findIndex(c => String(c.id) === String(clienteId));
+              const cp = [...prev];
+              const idx = cp.findIndex(c => String(c.id) === String(clienteId) || String(c.doc) === String(clienteId));
               if (idx >= 0) {
-                const cp = [...prev];
                 const cli = cp[idx];
-                const nuevoSaldo = Math.max(0, Number(cli.saldoPendienteUSD || 0) - Number(montoAbonoUSD)).toFixed(2);
+                const deudaActual = parseFloat(cli.saldoPendienteUSD || cli.saldoDeudor || 0);
+                const nuevoSaldo = Math.max(0, deudaActual - montoNum);
+                const historial = [nuevoAbono, ...(cli.historialAbonos || [])];
+
                 cp[idx] = {
                   ...cli,
-                  saldoPendienteUSD: parseFloat(nuevoSaldo),
-                  historialAbonos: [
-                    { id: 'abn_' + Date.now(), fecha: new Date().toLocaleString(), montoUSD: Number(montoAbonoUSD) },
-                    ...(cli.historialAbonos || [])
-                  ]
+                  saldoPendienteUSD: nuevoSaldo,
+                  saldoDeudor: nuevoSaldo,
+                  historialAbonos: historial
                 };
+                clienteActualizado = cp[idx];
                 return cp;
               }
               return prev;
             });
+
+            try {
+              if (clienteActualizado) {
+                localStorage.setItem('pos_clientes', JSON.stringify(
+                  (clientes || []).map(c => c.id === clienteActualizado.id ? clienteActualizado : c)
+                ));
+
+                if (typeof supabase !== 'undefined' && supabase) {
+                  await supabase
+                    .from('clientes')
+                    .update({
+                      saldoPendienteUSD: clienteActualizado.saldoPendienteUSD,
+                      saldoDeudor: clienteActualizado.saldoPendienteUSD,
+                      historialAbonos: clienteActualizado.historialAbonos
+                    })
+                    .eq('id', clienteActualizado.id);
+                  console.log('Abono persistido en Supabase con éxito');
+                }
+              }
+            } catch (err) {
+              console.error('Error al sincronizar abono en Supabase:', err);
+            }
           }}
           alVolver={() => setVistaActual('pos')}
         />

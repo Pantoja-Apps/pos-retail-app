@@ -290,7 +290,17 @@ export default function CreditosModal({
                   comprasCliente.map((c, i) => (
                     <div key={i} style={styles.itemFilaHistorial}>
                       <div>
-                        <div style={styles.itemRef}>Ticket #{c.numeroTicket || c.ticket || c.id}</div>
+                        <div style={styles.itemRef}>
+  Ticket #{
+    c.numeroTicket 
+      ? String(c.numeroTicket).replace('#', '') 
+      : c.ticket 
+        ? String(c.ticket).replace('#', '') 
+        : c.correlativo 
+          ? String(c.correlativo).padStart(6, '0') 
+          : String(c.id || '').replace(/^vta_/, '').slice(-6)
+  }
+</div>
                         <div style={styles.itemFecha}>{c.fecha || 'Sin fecha'}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
