@@ -268,6 +268,34 @@ export default function App() {
     return () => clearInterval(intervalo);
   }, [cuentaMaster, usuarioActivo]);
 
+  
+  // Función para obtener la deuda real de un cliente cruzando saldo directo y transacciones
+  const obtenerDeudaCliente = (cli) => {
+    if (!cli || !cli.doc || cli.doc === 'V-00000000') return 0;
+    const docLimpio = (cli.doc || '').replace(/[^0-9]/g, '');
+
+    // 1. Saldo directo en el registro del cliente
+    let saldo = parseFloat(cli.saldoPendienteUSD || cli.saldoDeudor || cli.saldoDeudorUSD || 0);
+
+    // Si hay transacciones a crédito registradas para esta cédula o ID
+    if (Array.isArray(transacciones)) {
+      const deudaTransacciones = transacciones
+        .filter(t => {
+          const tDoc = (t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
+          const esMismoCliente = (tDoc && tDoc === docLimpio) || (t.cliente?.id && String(t.cliente.id) === String(cli.id));
+          const esCredito = t.esCredito || t.tipoPago === 'credito' || (t.pagos && t.pagos.credito) || t.estado === 'credito' || t.metodo === 'credito';
+          return esMismoCliente && esCredito && !t.anulada;
+        })
+        .reduce((sum, t) => sum + parseFloat(t.totalUSD || t.montoUSD || (t.pagos?.credito) || 0), 0);
+
+      if (deudaTransacciones > saldo) {
+        saldo = deudaTransacciones;
+      }
+    }
+
+    return saldo;
+  };
+
   const manejarDocMostrador = (docValor) => {
     const docLimpio = (docValor || '').replace(/[^0-9]/g, '');
     const textoBusqueda = (docValor || '').trim().toLowerCase();
@@ -1092,10 +1120,20 @@ export default function App() {
             </div>
             <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
               {(() => {
-                const deuda = parseFloat(clienteActual?.saldoPendienteUSD || clienteActual?.saldoDeudor || clienteActual?.saldoDeudorUSD || 0);
+                const deuda = obtenerDeudaCliente(clienteActual);
                 if (deuda > 0.01) {
                   return (
-                    <span style={{ backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #f87171', padding: '1px 6px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 'bold' }}>
+                    <span style={{
+                      backgroundColor: '#fee2e2',
+                      color: '#b91c1c',
+                      border: '1px solid #f87171',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      fontWeight: '800',
+                      letterSpacing: '0.2px',
+                      whiteSpace: 'nowrap'
+                    }}>
                       ⚠️ Debe: ${deuda.toFixed(2)}
                     </span>
                   );
