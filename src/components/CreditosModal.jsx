@@ -94,10 +94,21 @@ export const CreditosModal = ({
           return docAbono && docClean && docAbono === docClean;
         });
 
+        // Cálculo dinámico universal: Suma de fiados menos suma de abonos
+        const totalFiadoUSD = comprasFiadas.reduce((acc, v) => acc + (parseFloat(v.totalUSD ?? v.total_usd ?? 0) || 0), 0);
+        const totalAbonadoUSD = abonosCliente.reduce((acc, a) => acc + (parseFloat(a.montoUSD ?? a.monto_usd ?? 0) || 0), 0);
+        
+        let deudaCalculada = totalFiadoUSD > 0 ? Math.max(0, parseFloat((totalFiadoUSD - totalAbonadoUSD).toFixed(2))) : Math.max(0, saldoDirecto);
+
+        // Si saldoDirecto tiene saldo pendiente pero no hay compras fiadas en memoria, respetar saldoDirecto
+        if (deudaCalculada <= 0 && saldoDirecto > 0) {
+          deudaCalculada = saldoDirecto;
+        }
+
         mapaUnico.set(key, {
           ...c,
           docClean,
-          totalDeudaUSD: Math.max(0, saldoDirecto),
+          totalDeudaUSD: deudaCalculada,
           comprasFiadas,
           abonosCliente
         });

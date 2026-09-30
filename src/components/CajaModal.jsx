@@ -63,11 +63,14 @@ export default function CajaModal({
         }
       });
     } else {
-      const met = (v.metodoPago || '').toLowerCase();
-      if (met.includes('usd') || met === 'efectivo_usd') ventasEfectivoUSD += usd;
-      else if (met.includes('movil') || met === 'pago_movil') ventasPagoMovilBS += bs;
-      else if (met.includes('punto') || met === 'punto_venta') ventasPuntoBS += bs;
-      else ventasEfectivoBS += bs;
+      const esFiado = Boolean(v.esCredito || v.es_credito || (v.metodoPago || '').toLowerCase().includes('crédito') || (v.metodoPago || '').toLowerCase().includes('credito'));
+      if (!esFiado) {
+        const met = (v.metodoPago || '').toLowerCase();
+        if (met.includes('usd') || met === 'efectivo_usd') ventasEfectivoUSD += usd;
+        else if (met.includes('movil') || met === 'pago_movil') ventasPagoMovilBS += bs;
+        else if (met.includes('punto') || met === 'punto_venta') ventasPuntoBS += bs;
+        else ventasEfectivoBS += bs;
+      }
     }
 
     // Desglose de IVA en los ítems
