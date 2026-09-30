@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Barcode, Camera, Trash2, Plus, Minus, DollarSign, X, 
   RefreshCw, User, Search, PauseCircle, PlayCircle, Store
@@ -150,6 +150,7 @@ export default function App() {
       cargarAbonosSupabase();
     }
   }, [vistaActual, usuarioActivo]);
+
   const [clientes, setClientes] = useState(() => {
     try {
       const g = localStorage.getItem('pos_clis_final');
@@ -265,7 +266,8 @@ export default function App() {
               ...v,
               totalUSD: Number(v.totalUSD || v.total_usd || 0),
               totalBS: Number(v.totalBS || v.total_bs || 0),
-              cerradoEnTurno: Boolean(v.cerradoEnTurno || v.estado === 'cerrada'), estado: v.estado || (v.cerradoEnTurno ? 'cerrada' : 'activa')
+              cerradoEnTurno: Boolean(v.cerradoEnTurno || v.estado === 'cerrada'), 
+              estado: v.estado || (v.cerradoEnTurno ? 'cerrada' : 'activa')
             }));
           return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
         });
@@ -290,51 +292,55 @@ export default function App() {
     return () => clearInterval(intervalo);
   }, [cuentaMaster, usuarioActivo]);
 
-  
-  // Función para obtener la deuda real de un cliente cruzando saldo directo y transacciones
-    const obtenerDeudaCliente = (cli) => {
+  // Función universal para obtener la deuda neta real de un cliente cruzando fiados y abonos
+  const obtenerDeudaCliente = (cli) => {
     if (!cli || !cli.doc || cli.doc === 'V-00000000') return 0;
-    const docLimpio = (cli.doc || '').replace(/[^0-9]/g, '');
+    const docLimpio = String(cli.doc || cli.cedula || '').replace(/[^0-9]/g, '');
+    if (!docLimpio) return 0;
 
-    // 1. Sumar todas las facturas a credito vigentes de este cliente
-    let totalFiado = 0;
-    if (Array.isArray(transacciones)) {
-      totalFiado = transacciones
-        .filter(t => {
-          const tDoc = (t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
-          const esFiado = t.esCredito || t.tipoPago === 'credito' || t.metodoPago === 'credito' || (t.metodosPago && t.metodosPago.credito > 0);
-          return tDoc === docLimpio && esFiado && !t.anulada;
-        })
-        .reduce((sum, t) => sum + parseFloat(t.totalUSD || t.montoUSD || 0), 0);
-    }
+    // 1. Totalizar compras fiadas
+    const todasLasVentas = (historicoVentasGlobal && historicoVentasGlobal.length > 0) ? historicoVentasGlobal : transacciones;
+    const totalFiado = (todasLasVentas || [])
+      .filter(t => {
+        if (t.anulada) return false;
+        const tDoc = String(t.cliente?.doc || t.cliente_doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
+        const esFiado = Boolean(
+          t.esCredito || 
+          t.es_credito || 
+          t.tipoVenta === 'credito' || 
+          (t.metodoPago || '').toLowerCase().includes('crédit') || 
+          (t.metodoPago || '').toLowerCase().includes('credit') ||
+          (t.metodo_pago || '').toLowerCase().includes('credit')
+        );
+        return tDoc === docLimpio && esFiado;
+      })
+      .reduce((sum, t) => sum + (parseFloat(t.totalUSD ?? t.total_usd ?? 0) || 0), 0);
 
-    // 2. Unificar todos los abonos registrados para esta cedula (en cli o en la lista clientes)
-    const instancias = (clientes || []).filter(item => (item.doc || '').replace(/[^0-9]/g, '') === docLimpio);
-    const abonosLocales = [
-      ...(cli.historialAbonos || []),
-      ...instancias.flatMap(i => i.historialAbonos || [])
+    // 2. Totalizar abonos unificados de Supabase y locales
+    const mapaAbonos = new Map();
+    const abonosFuente = [
+      ...(Array.isArray(abonos) ? abonos : []),
+      ...(cli.historialAbonos || [])
     ];
-    
-    // Deduplicar abonos por ID
-    const abonosUnicos = [];
-    const idsAbonos = new Set();
-    abonosLocales.forEach(a => {
-      const aId = a.id || (a.fecha + '_' + a.montoUSD);
-      if (!idsAbonos.has(aId)) {
-        idsAbonos.add(aId);
-        abonosUnicos.push(a);
+
+    abonosFuente.forEach(a => {
+      const aDoc = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || '').replace(/[^0-9]/g, '');
+      if (aDoc === docLimpio) {
+        const key = a.id || `${aDoc}_${a.fecha}_${a.monto_usd || a.montoUSD}`;
+        if (!mapaAbonos.has(key)) {
+          mapaAbonos.set(key, parseFloat(a.monto_usd ?? a.montoUSD ?? 0) || 0);
+        }
       }
     });
 
-    const totalAbonado = abonosUnicos.reduce((sum, a) => sum + parseFloat(a.montoUSD || 0), 0);
+    const totalAbonado = Array.from(mapaAbonos.values()).reduce((sum, m) => sum + m, 0);
 
-    if (totalFiado > 0) {
+    if (totalFiado > 0 || totalAbonado > 0) {
       return Math.max(0, parseFloat((totalFiado - totalAbonado).toFixed(2)));
     }
 
-    // Respaldo por si se asignó saldo manual sin factura
-    const saldoManual = parseFloat(cli.saldoPendienteUSD || cli.saldoDeudor || 0);
-    return Math.max(0, parseFloat((saldoManual - totalAbonado).toFixed(2)));
+    const saldoDirecto = parseFloat(cli.saldo_deudor_usd ?? cli.saldoPendienteUSD ?? cli.saldoDeudor ?? 0) || 0;
+    return Math.max(0, parseFloat((saldoDirecto - totalAbonado).toFixed(2)));
   };
 
   const manejarDocMostrador = (docValor) => {
@@ -343,7 +349,7 @@ export default function App() {
 
     if (!docLimpio) {
       setClienteActual(CLIENTES_INICIALES[0]);
-      if (typeof setSugClientesMostrador === 'function') setSugClientesMostrador([]);
+      setSugClientesMostrador([]);
       return;
     }
 
@@ -359,18 +365,15 @@ export default function App() {
       return cLimpio && cLimpio.startsWith(docLimpio);
     });
 
-    if (typeof setSugClientesMostrador === 'function') {
-      setSugClientesMostrador(sugerencias.length > 0 ? sugerencias : []);
-    }
+    setSugClientesMostrador(sugerencias);
 
     if (encontrado) {
       setClienteActual({ ...encontrado, doc: docStr });
     } else if (sugerencias.length === 1 && docLimpio.length >= 4) {
-      // Predicción inteligente si sólo hay 1 cliente coincidente
-      setClienteActual(prev => ({
+      setClienteActual({
         ...sugerencias[0],
         doc: docStr
-      }));
+      });
     } else {
       setClienteActual(prev => ({
         ...(prev || {}),
@@ -560,7 +563,7 @@ export default function App() {
       fecha: ahora.toISOString(),
       fechaFormateada: ahora.toLocaleDateString() + ' ' + ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       negocio_id: negId,
-      cajero: usuarioActivo?.nombre || usuarioActivo?.nombre || 'Cajero',
+      cajero: usuarioActivo?.nombre || 'Cajero',
       cajeroId: usuarioActivo?.id || cuentaMaster?.id || 'usr_master',
       caja: cajaActiva?.nombre || 'Caja 01',
       cliente: datosVenta.cliente || clienteActual,
@@ -579,7 +582,7 @@ export default function App() {
       vueltoBS: parseFloat(datosVenta.vueltoBS || 0)
     };
 
-        if (ventaCompleta.esCredito) {
+    if (ventaCompleta.esCredito) {
       let clienteActualizadoParaSync = null;
       setClientes(prev => {
         const docBuscado = (ventaCompleta.cliente?.doc || '').replace(/[^0-9]/g, '');
@@ -817,7 +820,7 @@ export default function App() {
           const doc = (v.cliente?.doc || v.cliente_doc || '').replace(/[^0-9]/g, '');
           if (doc) {
             const monto = parseFloat(v.totalUSD ?? v.total_usd ?? 0) || 0;
-            mapFiados = mapaFiados.set(doc, (mapaFiados.get(doc) || 0) + monto);
+            mapaFiados.set(doc, (mapaFiados.get(doc) || 0) + monto);
           }
         }
       });
@@ -925,7 +928,7 @@ export default function App() {
   const clientesMorosos = (() => {
     const docsConDeuda = new Set();
     (clientes || []).forEach(c => {
-      const saldo = parseFloat(c.saldo_deudor_usd ?? c.saldoPendienteUSD ?? c.saldoDeudor ?? 0) || 0;
+      const saldo = obtenerDeudaCliente(c);
       if (saldo > 0.01) {
         const docClean = String(c.doc || c.cedula || c.rif || c.id || '').replace(/[^0-9]/g, '');
         if (docClean) docsConDeuda.add(docClean);
@@ -982,7 +985,8 @@ export default function App() {
       )}
 
       {vistaActual === 'inventario' && (
-        <InventarioModal proveedores={proveedores} proveedores={proveedores} 
+        <InventarioModal 
+          proveedores={proveedores} 
           productos={productos}
           tasaCambio={tasaCambio}
           esDueno={esDueno}
@@ -1057,12 +1061,10 @@ export default function App() {
           tasaCambio={tasaCambio}
           usuarioActivo={usuarioActivo}
           onAbonar={async ({ cliente, montoUSD, montoBS, metodoPago, tasa }) => {
-            // 1. Prioridad estricta a la sesión activa en Supabase
             const negId = usuarioActivo?.negocio_id || cliente?.negocio_id || localStorage.getItem('pos_negocio_id');
             const nuevoSaldoCalculado = Math.max(0, parseFloat((cliente.totalDeudaUSD - montoUSD).toFixed(2)));
 
             try {
-              // 2. Transacción y persistencia atómica directa en Supabase
               const resAbono = await dbService.registrarAbonoContable({
                 negocioId: negId,
                 clienteDoc: cliente.doc,
@@ -1076,7 +1078,6 @@ export default function App() {
                 nuevoSaldoUSD: nuevoSaldoCalculado
               });
 
-              // 3. Sincronización en memoria con los datos confirmados por Supabase
               const nuevoAbonoSupabase = {
                 id: resAbono?.id || ('abn_' + Date.now()),
                 negocio_id: negId,
@@ -1253,7 +1254,7 @@ export default function App() {
                 zIndex: 99999
               }}>
                 {sugClientesMostrador.map(c => {
-                  const saldo = parseFloat(c.saldoPendienteUSD || c.saldoDeudor || c.saldoDeudorUSD || 0);
+                  const saldo = obtenerDeudaCliente(c);
                   return (
                     <div
                       key={c.id || c.doc}
