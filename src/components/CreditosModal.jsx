@@ -6,7 +6,9 @@ import {
   ChevronRight, X, ArrowDownRight, Smartphone, Wallet, Building2, Delete
 } from 'lucide-react';
 
-export const CreditosModal = ({ 
+export const CreditosModal = ({
+  usuarioActivo,
+ 
   clientes = [], 
   transacciones = [], 
   abonos = [], 
@@ -25,7 +27,21 @@ export const CreditosModal = ({
   // Carga directa y reactiva desde Supabase independiente del padre
   const recargarAbonosDirectos = async () => {
     try {
-      const negId = localStorage.getItem('pos_negocio_id');
+      let negId = usuarioActivo?.negocio_id ||
+                  (clientes && clientes.length > 0 ? (clientes[0]?.negocio_id || clientes[0]?.negocioId) : null) ||
+                  localStorage.getItem('pos_negocio_id') ||
+                  localStorage.getItem('pos_negocioActivo');
+                  
+      if (!negId) {
+        try {
+          const uStr = localStorage.getItem('pos_usuario') || localStorage.getItem('pos_sesion');
+          if (uStr) {
+            const uObj = JSON.parse(uStr);
+            negId = uObj?.negocio_id || uObj?.negocioId;
+          }
+        } catch (_) {}
+      }
+
       if (negId) {
         const data = await dbService.getAbonos(negId);
         if (Array.isArray(data)) {
@@ -178,6 +194,16 @@ export const CreditosModal = ({
       setClienteAbonando(null);
     }
   };
+  // Lista reactiva de abonos en tiempo real para el cliente abierto
+  const abonosClienteActivo = useMemo(() => {
+    if (!clienteHistorial) return [];
+    const docTarget = String(clienteHistorial.doc || clienteHistorial.cedula || clienteHistorial.docClean || '').replace(/[^0-9]/g, '');
+    const fuente = abonosSupabase.length > 0 ? abonosSupabase : (abonos || []);
+    return fuente.filter(a => {
+      const docA = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || a.cliente?.doc || '').replace(/[^0-9]/g, '');
+      return docTarget && docA && docTarget === docA;
+    });
+  }, [clienteHistorial, abonosSupabase, abonos]);
 
   return (
     <div style={styles.contenedorPrincipal}>
@@ -392,7 +418,7 @@ export const CreditosModal = ({
                 onClick={() => setTabHistorial('abonos')}
                 style={{ ...styles.tabBtn, ...(tabHistorial === 'abonos' ? styles.tabBtnActivo : {}) }}
               >
-                Historial Abonos ({clienteHistorial.abonosCliente?.length || 0})
+                Historial Abonos ({abonosClienteActivo.length})
               </button>
             </div>
 
@@ -419,10 +445,10 @@ export const CreditosModal = ({
                   ))
                 )
               ) : (
-                clienteHistorial.abonosCliente?.length === 0 ? (
+                abonosClienteActivo.length === 0 ? (
                   <p style={{ textAlign: 'center', color: '#94a3b8', padding: '20px' }}>No se han registrado abonos en esta cuenta</p>
                 ) : (
-                  clienteHistorial.abonosCliente.map(a => (
+                  abonosClienteActivo.map(a => (
                     <div key={a.id} style={styles.itemHistorial}>
                       <div>
                         <strong>{a.metodo_pago || 'Abono Recibido'}</strong>
