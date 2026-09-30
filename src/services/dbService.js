@@ -238,48 +238,34 @@ export const dbService = {
   // VENTAS
     
   // Registrar Abono con sincronización 100% en Supabase
-  async registrarAbono(clienteDoc, montoUSD, detalles = {}) {
+    // Registrar Abono con actualización directa de saldo_deudor_usd
+  async registrarAbono(clienteDoc, nuevoSaldoCalculado, negocioIdParam) {
     try {
-      if (!clienteDoc || Number(montoUSD) <= 0) return null;
+      if (!clienteDoc) return null;
       const docLimpio = String(clienteDoc).trim();
-      const negocioId = localStorage.getItem('pos_negocio_id') || 'neg_default';
+      const negocioId = negocioIdParam || localStorage.getItem('pos_negocio_id');
 
-      // 1. Obtener cliente actual de Supabase
-      const { data: clienteExistente } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('doc', docLimpio)
-        .maybeSingle();
+      // Buscar cliente por documento y negocio_id
+      let query = supabase.from('clientes').select('*').eq('doc', docLimpio);
+      if (negocioId) {
+        query = query.eq('negocio_id', negocioId);
+      }
+      const { data: clienteExistente } = await query.maybeSingle();
 
-      const saldoAnterior = parseFloat(clienteExistente?.saldo_deudor_usd ?? clienteExistente?.saldo_pendiente_usd ?? 0) || 0;
-      const nuevoSaldo = Math.max(0, parseFloat((saldoAnterior - Number(montoUSD)).toFixed(2)));
+      if (clienteExistente) {
+        const { data, error } = await supabase
+          .from('clientes')
+          .update({
+            saldo_deudor_usd: parseFloat(nuevoSaldoCalculado)
+          })
+          .eq('id', clienteExistente.id)
+          .select()
+          .maybeSingle();
 
-      const nuevoAbono = {
-        id: 'abn_' + Date.now(),
-        fecha: new Date().toISOString(),
-        monto_usd: Number(montoUSD),
-        metodo: detalles.metodo || 'efectivo',
-        detalles
-      };
-
-      const historialPrevio = Array.isArray(clienteExistente?.historial_abonos) 
-        ? clienteExistente.historial_abonos 
-        : (Array.isArray(clienteExistente?.historialAbonos) ? clienteExistente.historialAbonos : []);
-
-      const clienteParaGuardar = {
-        id: clienteExistente?.id || ('cli_' + Date.now()),
-        negocio_id: clienteExistente?.negocio_id || negocioId,
-        doc: docLimpio,
-        nombre: clienteExistente?.nombre || detalles.nombre || 'Cliente',
-        telefono: clienteExistente?.telefono || detalles.telefono || '',
-        saldo_deudor_usd: nuevoSaldo,
-        saldo_pendiente_usd: nuevoSaldo,
-        historial_abonos: [nuevoAbono, ...historialPrevio]
-      };
-
-      const { data, error } = await supabase.from('clientes').upsert(clienteParaGuardar).select().maybeSingle();
-      if (error) console.error('Error al guardar abono en Supabase:', error);
-      return data || clienteParaGuardar;
+        if (error) console.error('Error al actualizar saldo en Supabase:', error);
+        return data;
+      }
+      return null;
     } catch (err) {
       console.error('Fallo en registrarAbono dbService:', err);
       return null;

@@ -1038,26 +1038,23 @@ export default function App() {
             if (montoNum <= 0) return;
 
             const docTarget = String(clienteId || '').replace(/[^0-9]/g, '');
-            const nuevoAbonoLocal = {
-              id: 'abn_' + Date.now(),
-              fecha: new Date().toLocaleString(),
-              montoUSD: montoNum
-            };
+            let saldoFinal = 0;
+            let docClienteReal = '';
 
-            // Actualización inmediata del estado visual
             setClientes(prev => {
               const actualizados = prev.map(cli => {
                 const cDoc = String(cli.doc || '').replace(/[^0-9]/g, '');
                 if (cDoc === docTarget || String(cli.id) === String(clienteId)) {
+                  docClienteReal = cli.doc;
                   const saldoActual = parseFloat(cli.saldoPendienteUSD ?? cli.saldoDeudor ?? cli.saldo_deudor_usd ?? 0);
                   const nuevoSaldo = Math.max(0, parseFloat((saldoActual - montoNum).toFixed(2)));
+                  saldoFinal = nuevoSaldo;
                   return {
                     ...cli,
                     saldoPendienteUSD: nuevoSaldo,
                     saldoDeudor: nuevoSaldo,
                     saldo_deudor_usd: nuevoSaldo,
-                    saldo_pendiente_usd: nuevoSaldo,
-                    historialAbonos: [nuevoAbonoLocal, ...(cli.historialAbonos || [])]
+                    saldo_pendiente_usd: nuevoSaldo
                   };
                 }
                 return cli;
@@ -1066,15 +1063,11 @@ export default function App() {
               return actualizados;
             });
 
-            // Persistencia en Supabase
             try {
-              const cliRef = (clientes || []).find(c => String(c.doc || '').replace(/[^0-9]/g, '') === docTarget);
-              await dbService.registrarAbono(cliRef?.doc || ('V-' + docTarget), montoNum, {
-                nombre: cliRef?.nombre,
-                telefono: cliRef?.telefono
-              });
-            } catch (e) {
-              console.error('Error al guardar abono en Supabase:', e);
+              const negId = negocioActual?.id || localStorage.getItem('pos_negocio_id');
+              await dbService.registrarAbono(docClienteReal || ('V-' + docTarget), saldoFinal, negId);
+            } catch (err) {
+              console.error('Error al persistir abono en Supabase:', err);
             }
           }}
           alVolver={() => setVistaActual('pos')}
