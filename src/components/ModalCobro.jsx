@@ -18,7 +18,7 @@ export default function ModalCobro({
   guardarClienteEnDB,
   alFinalizarVenta
 }) {
-  if (!abierto) return null;
+  
 
   const totalUSDNum = parseFloat(totalUSD) || 0;
   const tasaNum = parseFloat(tasaCambio) || 1;
@@ -226,6 +226,8 @@ export default function ModalCobro({
       alFinalizarVenta(ventaFinal);
     }
   };
+
+  if (!abierto) return null;
 
   return (
     <div style={styles.overlay} translate="no">

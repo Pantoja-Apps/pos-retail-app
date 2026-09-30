@@ -465,7 +465,7 @@ export default function App() {
       totalUSD: parseFloat(datosVenta.totalUSD || totalUSD),
       totalBS: parseFloat(datosVenta.totalBS || totalBS),
       tasaCambio: parseFloat(tasaCambio),
-      metodoPago: datosVenta.metodoPago || 'Efectivo ($)',
+      metodoPago: datosVenta.esCredito ? 'Crédito' : (datosVenta.metodoPago || 'Efectivo ($)'),
       pagos: datosVenta.pagos || [],
       esCredito: Boolean(datosVenta.esCredito),
       cerradoEnTurno: false,
@@ -730,12 +730,13 @@ export default function App() {
 
       const vtas = await dbService.getVentas(res.negocio.id);
       if (Array.isArray(vtas) && vtas.length > 0) {
-        setTransacciones(vtas.map(v => ({
+        const vtasOrdenadas = [...vtas].sort((a, b) => new Date(a.fecha || 0) - new Date(b.fecha || 0));
+        setTransacciones(vtasOrdenadas.map((v, idx) => ({
           ...v,
+          correlativo: v.correlativo || String(idx + 1).padStart(6, '0'),
           totalUSD: Number(v.totalUSD || v.total_usd || 0),
           totalBS: Number(v.totalBS || v.total_bs || 0),
-          cerradoEnTurno: Boolean(v.cerradoEnTurno || v.estado === 'cerrada'),
-          estado: v.estado || (v.cerradoEnTurno ? 'cerrada' : 'activa')
+          items: v.items || []
         })));
       }
 
@@ -920,7 +921,8 @@ export default function App() {
       )}
 
       {vistaActual === 'creditos' && (
-        <CreditosModal 
+        <CreditosModal
+          transacciones={transacciones}
           clientes={clientes}
           tasaCambio={tasaCambio}
           transacciones={transacciones}
@@ -1266,7 +1268,7 @@ export default function App() {
         />
       )}
 
-      <ScannerModal 
+      <ScannerModal
         abierto={camaraAbierta}
         alDetectar={(codigoLeido) => {
           const prod = productos.find(p => p.codigo === codigoLeido);
