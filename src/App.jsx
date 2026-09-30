@@ -449,7 +449,7 @@ export default function App() {
       fecha: ahora.toISOString(),
       fechaFormateada: ahora.toLocaleDateString() + ' ' + ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       negocio_id: negId,
-      cajero: usuarioActivo?.nombre || 'Angel Pantoja',
+      cajero: usuarioActivo?.nombre || usuarioActivo?.nombre || 'Cajero',
       cajeroId: usuarioActivo?.id || cuentaMaster?.id || 'usr_master',
       caja: cajaActiva?.nombre || 'Caja 01',
       cliente: datosVenta.cliente || clienteActual,

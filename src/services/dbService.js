@@ -66,8 +66,8 @@ const normalizarVenta = (v) => {
     cliente: v.cliente || null,
     estado: cerrado ? 'cerrada' : (v.estado || 'activa'),
     cerradoEnTurno: cerrado,
-    cajeroNombre: v.cajero_nombre || v.cajeroNombre || v.cajero || '',
-    cajero: v.cajero_nombre || v.cajeroNombre || v.cajero || '',
+    cajeroNombre: v.cajero_nombre || v.cajeroNombre || v.cajero || 'Cajero',
+    cajero: v.cajero_nombre || v.cajeroNombre || v.cajero || 'Cajero',
     caja: v.terminal_nombre || v.terminal_id || 'Caja 01',
     terminalNombre: v.terminal_nombre || v.terminalNombre || 'Caja 01'
   };
@@ -242,7 +242,8 @@ export const dbService = {
         negocio_id: negocioId || venta.negocio_id,
         fecha: venta.fecha || new Date().toISOString(),
         cajero_id: String(venta.cajeroId || venta.cajero_id || venta.cajero?.id || 'usr_master'),
-        cajero_nombre: venta.cajero || venta.cajeroNombre || venta.cajero_nombre || 'Angel Pantoja',
+        cajero_nombre: venta.cajero || venta.cajeroNombre || venta.cajero_nombre || 'Cajero',
+        correlativo: venta.correlativo || null,
         terminal_id: venta.terminalId || venta.terminal_id || 'caja_01',
         terminal_nombre: venta.caja || venta.terminalNombre || venta.terminal_nombre || 'Caja 01',
         cliente: venta.cliente || null,

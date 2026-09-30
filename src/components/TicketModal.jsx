@@ -41,7 +41,7 @@ export default function TicketModal({
   };
 
   const fechaFija = obtenerFechaOriginal();
-  const nombreCajero = datos.cajeroNombre || datos.cajero_nombre || datos.cajero || 'Angel Pantoja';
+  const nombreCajero = datos.cajeroNombre || datos.cajero_nombre || datos.cajero || 'Cajero';
   const nombreCaja = datos.terminal_nombre || datos.caja_nombre || datos.caja || 'Caja 01';
 
   // Obtener correlativo de 6 dígitos estricto (ejemplo: 000001, 000028)
