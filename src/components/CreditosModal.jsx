@@ -13,7 +13,6 @@ export default function CreditosModal({
 }) {
   const tasa = parseFloat(tasaCambio) || 1;
   const [busqueda, setBusqueda] = useState('');
-  const [filtroTipo, setFiltroTipo] = useState('todos'); // 'todos' | 'deudores' | 'aldia'
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [mostrarModalAbono, setMostrarModalAbono] = useState(false);
 
@@ -21,7 +20,7 @@ export default function CreditosModal({
   const [montoBS, setMontoBS] = useState('');
   const [procesandoAbono, setProcesandoAbono] = useState(false);
 
-  // Unificar y deduplicar clientes
+  // Lista unificada de clientes sin duplicados
   const listaClientes = useMemo(() => {
     const mapa = new Map();
     (clientes || []).forEach(c => {
@@ -37,20 +36,16 @@ export default function CreditosModal({
     return Array.from(mapa.values());
   }, [clientes]);
 
-  // Filtro
+  // Filtro por buscador (si no busca nada, muestra a TODOS los clientes)
   const clientesFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
+    if (!q) return listaClientes;
     return listaClientes.filter(c => {
       const doc = String(c.doc || '').toLowerCase();
       const nom = String(c.nombre || '').toLowerCase();
-      const coincide = doc.includes(q) || nom.includes(q);
-
-      if (!coincide) return false;
-      if (filtroTipo === 'deudores') return c.saldoActualUSD > 0.01;
-      if (filtroTipo === 'aldia') return c.saldoActualUSD <= 0.01;
-      return true;
+      return doc.includes(q) || nom.includes(q);
     });
-  }, [listaClientes, busqueda, filtroTipo]);
+  }, [listaClientes, busqueda]);
 
   const deudaTotalUSD = useMemo(() => {
     return listaClientes.reduce((acc, c) => acc + c.saldoActualUSD, 0);
@@ -94,14 +89,14 @@ export default function CreditosModal({
 
   return (
     <div style={estilos.contenedorPrincipal}>
-      {/* HEADER */}
+      {/* HEADER CORREGIDO: Créditos y Clientes */}
       <div style={estilos.header}>
         <button onClick={alVolver} style={estilos.btnVolver}>
           <ArrowLeft size={20} color="#0f172a" />
         </button>
         <div>
-          <h2 style={estilos.titulo}>Créditos y Cuentas</h2>
-          <p style={estilos.subtitulo}>Gestión de cartera de clientes</p>
+          <h2 style={estilos.titulo}>Créditos y Clientes</h2>
+          <p style={estilos.subtitulo}>Cartera de clientes y cuentas</p>
         </div>
         <div style={estilos.badgeTasa}>
           <span style={{ fontSize: '10px', color: '#64748b' }}>BCV</span>
@@ -122,28 +117,6 @@ export default function CreditosModal({
         </div>
       </div>
 
-      {/* PESTAÑAS */}
-      <div style={estilos.grupoPestanas}>
-        <button 
-          style={filtroTipo === 'todos' ? estilos.pestanaActiva : estilos.pestanaInactiva}
-          onClick={() => setFiltroTipo('todos')}
-        >
-          Todos ({listaClientes.length})
-        </button>
-        <button 
-          style={filtroTipo === 'deudores' ? estilos.pestanaActiva : estilos.pestanaInactiva}
-          onClick={() => setFiltroTipo('deudores')}
-        >
-          Con Deuda ({listaClientes.filter(c => c.saldoActualUSD > 0.01).length})
-        </button>
-        <button 
-          style={filtroTipo === 'aldia' ? estilos.pestanaActiva : estilos.pestanaInactiva}
-          onClick={() => setFiltroTipo('aldia')}
-        >
-          Al Día ({listaClientes.filter(c => c.saldoActualUSD <= 0.01).length})
-        </button>
-      </div>
-
       {/* BUSCADOR */}
       <div style={estilos.buscadorWrapper}>
         <Search size={18} color="#94a3b8" />
@@ -161,12 +134,12 @@ export default function CreditosModal({
         )}
       </div>
 
-      {/* LISTA */}
+      {/* LISTA DE CLIENTES - SIEMPRE VISIBLE */}
       <div style={estilos.listaContainer}>
         {clientesFiltrados.length === 0 ? (
           <div style={estilos.vacioContainer}>
             <AlertCircle size={40} color="#cbd5e1" />
-            <p style={{ color: '#64748b', marginTop: '8px' }}>No se encontraron clientes</p>
+            <p style={{ color: '#64748b', marginTop: '8px' }}>No hay clientes registrados en el sistema</p>
           </div>
         ) : (
           clientesFiltrados.map((cli) => {
@@ -176,9 +149,9 @@ export default function CreditosModal({
                 <div style={estilos.infoFila}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={estilos.nombreCliente}>{cli.nombre || 'Cliente'}</span>
+                      <span style={estilos.nombreCliente}>{cli.nombre || 'Cliente General'}</span>
                       {tieneDeuda ? (
-                        <span style={estilos.badgeDeudor}>Debe</span>
+                        <span style={estilos.badgeDeudor}>Debe ${cli.saldoActualUSD.toFixed(2)}</span>
                       ) : (
                         <span style={estilos.badgeSolvente}>Al Día</span>
                       )}
@@ -209,14 +182,12 @@ export default function CreditosModal({
                   >
                     Movimientos
                   </button>
-                  {tieneDeuda && (
-                    <button 
-                      onClick={() => abrirAbono(cli)}
-                      style={estilos.btnAbonar}
-                    >
-                      <CreditCard size={15} /> Abonar
-                    </button>
-                  )}
+                  <button 
+                    onClick={() => abrirAbono(cli)}
+                    style={tieneDeuda ? estilos.btnAbonar : estilos.btnAbonarDesactivado}
+                  >
+                    <CreditCard size={15} /> Abonar
+                  </button>
                 </div>
               </div>
             );
@@ -238,7 +209,7 @@ export default function CreditosModal({
             <div style={{ padding: '16px' }}>
               <div style={estilos.boxClienteAbonando}>
                 <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{clienteSeleccionado.nombre}</span>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{clienteSeleccionado.doc}</span>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>Doc: {clienteSeleccionado.doc}</span>
                 <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '12px', color: '#64748b' }}>Deuda Total:</span>
                   <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#dc2626' }}>${clienteSeleccionado.saldoActualUSD.toFixed(2)}</span>
@@ -277,18 +248,20 @@ export default function CreditosModal({
                 />
               </div>
 
-              <div style={{ marginTop: '12px' }}>
-                <button 
-                  type="button"
-                  onClick={() => {
-                    setMontoUSD(clienteSeleccionado.saldoActualUSD.toString());
-                    setMontoBS((clienteSeleccionado.saldoActualUSD * tasa).toFixed(2));
-                  }}
-                  style={estilos.btnPagarTodo}
-                >
-                  Pagar Deuda Total
-                </button>
-              </div>
+              {clienteSeleccionado.saldoActualUSD > 0 && (
+                <div style={{ marginTop: '12px' }}>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setMontoUSD(clienteSeleccionado.saldoActualUSD.toString());
+                      setMontoBS((clienteSeleccionado.saldoActualUSD * tasa).toFixed(2));
+                    }}
+                    style={estilos.btnPagarTodo}
+                  >
+                    Pagar Deuda Total (${clienteSeleccionado.saldoActualUSD.toFixed(2)})
+                  </button>
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
                 <button onClick={() => setMostrarModalAbono(false)} style={estilos.btnCancelar}>
@@ -299,7 +272,7 @@ export default function CreditosModal({
                   onClick={ejecutarAbono} 
                   style={estilos.btnConfirmarAbono}
                 >
-                  {procesandoAbono ? 'Guardando...' : 'Confirmar'}
+                  {procesandoAbono ? 'Guardando...' : 'Confirmar Abono'}
                 </button>
               </div>
             </div>
@@ -307,7 +280,7 @@ export default function CreditosModal({
         </div>
       )}
 
-      {/* MODAL DETALLES */}
+      {/* MODAL MOVIMIENTOS */}
       {clienteSeleccionado && !mostrarModalAbono && (
         <div style={estilos.overlayModal}>
           <div style={estilos.modalCajaGrande}>
@@ -331,15 +304,15 @@ export default function CreditosModal({
                 </div>
                 {clienteSeleccionado.saldoActualUSD > 0 && (
                   <button onClick={() => abrirAbono(clienteSeleccionado)} style={estilos.btnAbonarModal}>
-                    Abonar
+                    Abonar a Cuenta
                   </button>
                 )}
               </div>
 
-              <h4 style={{ margin: '0 0 10px 0', fontSize: '13px' }}>Transacciones Registradas</h4>
+              <h4 style={{ margin: '0 0 10px 0', fontSize: '13px' }}>Movimientos Registrados</h4>
               {comprasCliente.length === 0 ? (
                 <p style={{ fontSize: '13px', color: '#94a3b8', textAlign: 'center', padding: '20px 0' }}>
-                  No hay transacciones registradas.
+                  No hay ventas registradas a nombre de este cliente.
                 </p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -420,7 +393,8 @@ const estilos = {
   lblResumen: {
     fontSize: '10px',
     fontWeight: 'bold',
-    color: '#94a3b8'
+    color: '#94a3b8',
+    letterSpacing: '0.5px'
   },
   montoGrandeUSD: {
     fontSize: '28px',
@@ -439,32 +413,6 @@ const estilos = {
     display: 'flex',
     alignItems: 'center',
     gap: '6px'
-  },
-  grupoPestanas: {
-    display: 'flex',
-    gap: '6px',
-    marginBottom: '12px'
-  },
-  pestanaActiva: {
-    flex: 1,
-    padding: '8px',
-    background: '#0284c7',
-    color: '#ffffff',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '12px',
-    fontWeight: 'bold',
-    cursor: 'pointer'
-  },
-  pestanaInactiva: {
-    flex: 1,
-    padding: '8px',
-    background: '#ffffff',
-    color: '#64748b',
-    border: '1px solid #e2e8f0',
-    borderRadius: '8px',
-    fontSize: '12px',
-    cursor: 'pointer'
   },
   buscadorWrapper: {
     display: 'flex',
@@ -569,6 +517,21 @@ const estilos = {
     fontSize: '12px',
     color: '#ffffff',
     cursor: 'pointer',
+    fontWeight: 'bold',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px'
+  },
+  btnAbonarDesactivado: {
+    flex: 1,
+    padding: '7px',
+    background: '#f1f5f9',
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    fontSize: '12px',
+    color: '#94a3b8',
+    cursor: 'not-allowed',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
