@@ -240,7 +240,15 @@ export default function App() {
 
       const clientesCloud = await dbService.getClientes(negId);
       if (Array.isArray(clientesCloud) && clientesCloud.length > 0) {
-        setClientes(clientesCloud);
+        setClientes(clientesCloud.map(item => {
+          const saldoCalculado = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(item) : (parseFloat(item.saldoPendienteUSD || item.saldoDeudor || 0) || 0);
+          return {
+            ...item,
+            saldoPendienteUSD: saldoCalculado,
+            saldoDeudor: saldoCalculado,
+            saldo_deudor_usd: saldoCalculado
+          };
+        }));
       }
 
       const negData = await dbService.getNegocio(negId);
@@ -368,11 +376,16 @@ export default function App() {
     setSugClientesMostrador(sugerencias);
 
     if (encontrado) {
-      setClienteActual({ ...encontrado, doc: docStr });
+      const saldoNeto = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(encontrado) : 0;
+      setClienteActual({ ...encontrado, doc: docStr, saldoPendienteUSD: saldoNeto, saldoDeudor: saldoNeto, saldo_deudor_usd: saldoNeto });
     } else if (sugerencias.length === 1 && docLimpio.length >= 4) {
+      const saldoNeto = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(sugerencias[0]) : 0;
       setClienteActual({
         ...sugerencias[0],
-        doc: docStr
+        doc: docStr,
+        saldoPendienteUSD: saldoNeto,
+        saldoDeudor: saldoNeto,
+        saldo_deudor_usd: saldoNeto
       });
     } else {
       setClienteActual(prev => ({
@@ -386,7 +399,13 @@ export default function App() {
   };
 
   const seleccionarClienteMostrador = (cli) => {
-    setClienteActual(cli);
+    const saldoNeto = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(cli) : 0;
+    setClienteActual({
+      ...cli,
+      saldoPendienteUSD: saldoNeto,
+      saldoDeudor: saldoNeto,
+      saldo_deudor_usd: saldoNeto
+    });
     setSugClientesMostrador([]);
   };
 
