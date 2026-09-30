@@ -983,37 +983,13 @@ export default function App() {
           tasaCambio={tasaCambio}
           usuarioActivo={usuarioActivo}
           onAbonar={async ({ cliente, montoUSD, montoBS, metodoPago, tasa }) => {
-            const negId = negocio?.id || localStorage.getItem('pos_negocio_id') || 'neg_mujkrui8';
-            const nuevoSaldo = Math.max(0, parseFloat((cliente.totalDeudaUSD - montoUSD).toFixed(2)));
+            // 1. Prioridad estricta a la sesión activa en Supabase
+            const negId = usuarioActivo?.negocio_id || cliente?.negocio_id || localStorage.getItem('pos_negocio_id');
+            const nuevoSaldoCalculado = Math.max(0, parseFloat((cliente.totalDeudaUSD - montoUSD).toFixed(2)));
 
-            // Actualización inmediata en memoria
-            const targetClean = String(cliente.doc || '').replace(/[^0-9]/g, '');
-            setClientes(prev => prev.map(c => {
-              const cClean = String(c.doc || '').replace(/[^0-9]/g, '');
-              if (c.id === cliente.id || (cClean && targetClean && cClean === targetClean)) {
-                return { ...c, saldo_deudor_usd: nuevoSaldo, saldoPendienteUSD: nuevoSaldo, saldoDeudor: nuevoSaldo };
-              }
-              return c;
-            }));
-
-            // Registro local del abono
-            const nuevoAbonoMem = {
-              id: 'abn_' + Date.now(),
-              negocio_id: negId,
-              cliente_doc: cliente.doc,
-              cliente_nombre: cliente.nombre,
-              cajero_nombre: usuarioActivo?.nombre || 'Administrador',
-              monto_usd: montoUSD,
-              monto_bs: montoBS,
-              metodo_pago: metodoPago,
-              tasa_bcv: tasa,
-              fecha: new Date().toISOString()
-            };
-            setAbonos(prev => [nuevoAbonoMem, ...prev]);
-
-            // Persistencia atómica en Supabase
             try {
-              await dbService.registrarAbonoContable({
+              // 2. Transacción y persistencia atómica directa en Supabase
+              const resAbono = await dbService.registrarAbonoContable({
                 negocioId: negId,
                 clienteDoc: cliente.doc,
                 clienteNombre: cliente.nombre,
@@ -1023,10 +999,37 @@ export default function App() {
                 montoBS,
                 tasaBCV: tasa,
                 metodoPago,
-                nuevoSaldoUSD: nuevoSaldo
+                nuevoSaldoUSD: nuevoSaldoCalculado
               });
+
+              // 3. Sincronización en memoria con los datos confirmados por Supabase
+              const nuevoAbonoSupabase = {
+                id: resAbono?.id || ('abn_' + Date.now()),
+                negocio_id: negId,
+                cliente_doc: cliente.doc,
+                cliente_nombre: cliente.nombre,
+                cajero_nombre: usuarioActivo?.nombre || 'Administrador',
+                monto_usd: montoUSD,
+                monto_bs: montoBS,
+                metodo_pago: metodoPago,
+                tasa_bcv: tasa,
+                fecha: new Date().toISOString()
+              };
+
+              setAbonos(prev => [nuevoAbonoSupabase, ...prev]);
+
+              const targetClean = String(cliente.doc || '').replace(/[^0-9]/g, '');
+              setClientes(prev => prev.map(c => {
+                const cClean = String(c.doc || '').replace(/[^0-9]/g, '');
+                if (c.id === cliente.id || (cClean && targetClean && cClean === targetClean)) {
+                  return { ...c, saldo_deudor_usd: nuevoSaldoCalculado, saldoPendienteUSD: nuevoSaldoCalculado, saldoDeudor: nuevoSaldoCalculado };
+                }
+                return c;
+              }));
+
             } catch (err) {
-              console.error('Error al registrar abono en Supabase:', err);
+              console.error('Error directo en Supabase al registrar abono:', err);
+              throw new Error('Supabase no pudo registrar el abono: ' + (err.message || 'Error de conexión'));
             }
           }}
           alVolver={() => setVistaActual('pos')}
