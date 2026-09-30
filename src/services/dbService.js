@@ -1,25 +1,41 @@
 import { supabase } from './supabaseClient'
 
-// Función para normalizar los campos de Supabase a lo que espera React
+// Función para normalizar de forma inequívoca los datos de la base de datos
 const normalizarProducto = (p) => {
   const pUSD = parseFloat(p.precioUSD ?? p.precio_usd ?? p.precio ?? 0) || 0;
   const pBS = parseFloat(p.precioBS ?? p.precio_bs ?? 0) || 0;
-  const pCosto = parseFloat(p.costoUSD ?? p.precio_costo ?? 0) || 0;
+  const pCosto = parseFloat(p.costoUSD ?? p.costo_unit_usd ?? p.precio_costo ?? 0) || 0;
   const stockVal = parseFloat(p.stock ?? 0) || 0;
+
+  // Detección universal del IVA: solo si explícitamente es 16 o '16'
+  const rawIva = p.ivaTipo ?? p.iva_tipo ?? p.iva ?? p.tasa_iva;
+  const es16 = String(rawIva) === '16';
+  const tipoFinal = es16 ? '16' : 'exento';
 
   return {
     ...p,
     id: p.id,
     nombre: p.nombre || 'Producto sin nombre',
     codigo: p.codigo || '',
-    categoria: p.categoria || 'General',
+    categoria: p.categoria || 'Víveres',
+    proveedorId: p.proveedorId ?? p.proveedor_id ?? '',
+    proveedorNombre: p.proveedorNombre ?? p.proveedor_nombre ?? '',
     precioUSD: pUSD,
     precioBS: pBS,
     costoUSD: pCosto,
     stock: stockVal,
     esPesado: Boolean(p.esPesado ?? p.es_pesado),
-    iva: p.iva ?? p.tasa_iva ?? 'exento',
-    imagen: p.imagen || ''
+    ivaTipo: tipoFinal,
+    iva: es16 ? 16 : 0,
+    tasa_iva: es16 ? 16 : 0,
+    exentoIVA: !es16,
+    tipoEmpaque: p.tipoEmpaque ?? p.tipo_empaque ?? 'Bulto',
+    undsPorEmpaque: parseFloat(p.undsPorEmpaque ?? p.unds_por_empaque ?? 1) || 1,
+    costoEmpaqueUSD: parseFloat(p.costoEmpaqueUSD ?? p.costo_emaque_usd ?? pCosto) || 0,
+    aplicaPrecioMayor: Boolean(p.aplicaPrecioMayor ?? p.aplica_precio_mayor),
+    precioMayorUSD: parseFloat(p.precioMayorUSD ?? p.precio_mayor_usd ?? 0) || 0,
+    cantMinimaMayor: parseInt(p.cantMinimaMayor ?? p.cant_minima_mayor ?? 3) || 3,
+    imagen: p.imagen || p.foto || ''
   };
 };
 
@@ -134,14 +150,21 @@ export const dbService = {
 
   async guardarProducto(producto, negocioId) {
     try {
+      const es16 = String(producto.ivaTipo || producto.iva) === '16';
       const item = {
-        ...producto,
+        id: producto.id,
+        nombre: producto.nombre,
+        codigo: producto.codigo,
+        categoria: producto.categoria || 'Víveres',
         precio_usd: producto.precioUSD ?? producto.precio_usd ?? 0,
         precio_bs: producto.precioBS ?? producto.precio_bs ?? 0,
         precio_costo: producto.costoUSD ?? producto.precio_costo ?? 0,
+        stock: producto.stock ?? 0,
         es_pesado: Boolean(producto.esPesado ?? producto.es_pesado),
-        tasa_iva: producto.iva ?? producto.tasa_iva ?? 'exento'
+        tasa_iva: es16 ? 16 : 0,
+        imagen: producto.imagen || producto.foto || ''
       };
+
       if (negocioId && !item.negocio_id) item.negocio_id = negocioId;
 
       const { data, error } = await supabase
@@ -149,10 +172,14 @@ export const dbService = {
         .upsert(item)
         .select()
         .single();
-      if (error) return null;
+
+      if (error) {
+        console.error('Error al guardar producto en Supabase:', error);
+        return normalizarProducto(producto);
+      }
       return normalizarProducto(data);
     } catch {
-      return null;
+      return normalizarProducto(producto);
     }
   },
 
