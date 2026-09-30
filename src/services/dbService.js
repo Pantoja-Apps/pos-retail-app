@@ -66,7 +66,9 @@ const normalizarVenta = (v) => {
     cliente: v.cliente || null,
     estado: cerrado ? 'cerrada' : (v.estado || 'activa'),
     cerradoEnTurno: cerrado,
-    cajeroNombre: v.cajero_nombre || v.cajeroNombre || '',
+    cajeroNombre: v.cajero_nombre || v.cajeroNombre || v.cajero || '',
+    cajero: v.cajero_nombre || v.cajeroNombre || v.cajero || '',
+    caja: v.terminal_nombre || v.terminal_id || 'Caja 01',
     terminalNombre: v.terminal_nombre || v.terminalNombre || 'Caja 01'
   };
 };

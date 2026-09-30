@@ -9,12 +9,41 @@ export default function TicketModal({
 }) {
   if (!datos) return null;
 
-  const tasa = Number(datos.tasaCambio || tasaCambio || 1);
-  const totalUSD = Number(datos.totalUSD || 0);
-  const totalBS = Number(datos.totalBS || (totalUSD * tasa));
+  const tasa = Number(datos.tasaCambio || datos.tasa_bcv || tasaCambio || 1);
+  const totalUSD = Number(datos.totalUSD ?? datos.total_usd ?? 0);
+  const totalBS = Number(datos.totalBS ?? datos.total_bs ?? (totalUSD * tasa));
   const items = datos.items || [];
-  const cliente = datos.cliente || { nombre: 'Consumidor Final', doc: 'V-00000000', telefono: '' };
-  const pagos = Array.isArray(datos.pagos) ? datos.pagos : [];
+  const cliente = datos.cliente || {
+    nombre: datos.cliente_nombre || 'Consumidor Final',
+    doc: datos.cliente_doc || 'V-00000000',
+    telefono: datos.cliente_telefono || ''
+  };
+  const pagos = Array.isArray(datos.pagos) ? datos.pagos : (Array.isArray(datos.metodos_pago) ? datos.metodos_pago : []);
+
+  // Formateador estricto de fecha: preserva la fecha original y nunca usa el reloj en vivo si la venta ya ocurrió
+  const obtenerFechaOriginal = () => {
+    const raw = datos.fecha || datos.fechaFormateada || datos.created_at;
+    if (!raw) return new Date().toLocaleString();
+    try {
+      const d = new Date(raw);
+      if (isNaN(d.getTime())) return String(raw);
+      return d.toLocaleString('es-VE', {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      return String(raw);
+    }
+  };
+
+  const fechaFija = obtenerFechaOriginal();
+  const nombreCajero = datos.cajeroNombre || datos.cajero_nombre || datos.cajero || 'Angel Pantoja';
+  const nombreCaja = datos.terminal_nombre || datos.caja_nombre || datos.caja || 'Caja 01';
 
   // Discriminación matemática estricta: Artículos por unidad vs Peso
   let totalPiezasUnid = 0;
@@ -29,7 +58,7 @@ export default function TicketModal({
 
   items.forEach(it => {
     const cant = Number(it.cantidad || 0);
-    const precio = Number(it.precioUSD || 0);
+    const precio = Number(it.precioUSD ?? it.precio_usd ?? 0);
     const subtotalRenglon = precio * cant;
 
     // Clasificación física
@@ -42,7 +71,7 @@ export default function TicketModal({
       hayUnidades = true;
     }
 
-    // Clasificación fiscal: Es gravable si tiene ivaTipo === '16' o iva === 16 o exentoIVA === false
+    // Clasificación fiscal
     const esGravable = it.ivaTipo === '16' || it.iva === 16 || it.exentoIVA === false;
 
     if (esGravable) {
@@ -66,13 +95,14 @@ export default function TicketModal({
     if (config?.telefono) texto += `TEL: ${config.telefono}\n`;
     texto += `--------------------------------\n`;
     texto += `CONTROL #: ${datos.correlativo || datos.id}\n`;
-    texto += `FECHA: ${datos.fechaFormateada || new Date().toLocaleString()}\n`;
+    texto += `FECHA: ${fechaFija}\n`;
+    texto += `CAJERO / CAJA: ${nombreCajero} · ${nombreCaja}\n`;
     texto += `CLIENTE: ${cliente.nombre}\n`;
     texto += `CÉDULA / RIF: ${cliente.doc}\n`;
     if (cliente.telefono) texto += `TELÉFONO: ${cliente.telefono}\n`;
     texto += `--------------------------------\n`;
 
-    if (datos.esCredito) {
+    if (datos.esCredito || datos.es_credito) {
       texto += `FORMA DE PAGO: CUENTA POR COBRAR (A CRÉDITO)\n`;
     } else if (pagos.length > 1) {
       texto += `FORMAS DE PAGO (PAGO MIXTO):\n`;
@@ -87,18 +117,18 @@ export default function TicketModal({
         }
       });
     } else {
-      texto += `FORMA DE PAGO: ${datos.metodoPago || 'EFECTIVO'}\n`;
+      texto += `FORMA DE PAGO: ${datos.metodoPago || datos.metodos_pago?.[0]?.metodo || 'EFECTIVO'}\n`;
     }
 
     texto += `--------------------------------\n`;
     items.forEach(it => {
       const cant = Number(it.cantidad || 0);
       const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
-      const sub = (it.precioUSD * cant).toFixed(2);
+      const sub = (Number(it.precioUSD ?? it.precio_usd ?? 0) * cant).toFixed(2);
       const etiquetaCant = esRealmentePesado ? `${cant.toFixed(3)}kg` : `${Math.round(cant)} unid`;
       const indicadorFiscal = (it.ivaTipo === '16' || it.iva === 16 || it.exentoIVA === false) ? '(G)' : '(E)';
       texto += `• ${it.nombre} ${indicadorFiscal}\n`;
-      texto += `  ${etiquetaCant} x $${Number(it.precioUSD).toFixed(2)} = $${sub}\n`;
+      texto += `  ${etiquetaCant} x $${Number(it.precioUSD ?? it.precio_usd ?? 0).toFixed(2)} = $${sub}\n`;
     });
 
     texto += `--------------------------------\n`;
@@ -110,52 +140,50 @@ export default function TicketModal({
       texto += `IVA (16%): $${impuestoIva16USD.toFixed(2)}\n`;
     }
     texto += `*TOTAL FACTURA: $${totalUSD.toFixed(2)}*\n`;
-    texto += `*TOTAL EN BS: Bs. ${totalBS.toFixed(2)}*\n`;
-    texto += `Tasa Oficial BCV: Bs. ${tasa.toFixed(2)}\n`;
-    if (datos.vueltoUSD > 0.005) {
-      texto += `Vuelto: $${datos.vueltoUSD.toFixed(2)} (Bs. ${datos.vueltoBS.toFixed(2)})\n`;
-    }
+    texto += `*TOTAL BOLÍVARES: Bs. ${totalBS.toFixed(2)}*\n`;
+    texto += `Tasa Oficial BCV: Bs. ${tasa.toFixed(2)} / USD\n`;
     texto += `--------------------------------\n`;
-    if (config?.mensajePie) texto += `${config.mensajePie}\n`;
+    texto += `¡Gracias por su compra!\n`;
 
-    let url = '';
-    const telLimpio = (cliente.telefono || '').replace(/[^0-9]/g, '');
-    if (telLimpio.length >= 10) {
-      const codigoPais = telLimpio.startsWith('58') ? telLimpio : `58${telLimpio.replace(/^0/, '')}`;
-      url = `https://wa.me/${codigoPais}?text=${encodeURIComponent(texto)}`;
-    } else {
-      url = `https://wa.me/?text=${encodeURIComponent(texto)}`;
-    }
+    const url = `https://wa.me/?text=${encodeURIComponent(texto)}`;
     window.open(url, '_blank');
   };
 
   return (
-    <div style={styles.overlay} translate="no">
-      <div style={styles.modalBox}>
-        {/* Barra superior */}
-        <div style={styles.barraHeader}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <CheckCircle2 color="#00b050" size={17} />
-            <span style={{ fontSize: '0.86rem', fontWeight: '800', color: '#0f2a4a' }}>
+    <div style={styles.overlay}>
+      <div style={styles.modal}>
+        {/* Cabecera del Modal */}
+        <div style={styles.header}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle2 size={18} color="#16a34a" />
+            <h3 style={{ margin: 0, fontSize: '0.95rem', color: '#16a34a', fontWeight: 'bold' }}>
               Comprobante Generado
-            </span>
+            </h3>
           </div>
-          <button type="button" onClick={alCerrar} style={styles.btnCerrar}>
-            <X size={16} />
+          <button onClick={alCerrar} style={styles.btnCerrar}>
+            <X size={18} />
           </button>
         </div>
 
-        {/* TICKET FORMAL FISCAL Y CONTABLE */}
-        <div id="area-ticket-impresion" style={styles.ticketCuerpo}>
-          {/* Logo y Encabezado */}
-          <div style={styles.encabezadoFiscal}>
-            {config?.logo && (
-              <img src={config.logo} alt="Logo" style={styles.logoTicket} />
-            )}
-            <h2 style={styles.nombreNegocio}>{(config?.nombre || 'FACILITO POS').toUpperCase()}</h2>
-            <div style={styles.textoSub}>{config?.rif || 'RIF: J-50000000-0'}</div>
-            {config?.direccion && <div style={styles.textoSub}>{config.direccion}</div>}
-            {config?.telefono && <div style={styles.textoSub}>TEL: {config.telefono}</div>}
+        {/* TICKET DIGITAL IMPRIMIBLE */}
+        <div style={styles.ticketContainer} id="ticket-imprimible">
+          {/* Logo si existe */}
+          {config?.logo && (
+            <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+              <img
+                src={config.logo}
+                alt="Logo"
+                style={{ maxHeight: '48px', maxWidth: '120px', objectFit: 'contain' }}
+              />
+            </div>
+          )}
+
+          {/* Encabezado del Comercio */}
+          <div style={styles.bloqueEncabezado}>
+            <h2 style={styles.nombreNegocio}>{config?.nombre || 'MINIMARKET JJJP'}</h2>
+            <div style={styles.textoFiscal}>{config?.rif || 'J-50000000-0'}</div>
+            <div style={styles.textoFiscal}>{config?.direccion || 'Caracas, Venezuela'}</div>
+            {config?.telefono && <div style={styles.textoFiscal}>TEL: {config.telefono}</div>}
           </div>
 
           <div style={styles.separadorLineas} />
@@ -169,12 +197,12 @@ export default function TicketModal({
 
             <div style={styles.filaMeta}>
               <span style={styles.metaLabel}>FECHA / HORA:</span>
-              <span style={styles.metaValor}>{datos.fechaFormateada || new Date().toLocaleString()}</span>
+              <span style={styles.metaValor}>{fechaFija}</span>
             </div>
 
             <div style={styles.filaMeta}>
               <span style={styles.metaLabel}>CAJERO / CAJA:</span>
-              <span style={styles.metaValor}>{datos.cajero || 'Angel Pantoja'} · {datos.caja || 'Caja 01'}</span>
+              <span style={styles.metaValor}>{nombreCajero} · {nombreCaja}</span>
             </div>
 
             <div style={styles.filaMeta}>
@@ -199,15 +227,15 @@ export default function TicketModal({
               <div style={styles.filaMeta}>
                 <span style={styles.metaLabel}>FORMA DE PAGO:</span>
                 <strong style={styles.metaValor}>
-                  {datos.esCredito ? 'CUENTA POR COBRAR (CRÉDITO)' : (pagos.length > 1 ? 'PAGO MIXTO' : (datos.metodoPago || 'EFECTIVO'))}
+                  {datos.esCredito || datos.es_credito ? 'CUENTA POR COBRAR (CRÉDITO)' : (pagos.length > 1 ? 'PAGO MIXTO' : (datos.metodoPago || datos.metodos_pago?.[0]?.metodo || 'EFECTIVO'))}
                 </strong>
               </div>
 
-              {pagos.length > 1 && !datos.esCredito && (
+              {pagos.length > 1 && !datos.esCredito && !datos.es_credito && (
                 <div style={styles.cajaDesgloseMixto}>
                   {pagos.map((p, i) => {
                     const esBolivares = (p.moneda === 'BS') || /bs|móvil|punto/i.test(p.metodo || '');
-                    const montoTexto = esBolivares 
+                    const montoTexto = esBolivares
                       ? `Bs. ${Number(p.montoBS || p.monto || (p.montoUSD ? p.montoUSD * tasa : 0)).toFixed(2)}`
                       : `$${Number(p.montoUSD || p.monto || 0).toFixed(2)}`;
 
@@ -227,7 +255,7 @@ export default function TicketModal({
 
           {/* Cabecera de la Tabla */}
           <div style={styles.tablaHeader}>
-            <span style={{ flex: 1.7, textAlign: 'left' }}>DESCRIPCIÓN</span>
+            <span style={{ flex: 2, textAlign: 'left' }}>DESCRIPCIÓN</span>
             <span style={{ width: '56px', textAlign: 'center' }}>CANT/PESO</span>
             <span style={{ width: '46px', textAlign: 'right' }}>P.U</span>
             <span style={{ width: '54px', textAlign: 'right' }}>TOTAL</span>
@@ -239,19 +267,28 @@ export default function TicketModal({
           <div style={styles.listaProductos}>
             {items.map((it, idx) => {
               const cant = Number(it.cantidad || 0);
+              const precio = Number(it.precioUSD ?? it.precio_usd ?? 0);
               const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
               const esGravable = it.ivaTipo === '16' || it.iva === 16 || it.exentoIVA === false;
 
               return (
                 <div key={idx} style={styles.itemFila}>
                   <div style={styles.colNombre}>
-                    {it.nombre} <small style={{ color: esGravable ? '#ea580c' : '#00b050', fontWeight: 'bold' }}>{esGravable ? '(G)' : '(E)'}</small>
+                    <span style={{ wordBreak: 'break-word', display: 'inline' }}>{it.nombre}</span>{' '}
+                    <span style={{
+                      color: esGravable ? '#ea580c' : '#00b050',
+                      fontWeight: 'bold',
+                      fontSize: '0.68rem',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {esGravable ? '(G)' : '(E)'}
+                    </span>
                   </div>
                   <div style={styles.colCant}>
                     {esRealmentePesado ? `${cant.toFixed(3)}kg` : `${Math.round(cant)}`}
                   </div>
-                  <div style={styles.colPu}>${Number(it.precioUSD).toFixed(2)}</div>
-                  <div style={styles.colTotal}>${(it.precioUSD * cant).toFixed(2)}</div>
+                  <div style={styles.colPu}>${precio.toFixed(2)}</div>
+                  <div style={styles.colTotal}>${(precio * cant).toFixed(2)}</div>
                 </div>
               );
             })}
@@ -267,86 +304,72 @@ export default function TicketModal({
                 <strong>{totalPiezasUnid} unids</strong>
               </div>
             )}
-
             {hayPesados && (
               <div style={styles.filaSub}>
                 <span>PESO TOTAL:</span>
                 <strong>{totalPesoKg.toFixed(3)} KG</strong>
               </div>
             )}
-
             {subtotalExentoUSD > 0 && (
               <div style={styles.filaSub}>
                 <span>SUBTOTAL EXENTO (E):</span>
-                <span>${subtotalExentoUSD.toFixed(2)}</span>
+                <strong>${subtotalExentoUSD.toFixed(2)}</strong>
               </div>
             )}
-
             {baseImponibleGravableUSD > 0 && (
               <>
                 <div style={styles.filaSub}>
                   <span>BASE IMPONIBLE GRAVABLE (G):</span>
-                  <span>${baseImponibleGravableUSD.toFixed(2)}</span>
+                  <strong>${baseImponibleGravableUSD.toFixed(2)}</strong>
                 </div>
-                <div style={{ ...styles.filaSub, color: '#ea580c', fontWeight: 'bold' }}>
+                <div style={{ ...styles.filaSub, color: '#ea580c' }}>
                   <span>IMPUESTO IVA (16%):</span>
-                  <span>+${impuestoIva16USD.toFixed(2)}</span>
+                  <strong>+${impuestoIva16USD.toFixed(2)}</strong>
                 </div>
               </>
             )}
+          </div>
 
-            <div style={styles.filaTotalUSD}>
+          {/* TOTALES EN DIVISA Y BOLÍVARES */}
+          <div style={styles.bloqueTotales}>
+            <div style={styles.filaGranTotalUSD}>
               <span>TOTAL FACTURA:</span>
               <span>${totalUSD.toFixed(2)}</span>
             </div>
-
-            <div style={styles.filaTotalBS}>
+            <div style={styles.filaGranTotalBS}>
               <span>TOTAL BOLÍVARES:</span>
               <span>Bs. {totalBS.toFixed(2)}</span>
             </div>
-
-            <div style={styles.tasaTag}>
+            <div style={styles.notaTasaBCV}>
               TASA OFICIAL BCV: Bs. {tasa.toFixed(2)} / USD
             </div>
-
-            {datos.vueltoUSD > 0.005 && (
-              <div style={styles.filaVueltoTag}>
-                <span>VUELTO ENTREGADO:</span>
-                <span>${datos.vueltoUSD.toFixed(2)} (Bs. {datos.vueltoBS.toFixed(2)})</span>
-              </div>
-            )}
           </div>
 
-          <div style={styles.separadorLineas} />
-
-          {/* Pie de Ticket */}
-          <div style={styles.pieFiscal}>
-            <p style={styles.mensajePie}>{config?.mensajePie || '¡Gracias por su compra!'}</p>
-            
-            <div style={styles.contenedorBarras}>
-              <div style={styles.barrasGraficas} />
-              <span style={styles.codigoControl}>* {datos.correlativo || datos.id} *</span>
+          {/* Pie de Página y Código de Barras */}
+          <div style={styles.bloquePie}>
+            <div style={styles.mensajeAgradecimiento}>
+              ¡Gracias por su compra! Revise su mercancía
             </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', color: '#64748b', fontSize: '0.62rem', marginTop: '6px' }}>
-              <ShieldCheck size={12} color="#00b050" />
-              <span>Documento digital emitido por Facilito POS</span>
+            <div style={styles.contenedorCodigoBarras}>
+              <div style={styles.lineasCodigoBarras} />
+              <div style={styles.codigoTexto}>* {datos.correlativo || datos.id} *</div>
+            </div>
+            <div style={styles.firmaCertificado}>
+              <ShieldCheck size={11} color="#16a34a" /> Documento digital emitido por Facilito POS
             </div>
           </div>
         </div>
 
-        {/* Botones de Acción */}
-        <div style={styles.filaBotones}>
-          <button type="button" onClick={imprimir} style={styles.btnImprimir}>
-            <Printer size={15} />
-            <span>Imprimir</span>
+        {/* Acciones de Exportación */}
+        <div style={styles.accionesFooter}>
+          <button onClick={imprimir} style={styles.btnAccionImprimir}>
+            <Printer size={15} /> Imprimir
           </button>
-          <button type="button" onClick={compartirWhatsApp} style={styles.btnWhatsApp}>
-            <Share2 size={15} />
-            <span>{cliente.telefono ? 'Enviar WhatsApp' : 'WhatsApp'}</span>
+          <button onClick={compartirWhatsApp} style={styles.btnAccionWhatsApp}>
+            <Share2 size={15} /> Enviar WhatsApp
           </button>
-          <button type="button" onClick={alCerrar} style={styles.btnListo}>
-            <span>Listo</span>
+          <button onClick={alCerrar} style={styles.btnAccionListo}>
+            Listo
           </button>
         </div>
       </div>
@@ -357,163 +380,144 @@ export default function TicketModal({
 const styles = {
   overlay: {
     position: 'fixed',
-    inset: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    backdropFilter: 'blur(3px)',
     display: 'flex',
-    alignItems: 'center',
     justifyContent: 'center',
-    padding: '16px 12px',
-    boxSizing: 'border-box',
-    zIndex: 999999999
+    alignItems: 'center',
+    zIndex: 99999,
+    padding: '12px'
   },
-  modalBox: {
-    backgroundColor: '#ffffff',
-    borderRadius: '24px',
+  modal: {
+    backgroundColor: '#fff',
+    borderRadius: '16px',
+    maxWidth: '430px',
     width: '100%',
-    maxWidth: '380px',
-    maxHeight: '92vh',
-    overflowY: 'auto',
-    padding: '16px',
-    boxSizing: 'border-box',
-    boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+    maxHeight: '94vh',
     display: 'flex',
-    flexDirection: 'column'
+    flexDirection: 'column',
+    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
+    overflow: 'hidden'
   },
-  barraHeader: {
+  header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '10px'
+    padding: '12px 16px',
+    borderBottom: '1px solid #f1f5f9',
+    backgroundColor: '#fff'
   },
   btnCerrar: {
-    background: '#f1f5f9',
+    background: 'none',
     border: 'none',
-    borderRadius: '50%',
-    width: '28px',
-    height: '28px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    color: '#94a3b8',
     cursor: 'pointer',
-    color: '#64748b'
+    padding: '4px',
+    borderRadius: '6px'
   },
-  ticketCuerpo: {
-    backgroundColor: '#ffffff',
-    borderRadius: '14px',
-    padding: '14px 12px',
-    border: '1px solid #cbd5e1',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: '0.72rem',
+  ticketContainer: {
+    padding: '16px',
+    overflowY: 'auto',
+    backgroundColor: '#fff',
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.78rem',
     color: '#0f172a'
   },
-  encabezadoFiscal: {
+  bloqueEncabezado: {
     textAlign: 'center',
-    lineHeight: 1.35
-  },
-  logoTicket: {
-    maxHeight: '48px',
-    maxWidth: '120px',
-    objectFit: 'contain',
-    marginBottom: '4px'
+    marginBottom: '8px'
   },
   nombreNegocio: {
-    margin: '0 0 2px 0',
-    fontSize: '0.94rem',
-    fontWeight: '900',
-    color: '#0f2a4a'
+    margin: '0 0 4px 0',
+    fontSize: '1rem',
+    fontWeight: '800',
+    letterSpacing: '0.5px'
   },
-  textoSub: {
-    fontSize: '0.66rem',
-    color: '#475569'
+  textoFiscal: {
+    fontSize: '0.72rem',
+    color: '#475569',
+    lineHeight: 1.3
   },
   separadorLineas: {
-    borderTop: '1px dashed #cbd5e1',
-    margin: '7px 0'
+    borderBottom: '1px dashed #cbd5e1',
+    margin: '10px 0'
+  },
+  lineaFina: {
+    borderBottom: '1px solid #e2e8f0',
+    margin: '4px 0 8px 0'
   },
   bloqueMetadatos: {
     display: 'flex',
     flexDirection: 'column',
     gap: '3px',
-    fontSize: '0.68rem',
-    color: '#1e293b'
+    fontSize: '0.72rem'
   },
   filaMeta: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'baseline'
+    alignItems: 'flex-start',
+    gap: '8px'
   },
   metaLabel: {
     color: '#64748b',
     fontWeight: '600'
   },
   metaValor: {
-    color: '#0f2a4a',
+    color: '#0f172a',
     textAlign: 'right'
   },
   bloqueFormaPago: {
-    marginTop: '4px',
-    paddingTop: '4px',
-    borderTop: '1px dashed #e2e8f0'
+    marginTop: '4px'
   },
   cajaDesgloseMixto: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '3px',
     backgroundColor: '#f8fafc',
-    padding: '6px 8px',
-    borderRadius: '8px',
+    padding: '4px 8px',
+    borderRadius: '4px',
     marginTop: '4px',
     border: '1px solid #f1f5f9'
   },
   itemFilaPago: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    fontSize: '0.66rem'
+    fontSize: '0.68rem',
+    margin: '2px 0'
   },
   metodoItemNombre: {
-    color: '#475569',
-    fontWeight: '600'
+    color: '#475569'
   },
   metodoItemMonto: {
-    color: '#0f2a4a'
+    color: '#0f172a'
   },
   tablaHeader: {
     display: 'flex',
-    fontWeight: '800',
-    fontSize: '0.64rem',
-    color: '#0f2a4a',
+    fontSize: '0.7rem',
+    fontWeight: 'bold',
+    color: '#334155',
     padding: '2px 0'
-  },
-  lineaFina: {
-    borderTop: '1px solid #e2e8f0',
-    margin: '3px 0'
   },
   listaProductos: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '4px'
+    gap: '6px'
   },
   itemFila: {
     display: 'flex',
-    alignItems: 'baseline',
-    fontSize: '0.7rem'
+    alignItems: 'flex-start',
+    fontSize: '0.72rem',
+    lineHeight: 1.25
   },
   colNombre: {
-    flex: 1.7,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    fontWeight: '600',
-    color: '#0f2a4a'
+    flex: 2,
+    wordBreak: 'break-word',
+    paddingRight: '4px'
   },
   colCant: {
     width: '56px',
     textAlign: 'center',
-    color: '#475569',
-    fontSize: '0.66rem'
+    color: '#475569'
   },
   colPu: {
     width: '46px',
@@ -523,117 +527,129 @@ const styles = {
   colTotal: {
     width: '54px',
     textAlign: 'right',
-    fontWeight: 'bold',
-    color: '#0f2a4a'
+    fontWeight: 'bold'
   },
   seccionDesglose: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '2px'
+    gap: '3px',
+    fontSize: '0.72rem',
+    color: '#334155'
   },
   filaSub: {
     display: 'flex',
-    justifyContent: 'space-between',
-    fontSize: '0.66rem',
-    color: '#64748b'
+    justifyContent: 'space-between'
   },
-  filaTotalUSD: {
+  bloqueTotales: {
+    marginTop: '10px',
+    borderTop: '2px solid #0f172a',
+    paddingTop: '8px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px'
+  },
+  filaGranTotalUSD: {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: '1.05rem',
     fontWeight: '900',
-    color: '#00b050',
-    marginTop: '3px'
+    color: '#16a34a'
   },
-  filaTotalBS: {
+  filaGranTotalBS: {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: '0.92rem',
-    fontWeight: '900',
-    color: '#0052cc'
-  },
-  tasaTag: {
-    fontSize: '0.64rem',
-    color: '#64748b',
-    textAlign: 'right',
-    marginTop: '2px'
-  },
-  filaVueltoTag: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    fontSize: '0.68rem',
-    color: '#b45309',
-    fontWeight: 'bold',
-    marginTop: '3px'
-  },
-  pieFiscal: {
-    textAlign: 'center',
-    lineHeight: 1.35
-  },
-  mensajePie: {
-    margin: '0 0 4px 0',
-    fontWeight: 'bold',
-    fontSize: '0.72rem',
+    fontWeight: '800',
     color: '#0f2a4a'
   },
-  contenedorBarras: {
+  notaTasaBCV: {
+    textAlign: 'center',
+    fontSize: '0.64rem',
+    color: '#64748b',
+    marginTop: '2px'
+  },
+  bloquePie: {
+    textAlign: 'center',
+    marginTop: '14px',
+    paddingTop: '8px',
+    borderTop: '1px dashed #cbd5e1'
+  },
+  mensajeAgradecimiento: {
+    fontSize: '0.72rem',
+    fontWeight: 'bold',
+    marginBottom: '8px'
+  },
+  contenedorCodigoBarras: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    marginTop: '4px'
+    gap: '3px',
+    margin: '6px 0'
   },
-  barrasGraficas: {
-    width: '130px',
-    height: '22px',
-    background: 'repeating-linear-gradient(90deg, #0f2a4a, #0f2a4a 2px, transparent 2px, transparent 4px, #0f2a4a 4px, #0f2a4a 7px, transparent 7px, transparent 9px)'
+  lineasCodigoBarras: {
+    width: '180px',
+    height: '24px',
+    backgroundImage: 'repeating-linear-gradient(90deg, #0f172a 0, #0f172a 2px, transparent 2px, transparent 4px, #0f172a 4px, #0f172a 7px, transparent 7px, transparent 9px)',
+    backgroundSize: '100% 100%'
   },
-  codigoControl: {
+  codigoTexto: {
     fontSize: '0.62rem',
     color: '#64748b',
-    letterSpacing: '2px',
-    marginTop: '2px'
+    letterSpacing: '1px'
   },
-  filaBotones: {
+  firmaCertificado: {
     display: 'flex',
-    gap: '6px',
-    marginTop: '10px'
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px',
+    fontSize: '0.62rem',
+    color: '#64748b',
+    marginTop: '4px'
   },
-  btnImprimir: {
+  accionesFooter: {
+    padding: '10px 14px',
+    borderTop: '1px solid #f1f5f9',
+    backgroundColor: '#fff',
+    display: 'flex',
+    gap: '8px'
+  },
+  btnAccionImprimir: {
     flex: 1,
-    padding: '10px',
     backgroundColor: '#0f2a4a',
     color: '#fff',
     border: 'none',
-    borderRadius: '10px',
+    padding: '9px 6px',
+    borderRadius: '8px',
     fontSize: '0.76rem',
     fontWeight: 'bold',
-    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '4px'
+    gap: '6px',
+    cursor: 'pointer'
   },
-  btnWhatsApp: {
+  btnAccionWhatsApp: {
     flex: 1.3,
-    padding: '10px',
-    backgroundColor: '#00b050',
+    backgroundColor: '#16a34a',
     color: '#fff',
     border: 'none',
-    borderRadius: '10px',
+    padding: '9px 6px',
+    borderRadius: '8px',
     fontSize: '0.76rem',
     fontWeight: 'bold',
-    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '4px'
+    gap: '6px',
+    cursor: 'pointer'
   },
-  btnListo: {
-    padding: '10px 14px',
+  btnAccionListo: {
+    flex: 0.7,
     backgroundColor: '#f1f5f9',
-    color: '#0f2a4a',
-    border: '1px solid #cbd5e1',
-    borderRadius: '10px',
+    color: '#334155',
+    border: 'none',
+    padding: '9px 6px',
+    borderRadius: '8px',
     fontSize: '0.76rem',
     fontWeight: 'bold',
     cursor: 'pointer'
