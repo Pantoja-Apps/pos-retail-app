@@ -24,8 +24,20 @@ export default function CreditosModal({
 
   const tasa = parseFloat(tasaCambio) || 1;
 
+  // Unificar y deduplicar clientes estrictamente por cédula
+  const clientesUnicos = React.useMemo(() => {
+    const mapa = new Map();
+    (clientes || []).forEach(c => {
+      const docClean = (c.doc || '').replace(/[^0-9]/g, '') || c.id;
+      if (!mapa.has(docClean)) {
+        mapa.set(docClean, c);
+      }
+    });
+    return Array.from(mapa.values());
+  }, [clientes]);
+
   // Filtrar clientes con deuda o que coincidan con la búsqueda
-  const clientesFiltrados = (clientes || []).filter(c => {
+  const clientesFiltrados = clientesUnicos.filter(c => {
     const doc = (c.doc || '').toLowerCase();
     const nom = (c.nombre || '').toLowerCase();
     const q = busqueda.trim().toLowerCase();
@@ -34,7 +46,7 @@ export default function CreditosModal({
     return q ? coincide : (saldo > 0.01);
   });
 
-  const totalDeudaGlobalUSD = (clientes || []).reduce((acc, c) => {
+  const totalDeudaGlobalUSD = clientesFiltrados.reduce((acc, c) => {
     return acc + parseFloat(c.saldoPendienteUSD || c.saldoDeudor || c.saldoDeudorUSD || 0);
   }, 0);
 

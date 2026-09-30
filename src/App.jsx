@@ -321,7 +321,7 @@ export default function App() {
       }
     });
 
-    const sugeridos = Array.from(mapaUnicos.values());
+    const sugeridos = Array.from(mapaUnicos.values()).map(c => ({ ...c, saldoPendienteUSD: obtenerDeudaCliente(c) }));
     setSugClientesMostrador(sugeridos.slice(0, 4));
 
     // Buscar si coincide exacto
@@ -989,7 +989,25 @@ export default function App() {
       {vistaActual === 'creditos' && (
         <CreditosModal
           transacciones={transacciones}
-          clientes={clientes.map(c => ({ ...c, saldoPendienteUSD: obtenerDeudaCliente(c) }))}
+          clientes={(() => {
+            const agrupados = new Map();
+            (clientes || []).forEach(c => {
+              const docKey = (c.doc || '').replace(/[^0-9]/g, '') || c.id;
+              if (!agrupados.has(docKey)) {
+                agrupados.set(docKey, { ...c, saldoPendienteUSD: obtenerDeudaCliente(c) });
+              } else {
+                // Si ya existe, consolidamos abonos si tuviera
+                const existente = agrupados.get(docKey);
+                const abonosUnidos = [...(existente.historialAbonos || []), ...(c.historialAbonos || [])];
+                agrupados.set(docKey, {
+                  ...existente,
+                  historialAbonos: abonosUnidos,
+                  saldoPendienteUSD: obtenerDeudaCliente(existente)
+                });
+              }
+            });
+            return Array.from(agrupados.values());
+          })()}
           tasaCambio={tasaCambio}
           alCerrar={() => setVistaActual('mostrador')}
           onAbonar={(clienteId, montoAbonoUSD) => {
