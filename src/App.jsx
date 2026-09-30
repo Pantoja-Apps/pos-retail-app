@@ -274,22 +274,32 @@ export default function App() {
     if (!cli || !cli.doc || cli.doc === 'V-00000000') return 0;
     const docLimpio = (cli.doc || '').replace(/[^0-9]/g, '');
 
-    // Buscar en clientes el saldo directo
-    const c = (clientes || []).find(item => (item.doc || '').replace(/[^0-9]/g, '') === docLimpio) || cli;
-    let saldo = parseFloat(c.saldoPendienteUSD || c.saldoDeudor || c.saldoDeudorUSD || 0);
+    // Si el objeto cli ya trae un saldo calculado o saldoPendienteUSD explícito
+    if (cli.saldoPendienteUSD !== undefined && cli.saldoPendienteUSD !== null) {
+      return parseFloat(cli.saldoPendienteUSD || 0);
+    }
 
-    // Si el saldo directo en el cliente viene en 0 por recarga, pero hay transacciones fiadas
-    if (saldo <= 0 && Array.isArray(transacciones)) {
+    // Buscar todas las instancias del cliente para unificar abonos
+    const instancias = (clientes || []).filter(item => (item.doc || '').replace(/[^0-9]/g, '') === docLimpio);
+    const todosAbonos = instancias.flatMap(item => item.historialAbonos || []);
+    const totalAbonado = todosAbonos.reduce((sum, a) => sum + parseFloat(a.montoUSD || 0), 0);
+
+    // Calcular suma de tickets fiados no anulados
+    let totalFiado = 0;
+    if (Array.isArray(transacciones)) {
       const fiados = transacciones.filter(t => {
         const tDoc = (t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
         return tDoc === docLimpio && (t.esCredito || t.tipoPago === 'credito' || t.metodoPago === 'credito') && !t.anulada;
       });
-      const totalFiado = fiados.reduce((sum, t) => sum + parseFloat(t.totalUSD || 0), 0);
-      const totalAbonado = (c.historialAbonos || []).reduce((sum, a) => sum + parseFloat(a.montoUSD || 0), 0);
-      saldo = Math.max(0, totalFiado - totalAbonado);
+      totalFiado = fiados.reduce((sum, t) => sum + parseFloat(t.totalUSD || 0), 0);
     }
 
-    return saldo;
+    if (totalFiado > 0) {
+      return Math.max(0, totalFiado - totalAbonado);
+    }
+
+    const c = instancias[0] || cli;
+    return parseFloat(c.saldoPendienteUSD || c.saldoDeudor || c.saldoDeudorUSD || 0);
   };
 
   const manejarDocMostrador = (docValor) => {
@@ -1020,49 +1030,62 @@ export default function App() {
               montoUSD: montoNum
             };
 
-            let clienteActualizado = null;
+            const docTarget = String(clienteId || '').replace(/[^0-9]/g, '');
 
             setClientes(prev => {
-              const cp = [...prev];
-              const idx = cp.findIndex(c => String(c.id) === String(clienteId) || String(c.doc) === String(clienteId));
-              if (idx >= 0) {
-                const cli = cp[idx];
-                const deudaActual = parseFloat(cli.saldoPendienteUSD || cli.saldoDeudor || 0);
-                const nuevoSaldo = Math.max(0, deudaActual - montoNum);
-                const historial = [nuevoAbono, ...(cli.historialAbonos || [])];
-
-                cp[idx] = {
-                  ...cli,
-                  saldoPendienteUSD: nuevoSaldo,
-                  saldoDeudor: nuevoSaldo,
-                  historialAbonos: historial
-                };
-                clienteActualizado = cp[idx];
-                return cp;
-              }
-              return prev;
+              return prev.map(cli => {
+                const cDoc = String(cli.doc || '').replace(/[^0-9]/g, '');
+                const cId = String(cli.id || '');
+                if (cDoc === docTarget || cId === String(clienteId)) {
+                  const deudaActual = parseFloat(cli.saldoPendienteUSD ?? cli.saldoDeudor ?? 0);
+                  const nuevoSaldo = Math.max(0, deudaActual - montoNum);
+                  const historial = [nuevoAbono, ...(cli.historialAbonos || [])];
+                  return {
+                    ...cli,
+                    saldoPendienteUSD: nuevoSaldo,
+                    saldoDeudor: nuevoSaldo,
+                    historialAbonos: historial
+                  };
+                }
+                return cli;
+              });
             });
 
             try {
-              if (clienteActualizado) {
-                localStorage.setItem('pos_clientes', JSON.stringify(
-                  (clientes || []).map(c => c.id === clienteActualizado.id ? clienteActualizado : c)
-                ));
+              // Persistir localmente
+              const clientesActualizados = (clientes || []).map(cli => {
+                const cDoc = String(cli.doc || '').replace(/[^0-9]/g, '');
+                if (cDoc === docTarget || String(cli.id) === String(clienteId)) {
+                  const deudaActual = parseFloat(cli.saldoPendienteUSD ?? cli.saldoDeudor ?? 0);
+                  const nuevoSaldo = Math.max(0, deudaActual - montoNum);
+                  return {
+                    ...cli,
+                    saldoPendienteUSD: nuevoSaldo,
+                    saldoDeudor: nuevoSaldo,
+                    historialAbonos: [nuevoAbono, ...(cli.historialAbonos || [])]
+                  };
+                }
+                return cli;
+              });
 
-                if (typeof supabase !== 'undefined' && supabase) {
+              localStorage.setItem('pos_clientes', JSON.stringify(clientesActualizados));
+
+              // Persistir en Supabase
+              if (typeof supabase !== 'undefined' && supabase) {
+                const cliTarget = clientesActualizados.find(c => (c.doc || '').replace(/[^0-9]/g, '') === docTarget);
+                if (cliTarget) {
                   await supabase
                     .from('clientes')
                     .update({
-                      saldoPendienteUSD: clienteActualizado.saldoPendienteUSD,
-                      saldoDeudor: clienteActualizado.saldoPendienteUSD,
-                      historialAbonos: clienteActualizado.historialAbonos
+                      saldoPendienteUSD: cliTarget.saldoPendienteUSD,
+                      saldoDeudor: cliTarget.saldoPendienteUSD,
+                      historialAbonos: cliTarget.historialAbonos
                     })
-                    .eq('id', clienteActualizado.id);
-                  console.log('Abono persistido en Supabase con éxito');
+                    .or(`doc.eq.${cliTarget.doc},id.eq.${cliTarget.id}`);
                 }
               }
             } catch (err) {
-              console.error('Error al sincronizar abono en Supabase:', err);
+              console.error('Error guardando abono en Supabase:', err);
             }
           }}
           alVolver={() => setVistaActual('pos')}
