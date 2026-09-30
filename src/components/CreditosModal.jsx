@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import dbService from '../services/dbService';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Search, User, DollarSign, Calendar, Clock, 
   CreditCard, CheckCircle, AlertCircle, Phone, FileText, 
@@ -19,6 +20,26 @@ export const CreditosModal = ({
   const [clienteAbonando, setClienteAbonando] = useState(null);
   const [clienteHistorial, setClienteHistorial] = useState(null);
   const [tabHistorial, setTabHistorial] = useState('compras'); // 'compras' o 'abonos'
+  const [abonosSupabase, setAbonosSupabase] = useState([]);
+
+  // Carga directa y reactiva desde Supabase independiente del padre
+  const recargarAbonosDirectos = async () => {
+    try {
+      const negId = localStorage.getItem('pos_negocio_id');
+      if (negId) {
+        const data = await dbService.getAbonos(negId);
+        if (Array.isArray(data)) {
+          setAbonosSupabase(data);
+        }
+      }
+    } catch (e) {
+      console.error('Error cargando abonos directos:', e);
+    }
+  };
+
+  useEffect(() => {
+    recargarAbonosDirectos();
+  }, []);
 
   // Estados de la Calculadora de Abono
   const [metodoAbono, setMetodoAbono] = useState('dolares'); // dolares, pagomovil, punto, efectivo_bs
@@ -51,7 +72,8 @@ export const CreditosModal = ({
         });
 
         // Filtrar historial de abonos correspondientes
-        const abonosCliente = (abonos || []).filter(a => {
+        const listaAbonosTotal = abonosSupabase.length > 0 ? abonosSupabase : (abonos || []);
+        const abonosCliente = listaAbonosTotal.filter(a => {
           const docAbono = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || a.cliente?.doc || '').replace(/[^0-9]/g, '');
           return docAbono && docClean && docAbono === docClean;
         });
