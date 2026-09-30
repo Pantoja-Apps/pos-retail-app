@@ -445,7 +445,15 @@ export default function App() {
 
     const ventaCompleta = {
       id: datosVenta.id || 'vta_' + Date.now(),
-      correlativo: (transacciones.length + 1).toString().padStart(5, '0'),
+      correlativo: (() => {
+        const todas = (historicoVentasGlobal && historicoVentasGlobal.length > 0) ? historicoVentasGlobal : (transacciones || []);
+        const maxNum = todas.reduce((max, v) => {
+          const num = parseInt(v.correlativo || (v.id ? String(v.id).replace(/\D/g, '').slice(-6) : 0), 10);
+          return (!isNaN(num) && num > max) ? num : max;
+        }, 0);
+        const siguiente = Math.max(maxNum, todas.length) + 1;
+        return siguiente.toString().padStart(6, '0');
+      })(),
       fecha: ahora.toISOString(),
       fechaFormateada: ahora.toLocaleDateString() + ' ' + ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       negocio_id: negId,
