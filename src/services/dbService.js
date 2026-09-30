@@ -1,6 +1,16 @@
 import { supabase } from './supabaseClient'
 
 export const dbService = {
+  // Verificación de conectividad con Supabase
+  async checkConnection() {
+    try {
+      const { error } = await supabase.from('negocios').select('id').limit(1);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
   // 1. Iniciar sesión como dueño
   async loginDueno(correo, password) {
     try {
@@ -41,6 +51,21 @@ export const dbService = {
       return data;
     } catch {
       return null;
+    }
+  },
+
+  // Obtener cajeros de un negocio
+  async getCajeros(negocioId) {
+    try {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('negocio_id', negocioId)
+        .eq('rol', 'cajero');
+      if (error) return [];
+      return data || [];
+    } catch {
+      return [];
     }
   },
 
@@ -100,7 +125,6 @@ export const dbService = {
     }
   },
 
-  // Alias para compatibilidad con llamadas en App.jsx
   async upsertProducto(producto, negocioId) {
     return this.guardarProducto(producto, negocioId);
   },
