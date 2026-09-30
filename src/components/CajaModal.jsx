@@ -36,6 +36,8 @@ export default function CajaModal({
   let ventasEfectivoBS = 0;
   let ventasPagoMovilBS = 0;
   let ventasPuntoBS = 0;
+  let totalVentasCreditoUSD = 0;
+  let totalVentasCreditoBS = 0;
 
   // Liquidación de IVA del Turno
   let totalExentoTurnoUSD = 0;
@@ -59,7 +61,10 @@ export default function CajaModal({
     );
 
     // Si NO es fiado, computar el ingreso real a gaveta física y bancos
-    if (!esFiado) {
+    if (esFiado) {
+      totalVentasCreditoUSD += usd;
+      totalVentasCreditoBS += bs;
+    } else {
       if (Array.isArray(v.pagos) && v.pagos.length > 0) {
         v.pagos.forEach(p => {
           const met = (p.metodo || p.nombre || '').toLowerCase();
@@ -302,6 +307,17 @@ export default function CajaModal({
             </div>
 
             {/* Efectivo Físico en Gaveta */}
+            <div style={{ ...styles.bloqueSeccion, backgroundColor: '#fef2f2', borderColor: '#fecaca' }}>
+              <div style={styles.encabezadoBloque}>
+                <strong style={{ fontSize: '0.82rem', color: '#991b1b' }}>Ventas a Crédito (Cuentas por Cobrar)</strong>
+                <span style={{ fontSize: '0.68rem', color: '#dc2626', fontWeight: 'bold' }}>Fiados del Turno</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px' }}>
+                <span style={{ fontSize: '0.74rem', color: '#7f1d1d' }}>Total fiado (no ingresa a caja física):</span>
+                <strong style={{ fontSize: '1rem', color: '#b91c1c' }}>${totalVentasCreditoUSD.toFixed(2)}</strong>
+              </div>
+            </div>
+
             <div style={styles.bloqueSeccion}>
               <div style={styles.encabezadoBloque}>
                 <strong style={{ fontSize: '0.82rem', color: '#0f2a4a' }}>Efectivo Físico en Gaveta</strong>

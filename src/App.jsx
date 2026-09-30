@@ -1202,7 +1202,7 @@ export default function App() {
             </div>
             <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
               {(() => {
-                const deuda = obtenerDeudaCliente(clienteActual);
+                const deuda = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(clienteActual) : 0;
                 if (deuda > 0.01) {
                   return (
                     <span style={{
