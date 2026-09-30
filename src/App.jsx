@@ -317,15 +317,18 @@ export default function App() {
   };
 
   const manejarDocMostrador = (docValor) => {
-    // Permitir escribir libremente actualizando el documento del cliente actual
     const docStr = String(docValor || '');
-    setClienteActual(prev => ({ ...(prev || {}), doc: docStr }));
-    
-    if (!docStr.trim()) return;
     const docLimpio = docStr.replace(/[^0-9]/g, '');
-    const encontrado = (clientes || []).find(c => String(c.doc || '').replace(/[^0-9]/g, '') === docLimpio);
+
+    const encontrado = (clientes || []).find(c => {
+      const cLimpio = String(c.doc || c.cedula || '').replace(/[^0-9]/g, '');
+      return cLimpio && docLimpio && cLimpio === docLimpio;
+    });
+
     if (encontrado) {
-      setClienteActual(encontrado);
+      setClienteActual({ ...encontrado, doc: docStr });
+    } else {
+      setClienteActual(prev => ({ ...(prev || {}), doc: docStr, nombre: prev?.nombre || 'Consumidor Final' }));
     }
   };
 
