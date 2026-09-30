@@ -55,9 +55,9 @@ const normalizarCliente = (c) => ({
 // Normaliza las transacciones/ventas desde Supabase
 const normalizarVenta = (v) => {
   const cerrado = v.estado === 'cerrada' || v.cerradoEnTurno === true;
-  const esDeCredito = Boolean(v.es_credito ?? v.esCredito);
+  const esFiado = Boolean(v.es_credito ?? v.esCredito ?? (v.metodo_pago === 'credito') ?? (v.metodoPago === 'Crédito'));
   let metodos = v.metodos_pago || v.metodosPago || [];
-  if (esDeCredito && (!metodos || metodos.length === 0)) {
+  if (esFiado && (!metodos || metodos.length === 0)) {
     metodos = [{ metodo: 'credito', nombre: 'Crédito', monto: parseFloat(v.total_usd ?? v.totalUSD ?? 0) || 0 }];
   }
   return {
@@ -69,8 +69,11 @@ const normalizarVenta = (v) => {
     tasaBCV: parseFloat(v.tasa_bcv ?? v.tasaBCV ?? 1) || 1,
     items: v.items || [],
     metodosPago: metodos,
-    esCredito: esDeCredito,
-    es_credito: esDeCredito,
+    pagos: metodos,
+    metodoPago: esFiado ? 'Crédito' : (v.metodoPago || v.metodo_pago || 'Efectivo ($)'),
+    metodo_pago: esFiado ? 'credito' : (v.metodo_pago || 'efectivo'),
+    esCredito: esFiado,
+    es_credito: esFiado,
     cliente: v.cliente || null,
     estado: cerrado ? 'cerrada' : (v.estado || 'activa'),
     cerradoEnTurno: cerrado,
@@ -295,7 +298,8 @@ export const dbService = {
         tasa_bcv: parseFloat(venta.tasaCambio ?? venta.tasaBCV ?? venta.tasa_bcv ?? 1) || 1,
         metodos_pago: venta.pagos || venta.metodosPago || venta.metodos_pago || [],
         estado: 'activa',
-        es_credito: Boolean(venta.esCredito ?? venta.es_credito),
+        es_credito: Boolean(venta.esCredito ?? venta.es_credito ?? (venta.metodoPago === 'Crédito')),
+        metodo_pago: Boolean(venta.esCredito ?? venta.es_credito ?? (venta.metodoPago === 'Crédito')) ? 'credito' : (venta.metodo_pago || 'efectivo'),
         base_imponible_usd: parseFloat(venta.baseImponibleUSD ?? venta.base_imponible_usd ?? 0) || 0,
         iva_recaudado_usd: parseFloat(venta.ivaRecaudadoUSD ?? venta.iva_recaudado_usd ?? 0) || 0,
         subtotal_exento_usd: parseFloat(venta.subtotalExentoUSD ?? venta.subtotal_exento_usd ?? 0) || 0,
