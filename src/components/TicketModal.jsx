@@ -20,7 +20,6 @@ export default function TicketModal({
   };
   const pagos = Array.isArray(datos.pagos) ? datos.pagos : (Array.isArray(datos.metodos_pago) ? datos.metodos_pago : []);
 
-  // Formateador estricto de fecha: preserva la fecha original y nunca usa el reloj en vivo si la venta ya ocurrió
   const obtenerFechaOriginal = () => {
     const raw = datos.fecha || datos.fechaFormateada || datos.created_at;
     if (!raw) return new Date().toLocaleString();
@@ -45,13 +44,11 @@ export default function TicketModal({
   const nombreCajero = datos.cajeroNombre || datos.cajero_nombre || datos.cajero || 'Angel Pantoja';
   const nombreCaja = datos.terminal_nombre || datos.caja_nombre || datos.caja || 'Caja 01';
 
-  // Discriminación matemática estricta: Artículos por unidad vs Peso
   let totalPiezasUnid = 0;
   let totalPesoKg = 0;
   let hayUnidades = false;
   let hayPesados = false;
 
-  // Discriminación Fiscal SENIAT: Exento (E) vs Gravable (G)
   let subtotalExentoUSD = 0;
   let baseImponibleGravableUSD = 0;
   let impuestoIva16USD = 0;
@@ -61,7 +58,6 @@ export default function TicketModal({
     const precio = Number(it.precioUSD ?? it.precio_usd ?? 0);
     const subtotalRenglon = precio * cant;
 
-    // Clasificación física
     const esRealmentePesado = Boolean(it.esPesado) || (cant % 1 !== 0);
     if (esRealmentePesado) {
       totalPesoKg += cant;
@@ -71,7 +67,6 @@ export default function TicketModal({
       hayUnidades = true;
     }
 
-    // Clasificación fiscal
     const esGravable = it.ivaTipo === '16' || it.iva === 16 || it.exentoIVA === false;
 
     if (esGravable) {
@@ -151,9 +146,41 @@ export default function TicketModal({
 
   return (
     <div style={styles.overlay}>
+      {/* Estilos específicos para impresión en rollo térmico 58mm / 80mm */}
+      <style>{`
+        @media print {
+          @page {
+            margin: 0;
+            size: auto;
+          }
+          body * {
+            visibility: hidden;
+          }
+          #ticket-imprimible, #ticket-imprimible * {
+            visibility: visible;
+          }
+          #ticket-imprimible {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100% !important;
+            max-width: 80mm !important;
+            padding: 4mm !important;
+            margin: 0 auto !important;
+            font-family: 'Courier New', Courier, monospace !important;
+            font-size: 11px !important;
+            color: #000 !important;
+            background: #fff !important;
+          }
+          .no-imprimir {
+            display: none !important;
+          }
+        }
+      `}</style>
+
       <div style={styles.modal}>
-        {/* Cabecera del Modal */}
-        <div style={styles.header}>
+        {/* Cabecera del Modal (No se imprime) */}
+        <div style={styles.header} className="no-imprimir">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <CheckCircle2 size={18} color="#16a34a" />
             <h3 style={{ margin: 0, fontSize: '0.95rem', color: '#16a34a', fontWeight: 'bold' }}>
@@ -165,15 +192,14 @@ export default function TicketModal({
           </button>
         </div>
 
-        {/* TICKET DIGITAL IMPRIMIBLE */}
+        {/* TICKET DIGITAL / TÉRMICO */}
         <div style={styles.ticketContainer} id="ticket-imprimible">
-          {/* Logo si existe */}
           {config?.logo && (
-            <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '6px' }}>
               <img
                 src={config.logo}
                 alt="Logo"
-                style={{ maxHeight: '48px', maxWidth: '120px', objectFit: 'contain' }}
+                style={{ maxHeight: '42px', maxWidth: '110px', objectFit: 'contain' }}
               />
             </div>
           )}
@@ -255,7 +281,7 @@ export default function TicketModal({
 
           {/* Cabecera de la Tabla */}
           <div style={styles.tablaHeader}>
-            <span style={{ flex: 2, textAlign: 'left' }}>DESCRIPCIÓN</span>
+            <span style={{ flex: 1.8, textAlign: 'left' }}>DESCRIPCIÓN</span>
             <span style={{ width: '56px', textAlign: 'center' }}>CANT/PESO</span>
             <span style={{ width: '46px', textAlign: 'right' }}>P.U</span>
             <span style={{ width: '54px', textAlign: 'right' }}>TOTAL</span>
@@ -263,7 +289,7 @@ export default function TicketModal({
 
           <div style={styles.lineaFina} />
 
-          {/* Renglones con Marcador Fiscal (E) vs (G) */}
+          {/* Renglones */}
           <div style={styles.listaProductos}>
             {items.map((it, idx) => {
               const cant = Number(it.cantidad || 0);
@@ -274,12 +300,13 @@ export default function TicketModal({
               return (
                 <div key={idx} style={styles.itemFila}>
                   <div style={styles.colNombre}>
-                    <span style={{ wordBreak: 'break-word', display: 'inline' }}>{it.nombre}</span>{' '}
+                    <span style={styles.nombreTexto}>{it.nombre}</span>
                     <span style={{
-                      color: esGravable ? '#ea580c' : '#00b050',
-                      fontWeight: 'bold',
+                      color: esGravable ? '#ea580c' : '#16a34a',
+                      fontWeight: '700',
                       fontSize: '0.68rem',
-                      whiteSpace: 'nowrap'
+                      marginLeft: '4px',
+                      flexShrink: 0
                     }}>
                       {esGravable ? '(G)' : '(E)'}
                     </span>
@@ -296,7 +323,7 @@ export default function TicketModal({
 
           <div style={styles.separadorLineas} />
 
-          {/* Desglose de Totales y Liquidación Fiscal */}
+          {/* Desglose de Totales */}
           <div style={styles.seccionDesglose}>
             {hayUnidades && (
               <div style={styles.filaSub}>
@@ -355,13 +382,13 @@ export default function TicketModal({
               <div style={styles.codigoTexto}>* {datos.correlativo || datos.id} *</div>
             </div>
             <div style={styles.firmaCertificado}>
-              <ShieldCheck size={11} color="#16a34a" /> Documento digital emitido por Facilito POS
+              <ShieldCheck size={12} color="#16a34a" /> Documento digital emitido por Facilito POS
             </div>
           </div>
         </div>
 
-        {/* Acciones de Exportación */}
-        <div style={styles.accionesFooter}>
+        {/* Acciones de Exportación (No se imprimen) */}
+        <div style={styles.accionesFooter} className="no-imprimir">
           <button onClick={imprimir} style={styles.btnAccionImprimir}>
             <Printer size={15} /> Imprimir
           </button>
@@ -394,12 +421,12 @@ const styles = {
   modal: {
     backgroundColor: '#fff',
     borderRadius: '16px',
-    maxWidth: '430px',
+    maxWidth: '420px',
     width: '100%',
     maxHeight: '94vh',
     display: 'flex',
     flexDirection: 'column',
-    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
+    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.25)',
     overflow: 'hidden'
   },
   header: {
@@ -419,26 +446,27 @@ const styles = {
     borderRadius: '6px'
   },
   ticketContainer: {
-    padding: '16px',
+    padding: '16px 18px',
     overflowY: 'auto',
     backgroundColor: '#fff',
-    fontFamily: '"Courier New", Courier, monospace',
-    fontSize: '0.78rem',
-    color: '#0f172a'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    fontSize: '0.8rem',
+    color: '#1e293b'
   },
   bloqueEncabezado: {
     textAlign: 'center',
     marginBottom: '8px'
   },
   nombreNegocio: {
-    margin: '0 0 4px 0',
+    margin: '0 0 3px 0',
     fontSize: '1rem',
     fontWeight: '800',
-    letterSpacing: '0.5px'
+    color: '#0f172a',
+    letterSpacing: '-0.2px'
   },
   textoFiscal: {
     fontSize: '0.72rem',
-    color: '#475569',
+    color: '#64748b',
     lineHeight: 1.3
   },
   separadorLineas: {
@@ -453,7 +481,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '3px',
-    fontSize: '0.72rem'
+    fontSize: '0.74rem'
   },
   filaMeta: {
     display: 'flex',
@@ -463,30 +491,30 @@ const styles = {
   },
   metaLabel: {
     color: '#64748b',
-    fontWeight: '600'
+    fontWeight: '500'
   },
   metaValor: {
     color: '#0f172a',
     textAlign: 'right'
   },
   bloqueFormaPago: {
-    marginTop: '4px'
+    marginTop: '3px'
   },
   cajaDesgloseMixto: {
     backgroundColor: '#f8fafc',
-    padding: '4px 8px',
-    borderRadius: '4px',
+    padding: '5px 8px',
+    borderRadius: '6px',
     marginTop: '4px',
     border: '1px solid #f1f5f9'
   },
   itemFilaPago: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '0.68rem',
+    fontSize: '0.7rem',
     margin: '2px 0'
   },
   metodoItemNombre: {
-    color: '#475569'
+    color: '#64748b'
   },
   metodoItemMonto: {
     color: '#0f172a'
@@ -494,46 +522,54 @@ const styles = {
   tablaHeader: {
     display: 'flex',
     fontSize: '0.7rem',
-    fontWeight: 'bold',
-    color: '#334155',
+    fontWeight: '700',
+    color: '#475569',
     padding: '2px 0'
   },
   listaProductos: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px'
+    gap: '7px'
   },
   itemFila: {
     display: 'flex',
     alignItems: 'flex-start',
-    fontSize: '0.72rem',
-    lineHeight: 1.25
+    fontSize: '0.74rem',
+    lineHeight: 1.3
   },
   colNombre: {
-    flex: 2,
+    flex: 1.8,
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    paddingRight: '6px'
+  },
+  nombreTexto: {
     wordBreak: 'break-word',
-    paddingRight: '4px'
+    color: '#0f172a',
+    fontWeight: '500'
   },
   colCant: {
     width: '56px',
     textAlign: 'center',
-    color: '#475569'
+    color: '#64748b'
   },
   colPu: {
     width: '46px',
     textAlign: 'right',
-    color: '#475569'
+    color: '#64748b'
   },
   colTotal: {
     width: '54px',
     textAlign: 'right',
-    fontWeight: 'bold'
+    fontWeight: '700',
+    color: '#0f172a'
   },
   seccionDesglose: {
     display: 'flex',
     flexDirection: 'column',
     gap: '3px',
-    fontSize: '0.72rem',
+    fontSize: '0.74rem',
     color: '#334155'
   },
   filaSub: {
@@ -546,45 +582,46 @@ const styles = {
     paddingTop: '8px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '4px'
+    gap: '3px'
   },
   filaGranTotalUSD: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '1.05rem',
-    fontWeight: '900',
+    fontSize: '1.08rem',
+    fontWeight: '800',
     color: '#16a34a'
   },
   filaGranTotalBS: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '0.92rem',
-    fontWeight: '800',
+    fontSize: '0.94rem',
+    fontWeight: '700',
     color: '#0f2a4a'
   },
   notaTasaBCV: {
     textAlign: 'center',
-    fontSize: '0.64rem',
+    fontSize: '0.66rem',
     color: '#64748b',
     marginTop: '2px'
   },
   bloquePie: {
     textAlign: 'center',
-    marginTop: '14px',
+    marginTop: '12px',
     paddingTop: '8px',
     borderTop: '1px dashed #cbd5e1'
   },
   mensajeAgradecimiento: {
     fontSize: '0.72rem',
-    fontWeight: 'bold',
-    marginBottom: '8px'
+    fontWeight: '600',
+    color: '#334155',
+    marginBottom: '6px'
   },
   contenedorCodigoBarras: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: '3px',
-    margin: '6px 0'
+    margin: '4px 0'
   },
   lineasCodigoBarras: {
     width: '180px',
@@ -595,14 +632,15 @@ const styles = {
   codigoTexto: {
     fontSize: '0.62rem',
     color: '#64748b',
-    letterSpacing: '1px'
+    letterSpacing: '1px',
+    fontFamily: 'monospace'
   },
   firmaCertificado: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: '4px',
-    fontSize: '0.62rem',
+    fontSize: '0.64rem',
     color: '#64748b',
     marginTop: '4px'
   },
