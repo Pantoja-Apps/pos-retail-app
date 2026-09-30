@@ -1009,7 +1009,7 @@ export default function App() {
             return Array.from(agrupados.values());
           })()}
           tasaCambio={tasaCambio}
-          alCerrar={() => setVistaActual('mostrador')}
+          alCerrar={() => setVistaActual('pos')}
           onAbonar={(clienteId, montoAbonoUSD) => {
             setClientes(prev => {
               const idx = prev.findIndex(c => String(c.id) === String(clienteId));
