@@ -15,6 +15,7 @@ export default function CreditosModal({
   alCerrar
 }) {
   const [busqueda, setBusqueda] = useState('');
+  const [pestanaFiltro, setPestanaFiltro] = useState('pendientes'); // 'pendientes' | 'todos'
   const [clienteDetalle, setClienteDetalle] = useState(null);
   const [pestanaDetalle, setPestanaDetalle] = useState('compras');
   const [clienteAbonando, setClienteAbonando] = useState(null);
@@ -37,14 +38,17 @@ export default function CreditosModal({
     return Array.from(mapa.values());
   }, [clientes]);
 
-  // Filtro
+  // Filtro inteligente por pestaña y búsqueda
   const clientesFiltrados = clientesUnicos.filter(c => {
     const doc = (c.doc || '').toLowerCase();
     const nom = (c.nombre || '').toLowerCase();
     const q = busqueda.trim().toLowerCase();
     const coincide = doc.includes(q) || nom.includes(q);
     const saldo = parseFloat(c.saldoPendienteUSD || c.saldoDeudor || c.saldoDeudorUSD || 0);
-    return q ? coincide : (saldo > 0.01);
+
+    if (q) return coincide;
+    if (pestanaFiltro === 'pendientes') return saldo > 0.01;
+    return true; // 'todos'
   });
 
   const totalDeudaGlobalUSD = clientesFiltrados.reduce((acc, c) => {
