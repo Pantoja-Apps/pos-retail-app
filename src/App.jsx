@@ -214,6 +214,11 @@ export default function App() {
         setProductos(prodsCloud);
       }
 
+      const clientesCloud = await dbService.getClientes(negId);
+      if (Array.isArray(clientesCloud) && clientesCloud.length > 0) {
+        setClientes(clientesCloud);
+      }
+
       const negData = await dbService.getNegocio(negId);
       if (negData) {
         setConfigEmpresa(prev => ({
@@ -237,7 +242,7 @@ export default function App() {
               ...v,
               totalUSD: Number(v.totalUSD || v.total_usd || 0),
               totalBS: Number(v.totalBS || v.total_bs || 0),
-              cerradoEnTurno: Boolean(v.cerradoEnTurno)
+              cerradoEnTurno: Boolean(v.cerradoEnTurno || v.estado === 'cerrada'), estado: v.estado || (v.cerradoEnTurno ? 'cerrada' : 'activa')
             }));
           return nuevas.length > 0 ? [...nuevas, ...actuales] : actuales;
         });
@@ -680,6 +685,9 @@ export default function App() {
 
       const prods = await dbService.getProductos(res.negocio.id);
       if (prods?.length) setProductos(prods);
+
+      const clis = await dbService.getClientes(res.negocio.id);
+      if (clis?.length) setClientes(clis);
 
       return true;
     }

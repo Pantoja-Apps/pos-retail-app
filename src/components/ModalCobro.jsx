@@ -144,9 +144,12 @@ export default function ModalCobro({
     }
 
     const clienteFinal = {
+      id: (clienteActual?.id && String(clienteActual.id).startsWith('cli_')) ? clienteActual.id : ('cli_' + Date.now()),
       doc: docCliente.trim() ? (docCliente.includes('-') ? docCliente : `V-${docCliente.trim()}`) : 'V-00000000',
       nombre: nombreCliente.trim() || 'Consumidor Final',
-      telefono: telefonoCliente.trim() || ''
+      telefono: telefonoCliente.trim() || '',
+      limiteCredito: clienteActual?.limiteCredito || 0,
+      saldoDeudorUSD: clienteActual?.saldoDeudorUSD || 0
     };
 
     if (guardarClienteEnDB) guardarClienteEnDB(clienteFinal);

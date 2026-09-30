@@ -41,9 +41,9 @@ const normalizarCliente = (c) => ({
   ...c,
   id: c.id,
   nombre: c.nombre || 'Cliente General',
+  doc: c.doc || c.cedula || c.rif || '',
   cedula: c.doc || c.cedula || '',
   rif: c.doc || c.rif || '',
-  doc: c.doc || '',
   telefono: c.telefono || '',
   direccion: c.direccion || '',
   limiteCredito: parseFloat(c.limite_credito ?? 0) || 0,
@@ -64,7 +64,7 @@ const normalizarVenta = (v) => {
     items: v.items || [],
     metodosPago: v.metodos_pago || v.metodosPago || [],
     cliente: v.cliente || null,
-    estado: v.estado || (cerrado ? 'cerrada' : 'activa'),
+    estado: cerrado ? 'cerrada' : (v.estado || 'activa'),
     cerradoEnTurno: cerrado,
     cajeroNombre: v.cajero_nombre || v.cajeroNombre || '',
     terminalNombre: v.terminal_nombre || v.terminalNombre || 'Caja 01'
@@ -194,7 +194,7 @@ export const dbService = {
         costo_empaque_usd: parseFloat(producto.costoEmpaqueUSD) || 0,
         aplica_precio_mayor: Boolean(producto.aplicaPrecioMayor),
         precio_mayor_usd: parseFloat(producto.precioMayorUSD) || 0,
-        cant_minima_mayor: parseInt(producto.cantMinimaMayor) || 3,
+        cantMinimaMayor: parseInt(producto.cantMinimaMayor) || 3,
         proveedor_id: producto.proveedorId || null,
         proveedor_nombre: producto.proveedorNombre || null,
         imagen: producto.imagen || producto.foto || ''
@@ -236,7 +236,7 @@ export const dbService = {
   async registrarVenta(venta, negocioId) {
     try {
       const itemBD = {
-        id: venta.id,
+        id: String(venta.id),
         negocio_id: negocioId || venta.negocio_id,
         fecha: venta.fecha || new Date().toISOString(),
         cajero_id: venta.cajeroId || venta.cajero_id || null,
@@ -249,7 +249,7 @@ export const dbService = {
         total_bs: parseFloat(venta.totalBS ?? venta.total_bs ?? 0) || 0,
         tasa_bcv: parseFloat(venta.tasaBCV ?? venta.tasa_bcv ?? 1) || 1,
         metodos_pago: venta.metodosPago || venta.metodos_pago || [],
-        estado: venta.estado || 'activa',
+        estado: 'activa',
         es_credito: Boolean(venta.esCredito ?? venta.es_credito),
         base_imponible_usd: parseFloat(venta.baseImponibleUSD ?? venta.base_imponible_usd ?? 0) || 0,
         iva_recaudado_usd: parseFloat(venta.ivaRecaudadoUSD ?? venta.iva_recaudado_usd ?? 0) || 0,
@@ -288,14 +288,14 @@ export const dbService = {
     }
   },
 
-  // Cierre de turno en la nube
+  // Cierra el turno marcando como cerradas todas las ventas que no lo estén
   async cerrarTurno(negocioId) {
     try {
       const { error } = await supabase
         .from('ventas')
         .update({ estado: 'cerrada' })
         .eq('negocio_id', negocioId)
-        .eq('estado', 'activa');
+        .neq('estado', 'cerrada');
 
       if (error) console.error('Error al cerrar turno en Supabase:', error);
       return !error;
@@ -324,7 +324,7 @@ export const dbService = {
     try {
       const docVal = cliente.doc || cliente.cedula || cliente.rif || '';
       const itemBD = {
-        id: cliente.id || ('cli_' + Date.now()),
+        id: String(cliente.id || ('cli_' + Date.now())),
         negocio_id: negocioId || cliente.negocio_id,
         nombre: cliente.nombre || 'Cliente General',
         doc: docVal,
