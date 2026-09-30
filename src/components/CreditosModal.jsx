@@ -222,25 +222,10 @@ export const CreditosModal = ({
         });
       }
 
-      // Inyección reactiva inmediata en la vista local
-      const nuevoAbonoInmediato = {
-        id: 'abn_' + Date.now(),
-        cliente_doc: clienteAbonando.doc || clienteAbonando.cedula || clienteAbonando.docClean,
-        monto_usd: totalAbonadoUSD,
-        monto_bs: montoBsReal,
-        metodo_pago: nombreMetodo,
-        tasa_bcv: tasa,
-        fecha: new Date().toISOString()
-      };
-
-      setAbonosSupabase(prev => [nuevoAbonoInmediato, ...prev]);
-
-      // Confirmar con Supabase en segundo plano
-      setTimeout(() => {
-        if (typeof recargarAbonosDirectos === 'function') {
-          recargarAbonosDirectos();
-        }
-      }, 500);
+      // Refrescar directamente desde la fuente oficial sin duplicar abonos en memoria
+      if (typeof recargarAbonosDirectos === 'function') {
+        await recargarAbonosDirectos();
+      }
 
     } catch (e) {
       alert("Error procesando abono: " + (e?.message || JSON.stringify(e)));
