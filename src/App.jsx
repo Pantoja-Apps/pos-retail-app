@@ -930,8 +930,8 @@ export default function App() {
       {/* RENDIMIENTO Y FINANZAS */}
       {vistaActual === 'metricas' && esDueno && (
         <MetricasModal 
-          transaccionesTurno={transacciones}
-          historicoGlobal={historicoVentasGlobal}
+          transaccionesTurno={transacciones.filter(t => !t.cerradoEnTurno && t.estado !== 'cerrada')}
+          historicoGlobal={transacciones}
           gastos={gastosCaja}
           productos={productos}
           tasaCambio={tasaCambio}
