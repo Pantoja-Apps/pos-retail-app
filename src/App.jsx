@@ -771,7 +771,7 @@ export default function App() {
         const docLimpio = (c.doc || '').replace(/[^0-9]/g, '');
         const saldoVentas = mapaDeudas.get(docLimpio) || 0;
         const saldoDirecto = parseFloat(c.saldoPendienteUSD ?? c.saldoDeudor ?? c.saldo_deudor_usd ?? 0) || 0;
-        const saldoFinal = Math.max(saldoVentas, saldoDirecto);
+        const saldoFinal = saldoDirecto > 0 ? saldoDirecto : Math.max(0, saldoVentas);
         return {
           ...c,
           saldoPendienteUSD: saldoFinal,

@@ -450,7 +450,7 @@ export const dbService = {
     }
   },
 
-  async registrarAbonoContable({
+    async registrarAbonoContable({
     negocioId,
     clienteDoc,
     clienteNombre,
@@ -465,9 +465,8 @@ export const dbService = {
     if (!negocioId || !clienteDoc) {
       throw new Error('Faltan parámetros requeridos: negocioId o clienteDoc');
     }
-
     try {
-      // 1. Insertar el abono como hecho contable auditable
+      // 1. Insertar el abono como hecho contable auditable en Supabase
       const { error: errorAbono } = await supabase
         .from('abonos_clientes')
         .insert([{
@@ -476,7 +475,7 @@ export const dbService = {
           cliente_doc: clienteDoc,
           cliente_nombre: clienteNombre || '',
           cajero_id: cajeroId || 'usr_admin',
-          cajero_nombre: cajeroNombre || 'Administrador',
+          cajeroNombre: cajeroNombre || 'Administrador',
           monto_usd: montoUSD,
           monto_bs: montoBS,
           tasa_bcv: tasaBCV,
@@ -487,11 +486,12 @@ export const dbService = {
       if (errorAbono) throw errorAbono;
 
       // 2. Actualizar el saldo_deudor_usd del cliente en ese negocio
+      const docClean = String(clienteDoc).replace(/[^0-9]/g, '');
       const { error: errorCliente } = await supabase
         .from('clientes')
         .update({ saldo_deudor_usd: nuevoSaldoUSD })
         .eq('negocio_id', negocioId)
-        .eq('doc', clienteDoc);
+        .or('doc.eq.' + clienteDoc + ',doc.eq.' + docClean + ',doc.eq.V-' + docClean);
 
       if (errorCliente) throw errorCliente;
 
