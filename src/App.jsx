@@ -270,15 +270,26 @@ export default function App() {
 
   
   // Función para obtener la deuda real de un cliente cruzando saldo directo y transacciones
-  const obtenerDeudaCliente = (cli) => {
+    const obtenerDeudaCliente = (cli) => {
     if (!cli || !cli.doc || cli.doc === 'V-00000000') return 0;
     const docLimpio = (cli.doc || '').replace(/[^0-9]/g, '');
 
-    // Buscar el cliente en la lista para obtener su saldo base
-    const clienteEncontrado = (clientes || []).find(c => (c.doc || '').replace(/[^0-9]/g, '') === docLimpio) || cli;
-    const saldoBase = parseFloat(clienteEncontrado.saldoPendienteUSD || clienteEncontrado.saldoDeudor || clienteEncontrado.saldoDeudorUSD || 0);
+    // Buscar en clientes el saldo directo
+    const c = (clientes || []).find(item => (item.doc || '').replace(/[^0-9]/g, '') === docLimpio) || cli;
+    let saldo = parseFloat(c.saldoPendienteUSD || c.saldoDeudor || c.saldoDeudorUSD || 0);
 
-    return saldoBase;
+    // Si el saldo directo en el cliente viene en 0 por recarga, pero hay transacciones fiadas
+    if (saldo <= 0 && Array.isArray(transacciones)) {
+      const fiados = transacciones.filter(t => {
+        const tDoc = (t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
+        return tDoc === docLimpio && (t.esCredito || t.tipoPago === 'credito' || t.metodoPago === 'credito') && !t.anulada;
+      });
+      const totalFiado = fiados.reduce((sum, t) => sum + parseFloat(t.totalUSD || 0), 0);
+      const totalAbonado = (c.historialAbonos || []).reduce((sum, a) => sum + parseFloat(a.montoUSD || 0), 0);
+      saldo = Math.max(0, totalFiado - totalAbonado);
+    }
+
+    return saldo;
   };
 
   const manejarDocMostrador = (docValor) => {
@@ -978,10 +989,10 @@ export default function App() {
       {vistaActual === 'creditos' && (
         <CreditosModal
           transacciones={transacciones}
-          clientes={clientes}
+          clientes={clientes.map(c => ({ ...c, saldoPendienteUSD: obtenerDeudaCliente(c) }))}
           tasaCambio={tasaCambio}
-          transacciones={transacciones}
-          alRegistrarAbono={(clienteId, montoAbonoUSD) => {
+          alCerrar={() => setVistaActual('mostrador')}
+          onAbonar={(clienteId, montoAbonoUSD) => {
             setClientes(prev => {
               const idx = prev.findIndex(c => String(c.id) === String(clienteId));
               if (idx >= 0) {

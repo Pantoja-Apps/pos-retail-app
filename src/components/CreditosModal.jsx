@@ -9,6 +9,7 @@ export default function CreditosModal({
   tasaCambio = 1,
   transacciones = [],
   onAbonar,
+  alRegistrarAbono,
   alCerrar
 }) {
   const [busqueda, setBusqueda] = useState('');
