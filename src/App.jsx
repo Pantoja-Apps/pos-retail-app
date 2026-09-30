@@ -343,10 +343,12 @@ export default function App() {
 
     const totalAbonado = Array.from(mapaAbonos.values()).reduce((sum, m) => sum + m, 0);
 
-    if (totalFiado > 0 || totalAbonado > 0) {
+    // Si hay fiados registrados, la deuda neta es EXACTA: fiados - abonos
+    if (totalFiado > 0) {
       return Math.max(0, parseFloat((totalFiado - totalAbonado).toFixed(2)));
     }
 
+    // Saldo directo de la columna de base de datos
     const saldoDirecto = parseFloat(cli.saldo_deudor_usd ?? cli.saldoPendienteUSD ?? cli.saldoDeudor ?? 0) || 0;
     return Math.max(0, parseFloat((saldoDirecto - totalAbonado).toFixed(2)));
   };
@@ -399,12 +401,12 @@ export default function App() {
   };
 
   const seleccionarClienteMostrador = (cli) => {
-    const saldoNeto = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(cli) : 0;
+    const deudaReal = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(cli) : 0;
     setClienteActual({
       ...cli,
-      saldoPendienteUSD: saldoNeto,
-      saldoDeudor: saldoNeto,
-      saldo_deudor_usd: saldoNeto
+      saldoPendienteUSD: deudaReal,
+      saldoDeudor: deudaReal,
+      saldo_deudor_usd: deudaReal
     });
     setSugClientesMostrador([]);
   };
@@ -1230,7 +1232,7 @@ export default function App() {
             </div>
             <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
               {(() => {
-                const deuda = obtenerDeudaCliente(clienteActual);
+                const deuda = typeof obtenerDeudaCliente === "function" ? obtenerDeudaCliente(clienteActual) : 0;
                 if (deuda > 0.01) {
                   return (
                     <span style={{
