@@ -129,6 +129,27 @@ export default function App() {
   });
 
   const [abonos, setAbonos] = useState([]);
+
+  // Sincronización automática de abonos con Supabase en tiempo real
+  useEffect(() => {
+    const cargarAbonosSupabase = async () => {
+      const negId = usuarioActivo?.negocio_id || localStorage.getItem('pos_negocio_id');
+      if (negId) {
+        try {
+          const abonosCloud = await dbService.getAbonos(negId);
+          if (Array.isArray(abonosCloud)) {
+            setAbonos(abonosCloud);
+          }
+        } catch (e) {
+          console.error("Error al sincronizar abonos:", e);
+        }
+      }
+    };
+
+    if (vistaActual === 'creditos' || usuarioActivo) {
+      cargarAbonosSupabase();
+    }
+  }, [vistaActual, usuarioActivo]);
   const [clientes, setClientes] = useState(() => {
     try {
       const g = localStorage.getItem('pos_clis_final');
