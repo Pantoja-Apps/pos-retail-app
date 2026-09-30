@@ -317,17 +317,15 @@ export default function App() {
   };
 
   const manejarDocMostrador = (docValor) => {
-    if (!docValor) return;
-    const docLimpio = String(docValor).replace(/[^0-9]/g, '');
+    // Permitir escribir libremente actualizando el documento del cliente actual
+    const docStr = String(docValor || '');
+    setClienteActual(prev => ({ ...(prev || {}), doc: docStr }));
+    
+    if (!docStr.trim()) return;
+    const docLimpio = docStr.replace(/[^0-9]/g, '');
     const encontrado = (clientes || []).find(c => String(c.doc || '').replace(/[^0-9]/g, '') === docLimpio);
     if (encontrado) {
-      setClienteActivo(encontrado);
-      setDocBusqueda(encontrado.doc);
-      setMostrarSugerencias(false);
-    } else {
-      const nuevo = { id: 'cli_' + Date.now(), nombre: 'Cliente ' + docValor, doc: docValor, saldo_deudor_usd: 0 };
-      setClienteActivo(nuevo);
-      setMostrarSugerencias(false);
+      setClienteActual(encontrado);
     }
   };
 
