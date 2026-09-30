@@ -55,6 +55,11 @@ const normalizarCliente = (c) => ({
 // Normaliza las transacciones/ventas desde Supabase
 const normalizarVenta = (v) => {
   const cerrado = v.estado === 'cerrada' || v.cerradoEnTurno === true;
+  const esDeCredito = Boolean(v.es_credito ?? v.esCredito);
+  let metodos = v.metodos_pago || v.metodosPago || [];
+  if (esDeCredito && (!metodos || metodos.length === 0)) {
+    metodos = [{ metodo: 'credito', nombre: 'Crédito', monto: parseFloat(v.total_usd ?? v.totalUSD ?? 0) || 0 }];
+  }
   return {
     ...v,
     id: v.id,
@@ -63,7 +68,9 @@ const normalizarVenta = (v) => {
     totalBS: parseFloat(v.total_bs ?? v.totalBS ?? 0) || 0,
     tasaBCV: parseFloat(v.tasa_bcv ?? v.tasaBCV ?? 1) || 1,
     items: v.items || [],
-    metodosPago: v.metodos_pago || v.metodosPago || [],
+    metodosPago: metodos,
+    esCredito: esDeCredito,
+    es_credito: esDeCredito,
     cliente: v.cliente || null,
     estado: cerrado ? 'cerrada' : (v.estado || 'activa'),
     cerradoEnTurno: cerrado,
