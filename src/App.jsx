@@ -128,6 +128,7 @@ export default function App() {
     return [];
   });
 
+  const [abonos, setAbonos] = useState([]);
   const [clientes, setClientes] = useState(() => {
     try {
       const g = localStorage.getItem('pos_clis_final');
@@ -324,7 +325,7 @@ export default function App() {
       setDocBusqueda(encontrado.doc);
       setMostrarSugerencias(false);
     } else {
-      const nuevo = { id: 'cli_' + Date.now(), nombre: 'Cliente ' + docValor, doc: docValor };
+      const nuevo = { id: 'cli_' + Date.now(), nombre: 'Cliente ' + docValor, doc: docValor, saldo_deudor_usd: 0 };
       setClienteActivo(nuevo);
       setMostrarSugerencias(false);
     }
@@ -748,6 +749,8 @@ export default function App() {
       const prods = await dbService.getProductos(res.negocio.id);
       if (prods?.length) setProductos(prods);
 
+      const abonosCloud = await dbService.getAbonos(res?.negocio?.id || negocioActual?.id);
+      if (Array.isArray(abonosCloud)) setAbonos(abonosCloud);
       const clis = await dbService.getClientes(res.negocio.id) || [];
       const vtasTodas = await dbService.getVentas(res.negocio.id) || [];
 
@@ -973,54 +976,55 @@ export default function App() {
 
       {vistaActual === 'creditos' && (
         <CreditosModal
+          clientes={clientes}
           transacciones={transacciones}
-          clientes={(() => {
-            const agrupados = new Map();
-            (clientes || []).forEach(c => {
-              const docKey = (c.doc || '').replace(/[^0-9]/g, '') || c.id;
-              if (!agrupados.has(docKey)) {
-                agrupados.set(docKey, { ...c, saldoPendienteUSD: obtenerDeudaCliente(c) });
-              } else {
-                // Si ya existe, consolidamos abonos si tuviera
-                const existente = agrupados.get(docKey);
-                const abonosUnidos = [...(existente.historialAbonos || []), ...(c.historialAbonos || [])];
-                agrupados.set(docKey, {
-                  ...existente,
-                  historialAbonos: abonosUnidos,
-                  saldoPendienteUSD: obtenerDeudaCliente(existente)
-                });
-              }
-            });
-            return Array.from(agrupados.values());
-          })()}
+          abonos={abonos}
           tasaCambio={tasaCambio}
-          alCerrar={() => setVistaActual('pos')}
-          onAbonar={async (clienteDoc, montoUSD) => {
-            const montoNum = parseFloat(montoUSD) || 0;
-            if (montoNum <= 0) return;
-            const docClean = String(clienteDoc).replace(/[^0-9]/g, '');
+          usuarioActivo={usuarioActivo}
+          onAbonar={async ({ cliente, montoUSD, montoBS, metodoPago, tasa }) => {
+            const negId = negocioActual?.id || localStorage.getItem('pos_negocio_id');
+            const nuevoSaldo = Math.max(0, parseFloat((cliente.totalDeudaUSD - montoUSD).toFixed(2)));
 
-            // Actualizar transacciones fiadas en memoria para que la deuda baje de inmediato
-            setTransacciones(prev => prev.map(t => {
-              const tDoc = String(t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
-              const esFiado = t.es_credito === true || t.esCredito === true || t.tipoPago === 'credito';
-              if (tDoc === docClean && esFiado && (t.estado === 'activa' || !t.estado)) {
-                return { ...t, estado: 'completada', es_credito: false, esCredito: false };
+            // Actualización inmediata en memoria
+            setClientes(prev => prev.map(c => {
+              const cClean = String(c.doc || '').replace(/[^0-9]/g, '');
+              if (cClean === cliente.docClean) {
+                return { ...c, saldo_deudor_usd: nuevoSaldo, saldoPendienteUSD: nuevoSaldo, saldoDeudor: nuevoSaldo };
               }
-              return t;
+              return c;
             }));
 
-            // Persistir en Supabase cerrando las ventas a credito de este cliente
+            // Registro local del abono
+            const nuevoAbonoMem = {
+              id: 'abn_' + Date.now(),
+              negocio_id: negId,
+              cliente_doc: cliente.doc,
+              cliente_nombre: cliente.nombre,
+              cajero_nombre: usuarioActivo?.nombre || 'Administrador',
+              monto_usd: montoUSD,
+              monto_bs: montoBS,
+              metodo_pago: metodoPago,
+              tasa_bcv: tasa,
+              fecha: new Date().toISOString()
+            };
+            setAbonos(prev => [nuevoAbonoMem, ...prev]);
+
+            // Persistencia atómica en Supabase
             try {
-              const negId = negocioActual?.id || localStorage.getItem('pos_negocio_id');
-              const { error } = await supabase
-                .from('ventas')
-                .update({ estado: 'completada', es_credito: false })
-                .eq('negocio_id', negId)
-                .contains('cliente', { doc: 'V-' + docClean });
-              if (error) console.error('Error al actualizar venta fiada en supabase:', error);
+              await dbService.registrarAbonoContable({
+                negocioId: negId,
+                clienteDoc: cliente.doc,
+                clienteNombre: cliente.nombre,
+                cajeroId: usuarioActivo?.id || 'usr_admin',
+                cajeroNombre: usuarioActivo?.nombre || 'Administrador',
+                montoUSD,
+                montoBS,
+                tasaBCV: tasa,
+                metodoPago,
+                nuevoSaldoUSD: nuevoSaldo
+              });
             } catch (err) {
-              console.error(err);
+              console.error('Error al registrar abono en Supabase:', err);
             }
           }}
           alVolver={() => setVistaActual('pos')}

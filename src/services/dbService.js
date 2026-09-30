@@ -236,9 +236,8 @@ export const dbService = {
   },
 
   // VENTAS
-    
-  // Registrar Abono con sincronización 100% en Supabase
-    // Registrar Abono con actualización directa de saldo_deudor_usd
+
+  // Registrar Abono con actualización directa de saldo_deudor_usd
   async registrarAbono(clienteDoc, nuevoSaldoCalculado, negocioIdParam) {
     try {
       if (!clienteDoc) return null;
@@ -408,7 +407,7 @@ export const dbService = {
         telefono: cliente.telefono || '',
         direccion: cliente.direccion || '',
         limite_credito: parseFloat(cliente.limiteCredito ?? cliente.limite_credito ?? 0) || 0,
-        saldo_deudor_usd: parseFloat(cliente.saldoPendienteUSD ?? cliente.saldoDeudor ?? cliente.saldo_deudor_usd ?? 0) || 0 || 0
+        saldo_deudor_usd: parseFloat(cliente.saldoPendienteUSD ?? cliente.saldoDeudor ?? cliente.saldo_deudor_usd ?? 0) || 0
       };
 
       const { data, error } = await supabase
@@ -426,5 +425,82 @@ export const dbService = {
       console.error('Excepción al guardar cliente:', err);
       return normalizarCliente(cliente);
     }
+  },
+
+  // ==========================================
+  // GESTIÓN FINANCIERA DE ABONOS (MULTI-TENANT)
+  // ==========================================
+  async getAbonos(negocioId) {
+    if (!negocioId) return [];
+    try {
+      const { data, error } = await supabase
+        .from('abonos_clientes')
+        .select('*')
+        .eq('negocio_id', negocioId)
+        .order('fecha', { ascending: false });
+
+      if (error) {
+        console.error('Error al obtener abonos:', error);
+        return [];
+      }
+      return data || [];
+    } catch (e) {
+      console.error('Excepción en getAbonos:', e);
+      return [];
+    }
+  },
+
+  async registrarAbonoContable({
+    negocioId,
+    clienteDoc,
+    clienteNombre,
+    cajeroId,
+    cajeroNombre,
+    montoUSD,
+    montoBS,
+    tasaBCV,
+    metodoPago,
+    nuevoSaldoUSD
+  }) {
+    if (!negocioId || !clienteDoc) {
+      throw new Error('Faltan parámetros requeridos: negocioId o clienteDoc');
+    }
+
+    try {
+      // 1. Insertar el abono como hecho contable auditable
+      const { error: errorAbono } = await supabase
+        .from('abonos_clientes')
+        .insert([{
+          id: 'abn_' + Date.now(),
+          negocio_id: negocioId,
+          cliente_doc: clienteDoc,
+          cliente_nombre: clienteNombre || '',
+          cajero_id: cajeroId || 'usr_admin',
+          cajero_nombre: cajeroNombre || 'Administrador',
+          monto_usd: montoUSD,
+          monto_bs: montoBS,
+          tasa_bcv: tasaBCV,
+          metodo_pago: metodoPago || 'Efectivo ($)',
+          fecha: new Date().toISOString()
+        }]);
+
+      if (errorAbono) throw errorAbono;
+
+      // 2. Actualizar el saldo_deudor_usd del cliente en ese negocio
+      const { error: errorCliente } = await supabase
+        .from('clientes')
+        .update({ saldo_deudor_usd: nuevoSaldoUSD })
+        .eq('negocio_id', negocioId)
+        .eq('doc', clienteDoc);
+
+      if (errorCliente) throw errorCliente;
+
+      return { success: true };
+    } catch (e) {
+      console.error('Error registrando abono contable:', e);
+      throw e;
+    }
   }
 };
+
+export default dbService;

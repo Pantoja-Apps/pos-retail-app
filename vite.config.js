@@ -1,52 +1,47 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig({
+  root: __dirname,
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: [
-        'pwa-unified-192.png',
-        'pwa-unified-512.png',
-        'logo.svg',
-        'favicon.ico'
-      ],
-      manifestFilename: 'manifest.json',
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}']
-      },
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'Facilito POS Pro',
-        short_name: 'FacilitoPOS',
-        description: 'Punto de Venta Profesional para Comercios',
-        theme_color: '#ffffff',
+        name: 'POS System',
+        short_name: 'POS',
+        description: 'Punto de Venta',
+        theme_color: '#0f172a',
         background_color: '#ffffff',
         display: 'standalone',
-        start_url: '/',
-        orientation: 'portrait',
         icons: [
           {
-            src: '/pwa-unified-192.png',
+            src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any'
+            type: 'image/png'
           },
           {
-            src: '/pwa-unified-512.png',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any'
-          },
-          {
-            src: '/pwa-unified-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable'
+            type: 'image/png'
           }
         ]
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
       }
     })
-  ]
+  ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
+  }
 });
