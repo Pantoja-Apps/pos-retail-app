@@ -131,18 +131,22 @@ export const CreditosModal = ({
     else if (metodoAbono === 'punto') nombreMetodo = 'Punto Débito (Bs)';
     else if (metodoAbono === 'efectivo_bs') nombreMetodo = 'Efectivo Bs';
 
-    const fn = onAbonar || alRegistrarAbono;
-    if (fn) {
-      await fn({
-        cliente: clienteAbonando,
-        montoUSD: totalAbonadoUSD,
-        montoBS: parseFloat((totalAbonadoUSD * tasa).toFixed(2)),
-        metodoPago: nombreMetodo,
-        tasa: tasa
-      });
+    try {
+      const fn = onAbonar || alRegistrarAbono;
+      if (fn) {
+        await fn({
+          cliente: clienteAbonando,
+          montoUSD: totalAbonadoUSD,
+          montoBS: parseFloat((totalAbonadoUSD * tasa).toFixed(2)),
+          metodoPago: nombreMetodo,
+          tasa: tasa
+        });
+      }
+    } catch (e) {
+      alert("Error procesando abono: " + (e?.message || JSON.stringify(e)));
+    } finally {
+      setClienteAbonando(null);
     }
-
-    setClienteAbonando(null);
   };
 
   return (
