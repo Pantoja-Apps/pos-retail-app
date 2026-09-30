@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   DollarSign, Smartphone, CreditCard, Banknote, CheckCircle2, 
   X, User, Phone, BookOpen, Zap
@@ -29,6 +29,16 @@ export default function ModalCobro({
   const [nombreCliente, setNombreCliente] = useState(clienteActual?.nombre || 'Consumidor Final');
   const [telefonoCliente, setTelefonoCliente] = useState(clienteActual?.telefono || '');
   const [sugerencias, setSugerencias] = useState([]);
+
+  // Sincronizar datos automáticamente cuando se abre la ventana de cobro
+  useEffect(() => {
+    if (abierto && clienteActual) {
+      setDocCliente(clienteActual.doc === 'V-00000000' ? '' : (clienteActual.doc || ''));
+      setNombreCliente(clienteActual.nombre || 'Consumidor Final');
+      setTelefonoCliente(clienteActual.telefono || '');
+      setSugerencias([]);
+    }
+  }, [abierto, clienteActual]);
 
   // Montos por Método
   const [metodoActivo, setMetodoActivo] = useState('usd');
