@@ -239,7 +239,7 @@ export const dbService = {
         id: String(venta.id),
         negocio_id: negocioId || venta.negocio_id,
         fecha: venta.fecha || new Date().toISOString(),
-        cajero_id: venta.cajeroId || venta.cajero_id || null,
+        cajero_id: String(venta.cajeroId || venta.cajero_id || venta.cajero?.id || 'usr_master'),
         cajero_nombre: venta.cajero || venta.cajeroNombre || venta.cajero_nombre || 'Angel Pantoja',
         terminal_id: venta.terminalId || venta.terminal_id || 'caja_01',
         terminal_nombre: venta.caja || venta.terminalNombre || venta.terminal_nombre || 'Caja 01',

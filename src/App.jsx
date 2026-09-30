@@ -416,7 +416,7 @@ export default function App() {
   };
 
   const guardarClienteEnDB = async (cli) => {
-    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
+    const negId = cuentaMaster?.negocioId || cuentaMaster?.negocio_id || usuarioActivo?.negocioId || usuarioActivo?.negocio_id || 'neg_mujkrui8';
     const cliConId = {
       id: cli.id || ('cli_' + Date.now()),
       ...cli,
@@ -450,6 +450,7 @@ export default function App() {
       fechaFormateada: ahora.toLocaleDateString() + ' ' + ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       negocio_id: negId,
       cajero: usuarioActivo?.nombre || 'Angel Pantoja',
+      cajeroId: usuarioActivo?.id || cuentaMaster?.id || 'usr_master',
       caja: cajaActiva?.nombre || 'Caja 01',
       cliente: datosVenta.cliente || clienteActual,
       items: datosVenta.items || [...carrito],
