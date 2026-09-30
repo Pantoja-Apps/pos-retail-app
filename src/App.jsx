@@ -130,27 +130,6 @@ export default function App() {
 
   const [abonos, setAbonos] = useState([]);
 
-  // Sincronización automática de abonos con Supabase en tiempo real
-  useEffect(() => {
-    const cargarAbonosSupabase = async () => {
-      const negId = usuarioActivo?.negocio_id || localStorage.getItem('pos_negocio_id');
-      if (negId) {
-        try {
-          const abonosCloud = await dbService.getAbonos(negId);
-          if (Array.isArray(abonosCloud)) {
-            setAbonos(abonosCloud);
-          }
-        } catch (e) {
-          console.error("Error al sincronizar abonos:", e);
-        }
-      }
-    };
-
-    if (vistaActual === 'creditos' || usuarioActivo) {
-      cargarAbonosSupabase();
-    }
-  }, [vistaActual, usuarioActivo]);
-
   const [clientes, setClientes] = useState(() => {
     try {
       const g = localStorage.getItem('pos_clis_final');
@@ -222,11 +201,63 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(`pos_historico_${currentNegocioId}`, JSON.stringify(historicoVentasGlobal)); } catch (e) {} }, [historicoVentasGlobal, currentNegocioId]);
   useEffect(() => { try { localStorage.setItem('pos_pedidos_pausados', JSON.stringify(pedidosPausados)); } catch (e) {} }, [pedidosPausados]);
 
+  // Función universal para obtener la deuda neta real de un cliente cruzando fiados y abonos
+  const obtenerDeudaCliente = (cli) => {
+    if (!cli || !cli.doc || cli.doc === 'V-00000000') return 0;
+    const docLimpio = String(cli.doc || cli.cedula || '').replace(/[^0-9]/g, '');
+    if (!docLimpio) return 0;
+
+    // 1. Totalizar compras fiadas
+    const todasLasVentas = (historicoVentasGlobal && historicoVentasGlobal.length > 0) ? historicoVentasGlobal : transacciones;
+    const totalFiado = (todasLasVentas || [])
+      .filter(t => {
+        if (t.anulada) return false;
+        const tDoc = String(t.cliente?.doc || t.cliente_doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
+        const esFiado = Boolean(
+          t.esCredito || 
+          t.es_credito || 
+          t.tipoVenta === 'credito' || 
+          (t.metodoPago || '').toLowerCase().includes('crédit') || 
+          (t.metodoPago || '').toLowerCase().includes('credit') ||
+          (t.metodo_pago || '').toLowerCase().includes('credit')
+        );
+        return tDoc === docLimpio && esFiado;
+      })
+      .reduce((sum, t) => sum + (parseFloat(t.totalUSD ?? t.total_usd ?? 0) || 0), 0);
+
+    // 2. Totalizar abonos unificados de Supabase y locales
+    const mapaAbonos = new Map();
+    const abonosFuente = [
+      ...(Array.isArray(abonos) ? abonos : []),
+      ...(cli.historialAbonos || [])
+    ];
+
+    abonosFuente.forEach(a => {
+      const aDoc = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || '').replace(/[^0-9]/g, '');
+      if (aDoc === docLimpio) {
+        const key = a.id || `${aDoc}_${a.fecha}_${a.monto_usd || a.montoUSD}`;
+        if (!mapaAbonos.has(key)) {
+          mapaAbonos.set(key, parseFloat(a.monto_usd ?? a.montoUSD ?? 0) || 0);
+        }
+      }
+    });
+
+    const totalAbonado = Array.from(mapaAbonos.values()).reduce((sum, m) => sum + m, 0);
+
+    // Si hay fiados registrados, el saldo es exactamente la diferencia
+    if (totalFiado > 0) {
+      return Math.max(0, parseFloat((totalFiado - totalAbonado).toFixed(2)));
+    }
+
+    const saldoDirecto = parseFloat(cli.saldo_deudor_usd ?? cli.saldoPendienteUSD ?? cli.saldoDeudor ?? 0) || 0;
+    return Math.max(0, parseFloat((saldoDirecto - totalAbonado).toFixed(2)));
+  };
+
   const sincronizarSilenciosamente = async () => {
     const conectadoSupabase = await dbService.checkConnection();
     setOnlineBackend(conectadoSupabase);
 
-    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId;
+    const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || localStorage.getItem('pos_negocio_id');
     if (negId) {
       const cajerosSupabase = await dbService.getCajeros(negId);
       if (Array.isArray(cajerosSupabase) && cajerosSupabase.length > 0) {
@@ -238,17 +269,22 @@ export default function App() {
         setProductos(prodsCloud);
       }
 
+      // Descargar siempre los abonos para que el mostrador conozca los pagos reales
+      const abonosCloud = await dbService.getAbonos(negId);
+      if (Array.isArray(abonosCloud)) {
+        setAbonos(abonosCloud);
+      }
+
       const clientesCloud = await dbService.getClientes(negId);
       if (Array.isArray(clientesCloud) && clientesCloud.length > 0) {
-        setClientes(clientesCloud.map(item => {
-          const saldoCalculado = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(item) : (parseFloat(item.saldoPendienteUSD || item.saldoDeudor || 0) || 0);
-          return {
-            ...item,
-            saldoPendienteUSD: saldoCalculado,
-            saldoDeudor: saldoCalculado,
-            saldo_deudor_usd: saldoCalculado
-          };
-        }));
+        const mapa = new Map();
+        clientesCloud.forEach(c => {
+          const docClean = String(c.doc || c.cedula || '').replace(/[^0-9]/g, '');
+          if (!mapa.has(docClean)) {
+            mapa.set(docClean, c);
+          }
+        });
+        setClientes(Array.from(mapa.values()));
       }
 
       const negData = await dbService.getNegocio(negId);
@@ -300,59 +336,6 @@ export default function App() {
     return () => clearInterval(intervalo);
   }, [cuentaMaster, usuarioActivo]);
 
-  // Función universal para obtener la deuda neta real de un cliente cruzando fiados y abonos
-  const obtenerDeudaCliente = (cli) => {
-    if (!cli || !cli.doc || cli.doc === 'V-00000000') return 0;
-    const docLimpio = String(cli.doc || cli.cedula || '').replace(/[^0-9]/g, '');
-    if (!docLimpio) return 0;
-
-    // 1. Totalizar compras fiadas
-    const todasLasVentas = (historicoVentasGlobal && historicoVentasGlobal.length > 0) ? historicoVentasGlobal : transacciones;
-    const totalFiado = (todasLasVentas || [])
-      .filter(t => {
-        if (t.anulada) return false;
-        const tDoc = String(t.cliente?.doc || t.cliente_doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
-        const esFiado = Boolean(
-          t.esCredito || 
-          t.es_credito || 
-          t.tipoVenta === 'credito' || 
-          (t.metodoPago || '').toLowerCase().includes('crédit') || 
-          (t.metodoPago || '').toLowerCase().includes('credit') ||
-          (t.metodo_pago || '').toLowerCase().includes('credit')
-        );
-        return tDoc === docLimpio && esFiado;
-      })
-      .reduce((sum, t) => sum + (parseFloat(t.totalUSD ?? t.total_usd ?? 0) || 0), 0);
-
-    // 2. Totalizar abonos unificados de Supabase y locales
-    const mapaAbonos = new Map();
-    const abonosFuente = [
-      ...(Array.isArray(abonos) ? abonos : []),
-      ...(cli.historialAbonos || [])
-    ];
-
-    abonosFuente.forEach(a => {
-      const aDoc = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || '').replace(/[^0-9]/g, '');
-      if (aDoc === docLimpio) {
-        const key = a.id || `${aDoc}_${a.fecha}_${a.monto_usd || a.montoUSD}`;
-        if (!mapaAbonos.has(key)) {
-          mapaAbonos.set(key, parseFloat(a.monto_usd ?? a.montoUSD ?? 0) || 0);
-        }
-      }
-    });
-
-    const totalAbonado = Array.from(mapaAbonos.values()).reduce((sum, m) => sum + m, 0);
-
-    // Si hay fiados registrados, la deuda neta es EXACTA: fiados - abonos
-    if (totalFiado > 0) {
-      return Math.max(0, parseFloat((totalFiado - totalAbonado).toFixed(2)));
-    }
-
-    // Saldo directo de la columna de base de datos
-    const saldoDirecto = parseFloat(cli.saldo_deudor_usd ?? cli.saldoPendienteUSD ?? cli.saldoDeudor ?? 0) || 0;
-    return Math.max(0, parseFloat((saldoDirecto - totalAbonado).toFixed(2)));
-  };
-
   const manejarDocMostrador = (docValor) => {
     const docStr = String(docValor || '');
     const docLimpio = docStr.replace(/[^0-9]/g, '');
@@ -378,16 +361,11 @@ export default function App() {
     setSugClientesMostrador(sugerencias);
 
     if (encontrado) {
-      const saldoNeto = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(encontrado) : 0;
-      setClienteActual({ ...encontrado, doc: docStr, saldoPendienteUSD: saldoNeto, saldoDeudor: saldoNeto, saldo_deudor_usd: saldoNeto });
+      setClienteActual({ ...encontrado, doc: docStr });
     } else if (sugerencias.length === 1 && docLimpio.length >= 4) {
-      const saldoNeto = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(sugerencias[0]) : 0;
       setClienteActual({
         ...sugerencias[0],
-        doc: docStr,
-        saldoPendienteUSD: saldoNeto,
-        saldoDeudor: saldoNeto,
-        saldo_deudor_usd: saldoNeto
+        doc: docStr
       });
     } else {
       setClienteActual(prev => ({
@@ -401,13 +379,7 @@ export default function App() {
   };
 
   const seleccionarClienteMostrador = (cli) => {
-    const deudaReal = typeof obtenerDeudaCliente === 'function' ? obtenerDeudaCliente(cli) : 0;
-    setClienteActual({
-      ...cli,
-      saldoPendienteUSD: deudaReal,
-      saldoDeudor: deudaReal,
-      saldo_deudor_usd: deudaReal
-    });
+    setClienteActual(cli);
     setSugClientesMostrador([]);
   };
 
@@ -645,7 +617,6 @@ export default function App() {
         }
       });
 
-      // Sincronización garantizada en tiempo real con Supabase
       if (clienteActualizadoParaSync) {
         dbService.guardarCliente(clienteActualizadoParaSync, negId).catch(err => {
           console.error("Error sincronizando deuda con Supabase:", err);
@@ -734,7 +705,6 @@ export default function App() {
     const negId = cuentaMaster?.negocioId || usuarioActivo?.negocioId || 'neg_local';
     setCompras(prev => [nuevaCompra, ...prev]);
 
-    // Incrementar automáticamente el stock y actualizar costo
     setProductos(prevProds => {
       const copia = [...prevProds];
       nuevaCompra.items.forEach(it => {
@@ -1232,7 +1202,7 @@ export default function App() {
             </div>
             <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
               {(() => {
-                const deuda = typeof obtenerDeudaCliente === "function" ? obtenerDeudaCliente(clienteActual) : 0;
+                const deuda = obtenerDeudaCliente(clienteActual);
                 if (deuda > 0.01) {
                   return (
                     <span style={{
