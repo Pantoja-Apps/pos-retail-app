@@ -983,7 +983,7 @@ export default function App() {
           tasaCambio={tasaCambio}
           usuarioActivo={usuarioActivo}
           onAbonar={async ({ cliente, montoUSD, montoBS, metodoPago, tasa }) => {
-            const negId = negocioActual?.id || localStorage.getItem('pos_negocio_id');
+            const negId = negocio?.id || localStorage.getItem('pos_negocio_id') || 'neg_mujkrui8';
             const nuevoSaldo = Math.max(0, parseFloat((cliente.totalDeudaUSD - montoUSD).toFixed(2)));
 
             // Actualización inmediata en memoria
