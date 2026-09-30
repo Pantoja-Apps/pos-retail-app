@@ -47,7 +47,7 @@ export const CreditosModal = ({
 
       // Filtrar abonos
       const abonosCliente = (abonos || []).filter(a => {
-        const docAbono = String(a.cliente_doc || a.doc || '').replace(/[^0-9]/g, '');
+        const docAbono = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || a.cliente?.doc || '').replace(/[^0-9]/g, '');
         return docAbono && docClean && docAbono === docClean;
       });
 

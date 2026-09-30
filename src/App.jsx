@@ -750,7 +750,7 @@ export default function App() {
       const prods = await dbService.getProductos(res.negocio.id);
       if (prods?.length) setProductos(prods);
 
-      const abonosCloud = await dbService.getAbonos(res?.negocio?.id || negocioActual?.id);
+      const abonosCloud = await dbService.getAbonos(res?.negocio?.id || res?.usuario?.negocio_id || localStorage.getItem('pos_negocio_id'));
       if (Array.isArray(abonosCloud)) setAbonos(abonosCloud);
       const clis = await dbService.getClientes(res.negocio.id) || [];
       const vtasTodas = await dbService.getVentas(res.negocio.id) || [];
