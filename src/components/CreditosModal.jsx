@@ -24,7 +24,6 @@ export const CreditosModal = ({
   const [abonosLocales, setAbonosLocales] = useState([]);
   const [guardandoAbono, setGuardandoAbono] = useState(false);
 
-  // Obtener negocio ID resolviendo todas las fuentes posibles
   const negocioIdResuelto = useMemo(() => {
     return usuarioActivo?.negocio_id ||
            usuarioActivo?.negocioId ||
@@ -34,23 +33,21 @@ export const CreditosModal = ({
            'neg_mujkrui8';
   }, [usuarioActivo, clientes]);
 
-  // Carga directa de abonos desde Supabase al montar
-  useEffect(() => {
-    let montado = true;
-    const cargar = async () => {
-      try {
-        if (negocioIdResuelto) {
-          const data = await dbService.getAbonos(negocioIdResuelto);
-          if (montado && Array.isArray(data)) {
-            setAbonosLocales(data);
-          }
+  const recargarAbonosDirectos = async () => {
+    try {
+      if (negocioIdResuelto) {
+        const data = await dbService.getAbonos(negocioIdResuelto);
+        if (Array.isArray(data)) {
+          setAbonosLocales(data);
         }
-      } catch (e) {
-        console.error("Error cargando abonos:", e);
       }
-    };
-    cargar();
-    return () => { montado = false; };
+    } catch (e) {
+      console.error('Error cargando abonos:', e);
+    }
+  };
+
+  useEffect(() => {
+    recargarAbonosDirectos();
   }, [negocioIdResuelto]);
 
   const [metodoAbono, setMetodoAbono] = useState('dolares');
@@ -64,12 +61,12 @@ export const CreditosModal = ({
   const tasa = parseFloat(tasaCambio) || 1;
   const cerrarVista = alVolver || onVolver;
 
-  // Unificación de abonos desduplicada
+  // Lista única de abonos (props + consulta directa de Supabase)
   const todosLosAbonos = useMemo(() => {
     const mapa = new Map();
     [...(abonos || []), ...(abonosLocales || [])].forEach(a => {
-      const docA = String(a.cliente_doc || a.doc || a.cedula || '').replace(/\D/g, '');
-      const key = a.id || `${docA}_${a.fecha}_${a.monto_usd || a.montoUSD}`;
+      const docClean = String(a.cliente_doc || a.doc || a.cedula || '').replace(/\D/g, '');
+      const key = a.id || `${docClean}_${a.fecha}_${a.monto_usd || a.montoUSD}`;
       if (!mapa.has(key)) {
         mapa.set(key, a);
       }
@@ -77,16 +74,19 @@ export const CreditosModal = ({
     return Array.from(mapa.values());
   }, [abonos, abonosLocales]);
 
-  // Lista consolidada de clientes con saldo calculado
+  // Consolidación total de clientes: tabla clientes + ventas fiadas
   const clientesConsolidados = useMemo(() => {
-    const mapa = new Map();
+    const mapaClientes = new Map();
 
-    // 1. Agregar clientes registrados
+    // 1. Agregar clientes de la base de datos
     (clientes || []).forEach(c => {
       const docClean = String(c.doc || c.cedula || c.rif || '').replace(/\D/g, '');
-      if (docClean && !mapa.has(docClean)) {
-        mapa.set(docClean, {
-          ...c,
+      if (docClean && !mapaClientes.has(docClean)) {
+        mapaClientes.set(docClean, {
+          id: c.id || ('cli_' + docClean),
+          nombre: c.nombre || 'Cliente General',
+          doc: c.doc || ('V-' + docClean),
+          telefono: c.telefono || '',
           docClean,
           totalDeudaUSD: 0,
           comprasFiadas: [],
@@ -95,28 +95,40 @@ export const CreditosModal = ({
       }
     });
 
-    // 2. Extraer clientes que figuren en transacciones de crédito
+    // 2. Extraer CUALQUIER cliente que tenga ventas a crédito registradas (incluso clientes temporales)
     (transacciones || []).forEach(v => {
-      const docVenta = String(v.cliente?.doc || v.cliente_doc || '').replace(/\D/g, '');
-      if (docVenta && !mapa.has(docVenta)) {
-        mapa.set(docVenta, {
-          id: v.cliente?.id || ('cli_' + docVenta),
-          nombre: v.cliente?.nombre || 'Cliente General',
-          doc: v.cliente?.doc || ('V-' + docVenta),
-          telefono: v.cliente?.telefono || '',
-          docClean: docVenta,
-          totalDeudaUSD: 0,
-          comprasFiadas: [],
-          abonosCliente: []
-        });
+      const esFiado = Boolean(
+        v.es_credito || 
+        v.esCredito || 
+        v.tipoVenta === 'credito' ||
+        (v.metodoPago || '').toLowerCase().includes('crédit') ||
+        (v.metodoPago || '').toLowerCase().includes('credit') ||
+        (v.metodo_pago || '').toLowerCase().includes('credit')
+      );
+
+      if (esFiado && !v.anulada) {
+        const docVenta = String(v.cliente?.doc || v.cliente_doc || v.clienteDoc || '').replace(/\D/g, '');
+        if (docVenta && !mapaClientes.has(docVenta)) {
+          mapaClientes.set(docVenta, {
+            id: v.cliente?.id || ('cli_' + docVenta),
+            nombre: v.cliente?.nombre || 'Cliente Fiado',
+            doc: v.cliente?.doc || ('V-' + docVenta),
+            telefono: v.cliente?.telefono || '',
+            docClean: docVenta,
+            totalDeudaUSD: 0,
+            comprasFiadas: [],
+            abonosCliente: []
+          });
+        }
       }
     });
 
-    // 3. Calcular deuda neta para cada cliente: fiados menos abonos
-    mapa.forEach((cliente, docClean) => {
+    // 3. Calcular la deuda matemática exacta para cada uno
+    mapaClientes.forEach((cliente, docClean) => {
+      // Filtrar todas sus compras fiadas
       const comprasFiadas = (transacciones || []).filter(v => {
         if (v.anulada) return false;
-        const docV = String(v.cliente?.doc || v.cliente_doc || '').replace(/\D/g, '');
+        const docV = String(v.cliente?.doc || v.cliente_doc || v.clienteDoc || '').replace(/\D/g, '');
         const esFiado = Boolean(
           v.es_credito || 
           v.esCredito || 
@@ -128,6 +140,7 @@ export const CreditosModal = ({
         return esFiado && docV === docClean;
       });
 
+      // Filtrar todos sus abonos
       const abonosCliente = todosLosAbonos.filter(a => {
         const docA = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || '').replace(/\D/g, '');
         return docA === docClean;
@@ -148,10 +161,10 @@ export const CreditosModal = ({
       cliente.abonosCliente = abonosCliente;
     });
 
-    return Array.from(mapa.values());
+    return Array.from(mapaClientes.values());
   }, [clientes, transacciones, todosLosAbonos]);
 
-  // Filtrado por buscador
+  // Filtrar según búsqueda y mostrar TODOS los que tengan saldo > $0.009
   const clientesFiltrados = useMemo(() => {
     return clientesConsolidados.filter(c => {
       const matchBusqueda = (c.nombre || '').toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -237,7 +250,7 @@ export const CreditosModal = ({
       fecha: new Date().toISOString()
     };
 
-    // Actualizar estado local inmediatamente sin vaciar la lista
+    // Actualizar estado local firme sin vaciar nada
     setAbonosLocales(prev => [nuevoAbonoObj, ...prev]);
 
     try {
@@ -257,6 +270,7 @@ export const CreditosModal = ({
       setGuardandoAbono(false);
       setClienteAbonando(null);
       setMontosAbono({ dolares: '', pagomovil: '', punto: '', efectivo_bs: '' });
+      recargarAbonosDirectos();
     }
   };
 
