@@ -181,6 +181,7 @@ export default function App() {
   const [modalCobroAbierto, setModalCobroAbierto] = useState(false);
   const [ticketModalData, setTicketModalData] = useState(null);
   const [camaraAbierta, setCamaraAbierta] = useState(false);
+  const [sugClientesMostrador, setSugClientesMostrador] = useState([]);
   const [productoParaPesar, setProductoParaPesar] = useState(null);
 
   useEffect(() => { try { localStorage.setItem('pos_cuenta_dueno', JSON.stringify(cuentaMaster)); } catch (e) {} }, [cuentaMaster]);
@@ -268,9 +269,25 @@ export default function App() {
   }, [cuentaMaster, usuarioActivo]);
 
   const manejarDocMostrador = (docValor) => {
-    const docLimpio = docValor.replace(/[^0-9]/g, '');
-    const encontrado = clientes.find(c => (c.doc || '').replace(/[^0-9]/g, '') === docLimpio);
+    const docLimpio = (docValor || '').replace(/[^0-9]/g, '');
+    const textoBusqueda = (docValor || '').trim().toLowerCase();
 
+    if (!docValor || docValor.trim() === '') {
+      setSugClientesMostrador([]);
+      setClienteActual({ id: 'cli_cf', doc: 'V-00000000', nombre: 'Consumidor Final', telefono: '', saldoPendienteUSD: 0 });
+      return;
+    }
+
+    // Filtrar clientes por cédula o nombre
+    const sugeridos = clientes.filter(c => {
+      const cNum = (c.doc || '').replace(/[^0-9]/g, '');
+      const cNom = (c.nombre || '').toLowerCase();
+      return (docLimpio && cNum.includes(docLimpio)) || cNom.includes(textoBusqueda);
+    });
+    setSugClientesMostrador(sugeridos.slice(0, 4));
+
+    // Si coincide exactamente con uno existente
+    const encontrado = clientes.find(c => (c.doc || '').replace(/[^0-9]/g, '') === docLimpio);
     if (encontrado) {
       setClienteActual(encontrado);
     } else {
@@ -282,6 +299,11 @@ export default function App() {
         saldoPendienteUSD: 0
       });
     }
+  };
+
+  const seleccionarClienteMostrador = (cli) => {
+    setClienteActual(cli);
+    setSugClientesMostrador([]);
   };
 
   const manejarCambioBusqueda = (texto) => {
@@ -1037,7 +1059,7 @@ export default function App() {
             </div>
           </header>
 
-          <section style={styles.barraClienteMostrador}>
+          <section style={{ ...styles.barraClienteMostrador, position: 'relative' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
               <User color="#0f2a4a" size={16} style={{ flexShrink: 0 }} />
               <input
@@ -1048,7 +1070,18 @@ export default function App() {
                 style={styles.inputDocMostrador}
               />
             </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {(() => {
+                const deuda = parseFloat(clienteActual?.saldoPendienteUSD || clienteActual?.saldoDeudor || clienteActual?.saldoDeudorUSD || 0);
+                if (deuda > 0.01) {
+                  return (
+                    <span style={{ backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #f87171', padding: '1px 6px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 'bold' }}>
+                      ⚠️ Debe: ${deuda.toFixed(2)}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
               <span style={{
                 ...styles.nombreClienteTag,
                 color: clienteActual.nombre === 'Consumidor Final' ? '#64748b' : '#0052cc',
@@ -1057,6 +1090,49 @@ export default function App() {
                 {clienteActual.nombre}
               </span>
             </div>
+
+            {/* Sugerencias flotantes */}
+            {sugClientesMostrador.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: '12px',
+                right: '12px',
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                boxShadow: '0 8px 16px rgba(0,0,0,0.12)',
+                zIndex: 99999
+              }}>
+                {sugClientesMostrador.map(c => {
+                  const saldo = parseFloat(c.saldoPendienteUSD || c.saldoDeudor || c.saldoDeudorUSD || 0);
+                  return (
+                    <div
+                      key={c.id || c.doc}
+                      onClick={() => seleccionarClienteMostrador(c)}
+                      style={{
+                        padding: '8px 12px',
+                        borderBottom: '1px solid #f1f5f9',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#0f2a4a' }}>{c.nombre}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{c.doc}</div>
+                      </div>
+                      {saldo > 0.01 && (
+                        <span style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 'bold' }}>
+                          Debe: ${saldo.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           <section style={styles.seccionBuscador}>
