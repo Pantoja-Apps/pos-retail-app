@@ -44,6 +44,20 @@ export default function TicketModal({
   const nombreCajero = datos.cajeroNombre || datos.cajero_nombre || datos.cajero || 'Angel Pantoja';
   const nombreCaja = datos.terminal_nombre || datos.caja_nombre || datos.caja || 'Caja 01';
 
+  // Obtener correlativo de 6 dígitos estricto (ejemplo: 000001, 000028)
+  const obtenerNroControl = () => {
+    let corr = datos.correlativo;
+    if (!corr && datos.id && !String(datos.id).startsWith('vta_')) {
+      corr = datos.id;
+    }
+    if (!corr && datos.id) {
+      const numOnly = String(datos.id).replace(/[^0-9]/g, '');
+      corr = numOnly.slice(-6);
+    }
+    return String(corr || '1').padStart(6, '0').slice(-6);
+  };
+  const numeroControl = obtenerNroControl();
+
   let totalPiezasUnid = 0;
   let totalPesoKg = 0;
   let hayUnidades = false;
@@ -89,7 +103,7 @@ export default function TicketModal({
     if (config?.rif) texto += `RIF: ${config.rif}\n`;
     if (config?.telefono) texto += `TEL: ${config.telefono}\n`;
     texto += `--------------------------------\n`;
-    texto += `CONTROL #: ${datos.correlativo || datos.id}\n`;
+    texto += `CONTROL #: ${numeroControl}\n`;
     texto += `FECHA: ${fechaFija}\n`;
     texto += `CAJERO / CAJA: ${nombreCajero} · ${nombreCaja}\n`;
     texto += `CLIENTE: ${cliente.nombre}\n`;
@@ -146,7 +160,6 @@ export default function TicketModal({
 
   return (
     <div style={styles.overlay}>
-      {/* Estilos específicos para impresión en rollo térmico 58mm / 80mm */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           @page { margin: 0; size: auto; }
@@ -170,7 +183,7 @@ export default function TicketModal({
       ` }} />
 
       <div style={styles.modal}>
-        {/* Cabecera del Modal (No se imprime) */}
+        {/* Cabecera del Modal */}
         <div style={styles.header} className="no-imprimir">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <CheckCircle2 size={18} color="#16a34a" />
@@ -209,7 +222,7 @@ export default function TicketModal({
           <div style={styles.bloqueMetadatos}>
             <div style={styles.filaMeta}>
               <span style={styles.metaLabel}>CONTROL:</span>
-              <strong style={styles.metaValor}>#{datos.correlativo || datos.id}</strong>
+              <strong style={styles.metaValor}>#{numeroControl}</strong>
             </div>
 
             <div style={styles.filaMeta}>
@@ -370,7 +383,7 @@ export default function TicketModal({
             </div>
             <div style={styles.contenedorCodigoBarras}>
               <div style={styles.lineasCodigoBarras} />
-              <div style={styles.codigoTexto}>* {datos.correlativo || datos.id} *</div>
+              <div style={styles.codigoTexto}>* {numeroControl} *</div>
             </div>
             <div style={styles.firmaCertificado}>
               <ShieldCheck size={12} color="#16a34a" /> Documento digital emitido por Facilito POS
@@ -378,7 +391,7 @@ export default function TicketModal({
           </div>
         </div>
 
-        {/* Acciones de Exportación (No se imprimen) */}
+        {/* Acciones de Exportación */}
         <div style={styles.accionesFooter} className="no-imprimir">
           <button onClick={imprimir} style={styles.btnAccionImprimir}>
             <Printer size={15} /> Imprimir
