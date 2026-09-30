@@ -1,40 +1,38 @@
 import { supabase } from './supabaseClient'
 
-// Función para normalizar de forma inequívoca los datos de la base de datos
+// Normaliza el producto de Supabase hacia el formato interno de React
 const normalizarProducto = (p) => {
-  const pUSD = parseFloat(p.precioUSD ?? p.precio_usd ?? p.precio ?? 0) || 0;
-  const pBS = parseFloat(p.precioBS ?? p.precio_bs ?? 0) || 0;
-  const pCosto = parseFloat(p.costoUSD ?? p.costo_unit_usd ?? p.precio_costo ?? 0) || 0;
+  const pUSD = parseFloat(p.precio_usd ?? p.precioUSD ?? 0) || 0;
+  const pCosto = parseFloat(p.costo_usd ?? p.costoUSD ?? 0) || 0;
   const stockVal = parseFloat(p.stock ?? 0) || 0;
 
-  // Detección universal del IVA: solo si explícitamente es 16 o '16'
-  const rawIva = p.ivaTipo ?? p.iva_tipo ?? p.iva ?? p.tasa_iva;
-  const es16 = String(rawIva) === '16';
-  const tipoFinal = es16 ? '16' : 'exento';
+  // Detección estricta de IVA con las columnas reales: aplica_iva y tasa_iva
+  const esGravable = Boolean(p.aplica_iva === true || Number(p.tasa_iva) === 16 || p.ivaTipo === '16');
 
   return {
     ...p,
     id: p.id,
     nombre: p.nombre || 'Producto sin nombre',
-    codigo: p.codigo || '',
-    categoria: p.categoria || 'Víveres',
-    proveedorId: p.proveedorId ?? p.proveedor_id ?? '',
-    proveedorNombre: p.proveedorNombre ?? p.proveedor_nombre ?? '',
+    codigo: p.codigo_barras || p.codigo || '',
+    categoria: p.departamento || p.categoria || 'Víveres',
+    proveedorId: p.proveedor_id || p.proveedorId || '',
+    proveedorNombre: p.proveedor_nombre || p.proveedorNombre || '',
     precioUSD: pUSD,
-    precioBS: pBS,
+    precioBS: 0, // Se calcula dinámicamente con la tasa activa
     costoUSD: pCosto,
     stock: stockVal,
-    esPesado: Boolean(p.esPesado ?? p.es_pesado),
-    ivaTipo: tipoFinal,
-    iva: es16 ? 16 : 0,
-    tasa_iva: es16 ? 16 : 0,
-    exentoIVA: !es16,
-    tipoEmpaque: p.tipoEmpaque ?? p.tipo_empaque ?? 'Bulto',
-    undsPorEmpaque: parseFloat(p.undsPorEmpaque ?? p.unds_por_empaque ?? 1) || 1,
-    costoEmpaqueUSD: parseFloat(p.costoEmpaqueUSD ?? p.costo_emaque_usd ?? pCosto) || 0,
-    aplicaPrecioMayor: Boolean(p.aplicaPrecioMayor ?? p.aplica_precio_mayor),
-    precioMayorUSD: parseFloat(p.precioMayorUSD ?? p.precio_mayor_usd ?? 0) || 0,
-    cantMinimaMayor: parseInt(p.cantMinimaMayor ?? p.cant_minima_mayor ?? 3) || 3,
+    esPesado: Boolean(p.es_pesado ?? p.esPesado),
+    ivaTipo: esGravable ? '16' : 'exento',
+    iva: esGravable ? 16 : 0,
+    tasa_iva: esGravable ? 16 : 0,
+    aplica_iva: esGravable,
+    exentoIVA: !esGravable,
+    tipoEmpaque: p.tipo_empaque || p.tipoEmpaque || 'Bulto',
+    undsPorEmpaque: parseFloat(p.unidades_empaque ?? p.undsPorEmpaque ?? 1) || 1,
+    costoEmpaqueUSD: parseFloat(p.costo_empaque_usd ?? p.costoEmpaqueUSD ?? pCosto) || 0,
+    aplicaPrecioMayor: Boolean(p.aplica_precio_mayor ?? p.aplicaPrecioMayor),
+    precioMayorUSD: parseFloat(p.precio_mayor_usd ?? p.precioMayorUSD ?? 0) || 0,
+    cantMinimaMayor: parseInt(p.cant_minima_mayor ?? p.cantMinimaMayor ?? 3) || 3,
     imagen: p.imagen || p.foto || ''
   };
 };
@@ -133,7 +131,7 @@ export const dbService = {
     }
   },
 
-  // 4. Productos normalizados
+  // 4. Productos
   async getProductos(negocioId) {
     try {
       const { data, error } = await supabase
@@ -150,35 +148,48 @@ export const dbService = {
 
   async guardarProducto(producto, negocioId) {
     try {
-      const es16 = String(producto.ivaTipo || producto.iva) === '16';
-      const item = {
+      const esGravable = String(producto.ivaTipo) === '16' || Number(producto.iva) === 16;
+      
+      // Mapeo exacto a las columnas reales de Supabase:
+      const itemBD = {
         id: producto.id,
-        nombre: producto.nombre,
-        codigo: producto.codigo,
-        categoria: producto.categoria || 'Víveres',
-        precio_usd: producto.precioUSD ?? producto.precio_usd ?? 0,
-        precio_bs: producto.precioBS ?? producto.precio_bs ?? 0,
-        precio_costo: producto.costoUSD ?? producto.precio_costo ?? 0,
-        stock: producto.stock ?? 0,
-        es_pesado: Boolean(producto.esPesado ?? producto.es_pesado),
-        tasa_iva: es16 ? 16 : 0,
+        nombre: producto.nombre || 'Producto sin nombre',
+        codigo_barras: producto.codigo || producto.codigo_barras || '',
+        departamento: producto.categoria || producto.departamento || 'Víveres',
+        precio_usd: parseFloat(producto.precioUSD) || 0,
+        costo_usd: parseFloat(producto.costoUSD) || 0,
+        stock: parseFloat(producto.stock) || 0,
+        es_pesado: Boolean(producto.esPesado),
+        aplica_iva: esGravable,
+        tasa_iva: esGravable ? 16 : 0,
+        tipo_empaque: producto.tipoEmpaque || 'Bulto',
+        unidades_empaque: parseFloat(producto.undsPorEmpaque) || 1,
+        costo_empaque_usd: parseFloat(producto.costoEmpaqueUSD) || 0,
+        aplica_precio_mayor: Boolean(producto.aplicaPrecioMayor),
+        precio_mayor_usd: parseFloat(producto.precioMayorUSD) || 0,
+        cant_minima_mayor: parseInt(producto.cantMinimaMayor) || 3,
+        proveedor_id: producto.proveedorId || null,
+        proveedor_nombre: producto.proveedorNombre || null,
         imagen: producto.imagen || producto.foto || ''
       };
 
-      if (negocioId && !item.negocio_id) item.negocio_id = negocioId;
+      if (negocioId && !itemBD.negocio_id) {
+        itemBD.negocio_id = negocioId;
+      }
 
       const { data, error } = await supabase
         .from('productos')
-        .upsert(item)
+        .upsert(itemBD)
         .select()
         .single();
 
       if (error) {
-        console.error('Error al guardar producto en Supabase:', error);
+        console.error('Error al guardar en Supabase:', error);
         return normalizarProducto(producto);
       }
       return normalizarProducto(data);
-    } catch {
+    } catch (err) {
+      console.error('Excepción al guardar producto:', err);
       return normalizarProducto(producto);
     }
   },
