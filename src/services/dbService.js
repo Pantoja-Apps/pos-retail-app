@@ -236,7 +236,57 @@ export const dbService = {
   },
 
   // VENTAS
-    async registrarVenta(venta, negocioId) {
+    
+  // Registrar Abono con sincronización 100% en Supabase
+  async registrarAbono(clienteDoc, montoUSD, detalles = {}) {
+    try {
+      if (!clienteDoc || Number(montoUSD) <= 0) return null;
+      const docLimpio = String(clienteDoc).trim();
+      const negocioId = localStorage.getItem('pos_negocio_id') || 'neg_default';
+
+      // 1. Obtener cliente actual de Supabase
+      const { data: clienteExistente } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('doc', docLimpio)
+        .maybeSingle();
+
+      const saldoAnterior = parseFloat(clienteExistente?.saldo_deudor_usd ?? clienteExistente?.saldo_pendiente_usd ?? 0) || 0;
+      const nuevoSaldo = Math.max(0, parseFloat((saldoAnterior - Number(montoUSD)).toFixed(2)));
+
+      const nuevoAbono = {
+        id: 'abn_' + Date.now(),
+        fecha: new Date().toISOString(),
+        monto_usd: Number(montoUSD),
+        metodo: detalles.metodo || 'efectivo',
+        detalles
+      };
+
+      const historialPrevio = Array.isArray(clienteExistente?.historial_abonos) 
+        ? clienteExistente.historial_abonos 
+        : (Array.isArray(clienteExistente?.historialAbonos) ? clienteExistente.historialAbonos : []);
+
+      const clienteParaGuardar = {
+        id: clienteExistente?.id || ('cli_' + Date.now()),
+        negocio_id: clienteExistente?.negocio_id || negocioId,
+        doc: docLimpio,
+        nombre: clienteExistente?.nombre || detalles.nombre || 'Cliente',
+        telefono: clienteExistente?.telefono || detalles.telefono || '',
+        saldo_deudor_usd: nuevoSaldo,
+        saldo_pendiente_usd: nuevoSaldo,
+        historial_abonos: [nuevoAbono, ...historialPrevio]
+      };
+
+      const { data, error } = await supabase.from('clientes').upsert(clienteParaGuardar).select().maybeSingle();
+      if (error) console.error('Error al guardar abono en Supabase:', error);
+      return data || clienteParaGuardar;
+    } catch (err) {
+      console.error('Fallo en registrarAbono dbService:', err);
+      return null;
+    }
+  },
+
+  async registrarVenta(venta, negocioId) {
     try {
       const itemBD = {
         id: String(venta.id),

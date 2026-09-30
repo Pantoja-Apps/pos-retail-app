@@ -1038,81 +1038,43 @@ export default function App() {
             if (montoNum <= 0) return;
 
             const docTarget = String(clienteId || '').replace(/[^0-9]/g, '');
-            const nuevoAbono = {
+            const nuevoAbonoLocal = {
               id: 'abn_' + Date.now(),
               fecha: new Date().toLocaleString(),
               montoUSD: montoNum
             };
 
-            let clienteModificado = null;
-
+            // Actualización inmediata del estado visual
             setClientes(prev => {
               const actualizados = prev.map(cli => {
                 const cDoc = String(cli.doc || '').replace(/[^0-9]/g, '');
                 if (cDoc === docTarget || String(cli.id) === String(clienteId)) {
-                  const abonosPrevios = cli.historialAbonos || [];
-                  const historial = [nuevoAbono, ...abonosPrevios];
-                  const saldoAnterior = parseFloat(cli.saldoPendienteUSD ?? cli.saldoDeudor ?? 0);
-                  const nuevoSaldo = Math.max(0, parseFloat((saldoAnterior - montoNum).toFixed(2)));
-                  
-                  const objActualizado = {
+                  const saldoActual = parseFloat(cli.saldoPendienteUSD ?? cli.saldoDeudor ?? cli.saldo_deudor_usd ?? 0);
+                  const nuevoSaldo = Math.max(0, parseFloat((saldoActual - montoNum).toFixed(2)));
+                  return {
                     ...cli,
                     saldoPendienteUSD: nuevoSaldo,
                     saldoDeudor: nuevoSaldo,
-                    historialAbonos: historial
+                    saldo_deudor_usd: nuevoSaldo,
+                    saldo_pendiente_usd: nuevoSaldo,
+                    historialAbonos: [nuevoAbonoLocal, ...(cli.historialAbonos || [])]
                   };
-                  clienteModificado = objActualizado;
-                  return objActualizado;
                 }
                 return cli;
               });
-
-              // Si el cliente no estaba en la lista de clientes (por ejemplo, vino de transacciones)
-              if (!clienteModificado) {
-                clienteModificado = {
-                  id: 'cli_' + Date.now(),
-                  doc: docTarget ? ('V-' + docTarget) : clienteId,
-                  nombre: 'Cliente',
-                  saldoPendienteUSD: 0,
-                  saldoDeudor: 0,
-                  historialAbonos: [nuevoAbono]
-                };
-                actualizados.push(clienteModificado);
-              }
-
-              // Guardar de inmediato en LocalStorage
               localStorage.setItem('pos_clientes', JSON.stringify(actualizados));
               return actualizados;
             });
 
-            // Guardar en Supabase
+            // Persistencia en Supabase
             try {
-              if (typeof supabase !== 'undefined' && supabase && clienteModificado) {
-                const { data: existente } = await supabase
-                  .from('clientes')
-                  .select('id, historialAbonos')
-                  .eq('doc', clienteModificado.doc)
-                  .maybeSingle();
-
-                if (existente) {
-                  const abonosBD = existente.historialAbonos || [];
-                  await supabase
-                    .from('clientes')
-                    .update({
-                      saldoPendienteUSD: clienteModificado.saldoPendienteUSD,
-                      saldoDeudor: clienteModificado.saldoPendienteUSD,
-                      historialAbonos: [nuevoAbono, ...abonosBD]
-                    })
-                    .eq('id', existente.id);
-                } else {
-                  await supabase
-                    .from('clientes')
-                    .upsert([clienteModificado]);
-                }
-                console.log('Abono guardado exitosamente en Supabase');
-              }
-            } catch (err) {
-              console.error('Error sincronizando abono con Supabase:', err);
+              const cliRef = (clientes || []).find(c => String(c.doc || '').replace(/[^0-9]/g, '') === docTarget);
+              await dbService.registrarAbono(cliRef?.doc || ('V-' + docTarget), montoNum, {
+                nombre: cliRef?.nombre,
+                telefono: cliRef?.telefono
+              });
+            } catch (e) {
+              console.error('Error al guardar abono en Supabase:', e);
             }
           }}
           alVolver={() => setVistaActual('pos')}
