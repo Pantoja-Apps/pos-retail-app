@@ -171,11 +171,16 @@ export const CreditosModal = ({
 
   const confirmarAbono = async () => {
     if (totalAbonadoUSD <= 0) return alert('Por favor ingresa un monto válido a abonar.');
-    
+
     let nombreMetodo = 'Efectivo ($)';
     if (metodoAbono === 'pagomovil') nombreMetodo = 'Pago Móvil (Bs)';
     else if (metodoAbono === 'punto') nombreMetodo = 'Punto Débito (Bs)';
     else if (metodoAbono === 'efectivo_bs') nombreMetodo = 'Efectivo Bs';
+
+    // Respetar de forma contable exacta la moneda ingresada
+    const montoBsReal = metodoAbono === 'dolares'
+      ? parseFloat((totalAbonadoUSD * tasa).toFixed(2))
+      : (parseFloat(montoBSInput) || 0);
 
     try {
       const fn = onAbonar || alRegistrarAbono;
@@ -183,15 +188,37 @@ export const CreditosModal = ({
         await fn({
           cliente: clienteAbonando,
           montoUSD: totalAbonadoUSD,
-          montoBS: parseFloat((totalAbonadoUSD * tasa).toFixed(2)),
+          montoBS: montoBsReal,
           metodoPago: nombreMetodo,
           tasa: tasa
         });
       }
+
+      // Inyección reactiva inmediata en la vista local
+      const nuevoAbonoInmediato = {
+        id: 'abn_' + Date.now(),
+        cliente_doc: clienteAbonando.doc || clienteAbonando.cedula || clienteAbonando.docClean,
+        monto_usd: totalAbonadoUSD,
+        monto_bs: montoBsReal,
+        metodo_pago: nombreMetodo,
+        tasa_bcv: tasa,
+        fecha: new Date().toISOString()
+      };
+
+      setAbonosSupabase(prev => [nuevoAbonoInmediato, ...prev]);
+
+      // Confirmar con Supabase en segundo plano
+      setTimeout(() => {
+        if (typeof recargarAbonosDirectos === 'function') {
+          recargarAbonosDirectos();
+        }
+      }, 500);
+
     } catch (e) {
       alert("Error procesando abono: " + (e?.message || JSON.stringify(e)));
     } finally {
       setClienteAbonando(null);
+      setMontosAbono({ dolares: '', pagomovil: '', punto: '', efectivo_bs: '' });
     }
   };
   // Lista reactiva de abonos en tiempo real para el cliente abierto
