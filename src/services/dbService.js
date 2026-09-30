@@ -254,7 +254,6 @@ export const dbService = {
       const docLimpio = String(clienteDoc).trim();
       const negocioId = negocioIdParam || localStorage.getItem('pos_negocio_id');
 
-      // Buscar cliente por documento y negocio_id
       let query = supabase.from('clientes').select('*').eq('doc', docLimpio);
       if (negocioId) {
         query = query.eq('negocio_id', negocioId);
@@ -306,16 +305,13 @@ export const dbService = {
         sincronizado: true
       };
 
-      // Si se definió correlativo, lo agregamos
       if (venta.correlativo) {
         itemBD.correlativo = String(venta.correlativo);
       }
 
       let res = await supabase.from('ventas').upsert(itemBD).select().single();
 
-      // Si falló por no existir la columna correlativo en la tabla, reintentamos de inmediato sin ese campo
       if (res.error && res.error.message && res.error.message.includes('correlativo')) {
-        console.warn('Columna correlativo no existe en Supabase; guardando sin ella para garantizar persistencia.');
         delete itemBD.correlativo;
         res = await supabase.from('ventas').upsert(itemBD).select().single();
       }
@@ -325,7 +321,6 @@ export const dbService = {
         return normalizarVenta(venta);
       }
 
-      // Si la venta es a crédito, sincronizar o actualizar cliente en Supabase
       if (itemBD.es_credito && venta.cliente?.doc) {
         try {
           const cliDoc = String(venta.cliente.doc).trim();
@@ -375,7 +370,6 @@ export const dbService = {
     }
   },
 
-  // Cierra el turno marcando como cerradas todas las ventas que no lo estén
   async cerrarTurno(negocioId) {
     try {
       const { error } = await supabase
@@ -438,9 +432,7 @@ export const dbService = {
     }
   },
 
-  // ==========================================
   // GESTIÓN FINANCIERA DE ABONOS (MULTI-TENANT)
-  // ==========================================
   async getAbonos(negocioId) {
     if (!negocioId) return [];
     try {
@@ -461,7 +453,7 @@ export const dbService = {
     }
   },
 
-    async registrarAbonoContable({
+  async registrarAbonoContable({
     negocioId,
     clienteDoc,
     clienteNombre,
@@ -477,7 +469,7 @@ export const dbService = {
       throw new Error('Faltan parámetros requeridos: negocioId o clienteDoc');
     }
     try {
-      // 1. Insertar el abono como hecho contable auditable en Supabase
+      // 1. Insertar el abono en la tabla abonos_clientes
       const { error: errorAbono } = await supabase
         .from('abonos_clientes')
         .insert([{
@@ -496,15 +488,39 @@ export const dbService = {
 
       if (errorAbono) throw errorAbono;
 
-      // 2. Actualizar el saldo_deudor_usd del cliente en ese negocio
+      // 2. Actualizar directamente el saldo_deudor_usd buscando al cliente por documento exacto o limpio
       const docClean = String(clienteDoc).replace(/[^0-9]/g, '');
-      const { error: errorCliente } = await supabase
+      
+      const { data: clienteMatch } = await supabase
         .from('clientes')
-        .update({ saldo_deudor_usd: nuevoSaldoUSD })
-        .eq('negocio_id', negocioId)
-        .or('doc.eq.' + clienteDoc + ',doc.eq.' + docClean + ',doc.eq.V-' + docClean);
+        .select('id, doc')
+        .eq('negocio_id', negocioId);
 
-      if (errorCliente) throw errorCliente;
+      let clienteIdEncontrado = null;
+      if (clienteMatch) {
+        const found = clienteMatch.find(c => {
+          const cClean = String(c.doc || '').replace(/[^0-9]/g, '');
+          return cClean === docClean || c.doc === clienteDoc || c.doc === 'V-' + docClean;
+        });
+        if (found) clienteIdEncontrado = found.id;
+      }
+
+      if (clienteIdEncontrado) {
+        const { error: errorUpdate } = await supabase
+          .from('clientes')
+          .update({ saldo_deudor_usd: nuevoSaldoUSD })
+          .eq('id', clienteIdEncontrado);
+
+        if (errorUpdate) throw errorUpdate;
+      } else {
+        await supabase.from('clientes').upsert({
+          id: 'cli_' + Date.now(),
+          negocio_id: negocioId,
+          doc: clienteDoc,
+          nombre: clienteNombre || 'Cliente',
+          saldo_deudor_usd: nuevoSaldoUSD
+        });
+      }
 
       return { success: true };
     } catch (e) {
