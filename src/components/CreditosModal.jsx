@@ -19,8 +19,8 @@ export default function CreditosModal({
   const [pestanaDetalle, setPestanaDetalle] = useState('compras');
   const [clienteAbonando, setClienteAbonando] = useState(null);
 
-  // Método de pago activo en el modal de abono
-  const [metodoAbono, setMetodoAbono] = useState('usd'); // 'usd' | 'pm' | 'punto' | 'bs'
+  // Método de pago activo en el modal de abono (INTACTO)
+  const [metodoAbono, setMetodoAbono] = useState('usd');
   const [montosAbono, setMontosAbono] = useState({ usd: '', pm: '', punto: '', bs: '' });
 
   const tasa = parseFloat(tasaCambio) || 1;
@@ -62,7 +62,7 @@ export default function CreditosModal({
 
   const abonosCliente = clienteDetalle?.historialAbonos || [];
 
-  // Cálculos de Abono
+  // Cálculos de Abono (INTACTO)
   const deudaClienteAbonando = parseFloat(clienteAbonando?.saldoPendienteUSD || clienteAbonando?.saldoDeudor || clienteAbonando?.saldoDeudorUSD || 0);
 
   const totalAbonadoUSD = (parseFloat(montosAbono.usd) || 0) +
@@ -70,7 +70,6 @@ export default function CreditosModal({
 
   const saldoRestanteUSD = Math.max(0, deudaClienteAbonando - totalAbonadoUSD);
 
-  // Manejo del teclado numérico integrado
   const presionarTecla = (num) => {
     setMontosAbono(prev => {
       const actual = prev[metodoAbono] || '';
@@ -109,21 +108,21 @@ export default function CreditosModal({
     const saldo = parseFloat(cli.saldoPendienteUSD || cli.saldoDeudor || cli.saldoDeudorUSD || 0);
     const tel = (cli.telefono || '').replace(/[^0-9]/g, '');
     if (!tel) return alert('El cliente no tiene teléfono registrado.');
-    const msg = encodeURIComponent(`Hola ${cli.nombre}, un cordial saludo de MiniMarket JJJP. Le recordamos su saldo pendiente de $${saldo.toFixed(2)} (Bs. ${(saldo * tasa).toFixed(2)}). ¡Agradecemos su preferencia!`);
+    const msg = encodeURIComponent(`Hola ${cli.nombre}, un cordial saludo de MiniMarket JJJP. Le recordamos amablemente su saldo pendiente de $${saldo.toFixed(2)} (Bs. ${(saldo * tasa).toFixed(2)}). ¡Agradecemos su pago!`);
     window.open(`https://wa.me/${tel}?text=${msg}`, '_blank');
   };
 
   return (
     <div style={styles.pantallaContainer}>
-      {/* Header Superior Corporativo */}
+      {/* Header Superior idéntico a Historial POS */}
       <header style={styles.headerPOS}>
-        <div style={styles.headerLeft}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
           <button onClick={alCerrar} style={styles.btnVolver} aria-label="Volver">
-            <ArrowLeft size={19} color="#0f2a4a" />
+            <ArrowLeft size={18} color="#0f2a4a" />
           </button>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <h1 style={styles.tituloHeader}>Créditos y Cuentas</h1>
-            <p style={styles.subtituloHeader}>Gestión de fiados y cartera de clientes</p>
+            <p style={styles.subtituloHeader}>Cartera de clientes con saldo pendiente</p>
           </div>
         </div>
 
@@ -133,27 +132,27 @@ export default function CreditosModal({
         </div>
       </header>
 
-      {/* Banner Financiero de Cartera */}
+      {/* Banner Financiero con micro-sombra */}
       <div style={styles.bannerCartera}>
         <div>
-          <div style={styles.carteraEtiqueta}>TOTAL POR COBRAR (DIVISA)</div>
+          <div style={styles.carteraEtiqueta}>TOTAL POR COBRAR</div>
           <div style={styles.carteraMontoUSD}>${totalDeudaGlobalUSD.toFixed(2)}</div>
-          <div style={styles.carteraMontoBS}>≈ Bs. {totalDeudaGlobalBS.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div style={styles.carteraMontoBS}>Bs. {totalDeudaGlobalBS.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
 
         <div style={styles.deudoresPill}>
-          <Users size={16} color="#3b82f6" />
-          <span>{clientesFiltrados.length} {clientesFiltrados.length === 1 ? 'cliente con deuda' : 'clientes con deuda'}</span>
+          <Users size={15} color="#60a5fa" />
+          <span>{clientesFiltrados.length} {clientesFiltrados.length === 1 ? 'Cliente' : 'Clientes'}</span>
         </div>
       </div>
 
-      {/* Barra de Búsqueda */}
+      {/* Buscador */}
       <div style={styles.areaBuscador}>
         <div style={styles.cajaSearch}>
           <Search size={18} color="#94a3b8" />
           <input
             type="text"
-            placeholder="Buscar deudor por cédula o nombre..."
+            placeholder="Buscar por cédula o nombre..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             style={styles.inputSearch}
@@ -166,14 +165,14 @@ export default function CreditosModal({
         </div>
       </div>
 
-      {/* Lista de Clientes con Deuda */}
+      {/* Lista de Tarjetas Estilo POS */}
       <div style={styles.cuerpoScroll}>
         {clientesFiltrados.length === 0 ? (
           <div style={styles.vacioBox}>
             <div style={styles.circuloCheck}>
               <CheckCircle size={38} color="#10b981" />
             </div>
-            <h3 style={styles.vacioTitulo}>Cartera sin deudas pendientes</h3>
+            <h3 style={styles.vacioTitulo}>¡Sin deudas pendientes!</h3>
             <p style={styles.vacioSub}>Todos los clientes se encuentran al día con sus pagos.</p>
           </div>
         ) : (
@@ -184,53 +183,66 @@ export default function CreditosModal({
               const iniciales = (cli.nombre || 'C').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
 
               return (
-                <div key={cli.id || cli.doc} style={styles.tarjetaDeudor}>
-                  {/* Zona de Información */}
-                  <div
-                    onClick={() => { setClienteDetalle(cli); setPestanaDetalle('compras'); }}
-                    style={styles.tarjetaInfoClick}
-                  >
-                    <div style={styles.avatarIniciales}>{iniciales}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={styles.nombreCliente}>{cli.nombre}</div>
-                      <div style={styles.metaCliente}>
-                        <span style={styles.cedulaTag}>{cli.doc}</span>
-                        {cli.telefono && (
-                          <span style={styles.telefonoTag}>
-                            <Phone size={11} color="#64748b" /> {cli.telefono}
-                          </span>
-                        )}
+                <div key={cli.id || cli.doc} style={styles.tarjetaTicketPOS}>
+                  {/* Línea verde decorativa izquierda como en las facturas */}
+                  <div style={styles.bordeVerdeLateral} />
+
+                  <div style={{ flex: 1, padding: '14px 14px 12px' }}>
+                    {/* Fila 1: Avatar, Nombre Completo y Cédula */}
+                    <div
+                      onClick={() => { setClienteDetalle(cli); setPestanaDetalle('compras'); }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                          <div style={styles.avatarIniciales}>{iniciales}</div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={styles.nombreCliente}>{cli.nombre}</div>
+                            <div style={styles.cedulaTexto}>C.I: {cli.doc}</div>
+                          </div>
+                        </div>
+
+                        {/* Montos destacados a la derecha */}
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={styles.montoPrincipalDolar}>${saldo.toFixed(2)}</div>
+                          <div style={styles.montoBolivaresText}>Bs. {saldoBS.toFixed(2)}</div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Zona de Saldo y Acciones */}
-                  <div style={styles.tarjetaAcciones}>
-                    <div style={styles.cajaMontoDeuda}>
-                      <span style={styles.tagSaldoLabel}>SALDO</span>
-                      <span style={styles.valorDeudaUSD}>${saldo.toFixed(2)}</span>
-                      <span style={styles.valorDeudaBS}>Bs. {saldoBS.toFixed(2)}</span>
+                      {/* Teléfono si existe */}
+                      {cli.telefono && (
+                        <div style={styles.filaTelefonoBadge}>
+                          <Phone size={12} color="#64748b" />
+                          <span>{cli.telefono}</span>
+                        </div>
+                      )}
                     </div>
 
-                    <div style={styles.grupoBotonesCard}>
+                    {/* Fila 2: Separador suave */}
+                    <div style={styles.divisorTicket} />
+
+                    {/* Fila 3: Botones de Acción Amplios y Ergonómicos */}
+                    <div style={styles.filaBotonesAccion}>
                       {cli.telefono && (
                         <button
                           onClick={() => enviarWhatsApp(cli)}
-                          title="Enviar cobro por WhatsApp"
-                          style={styles.btnWS}
+                          style={styles.btnWhatsAppElegante}
                         >
-                          <MessageCircle size={17} color="#25D366" />
+                          <MessageCircle size={16} color="#16a34a" />
+                          <span>Cobrar por WhatsApp</span>
                         </button>
                       )}
+
                       <button
                         onClick={() => {
                           setClienteAbonando(cli);
                           setMontosAbono({ usd: '', pm: '', punto: '', bs: '' });
                           setMetodoAbono('usd');
                         }}
-                        style={styles.btnAbonarPill}
+                        style={styles.btnAbonarPrincipal}
                       >
-                        Abonar
+                        <CreditCard size={15} />
+                        <span>Abonar</span>
                       </button>
                     </div>
                   </div>
@@ -308,11 +320,10 @@ export default function CreditosModal({
         </div>
       )}
 
-      {/* MODAL TÁCTIL DE REGISTRO DE ABONO (ESTILO CAJA POS) */}
+      {/* MODAL TÁCTIL DE REGISTRO DE ABONO (TOTALMENTE INTACTO COMO TE GUSTÓ) */}
       {clienteAbonando && (
         <div style={styles.overlay}>
           <div style={styles.modalCobroBox}>
-            {/* Header del Cobro */}
             <div style={styles.modalHeaderCobro}>
               <div>
                 <span style={styles.cobroPequeno}>ABONAR A CLIENTE</span>
@@ -323,7 +334,6 @@ export default function CreditosModal({
               </button>
             </div>
 
-            {/* Tarjeta de Saldos */}
             <div style={styles.boxResumenDeuda}>
               <div style={styles.colSaldo}>
                 <span style={styles.subtextDeuda}>DEUDA ACTUAL</span>
@@ -340,7 +350,6 @@ export default function CreditosModal({
               </div>
             </div>
 
-            {/* Selector de Método de Pago */}
             <div style={styles.metodosGrid}>
               {[
                 { id: 'usd', label: 'Efectivo $', icon: Banknote },
@@ -369,7 +378,6 @@ export default function CreditosModal({
               })}
             </div>
 
-            {/* Input del Método Seleccionado */}
             <div style={styles.displayMontoAbono}>
               <span style={styles.monedaLabel}>
                 {metodoAbono === 'usd' ? 'USD $' : 'BS.'}
@@ -382,7 +390,6 @@ export default function CreditosModal({
               </button>
             </div>
 
-            {/* Teclado Numérico POS */}
             <div style={styles.tecladoNumerico}>
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0'].map(val => (
                 <button key={val} onClick={() => presionarTecla(val)} style={styles.tecla}>
@@ -394,7 +401,6 @@ export default function CreditosModal({
               </button>
             </div>
 
-            {/* Botón de Confirmación */}
             <button onClick={confirmarAbono} style={styles.btnConfirmarFinal}>
               <CheckCircle size={18} /> Confirmar Abono de ${totalAbonadoUSD.toFixed(2)}
             </button>
@@ -415,87 +421,91 @@ const styles = {
     justifyContent: 'space-between', alignItems: 'center',
     borderBottom: '1px solid #e2e8f0'
   },
-  headerLeft: { display: 'flex', alignItems: 'center', gap: '12px' },
   btnVolver: {
-    background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '12px',
-    width: '38px', height: '38px', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', cursor: 'pointer'
+    background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '10px',
+    width: '36px', height: '36px', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', cursor: 'pointer', flexShrink: 0
   },
-  tituloHeader: { margin: 0, fontSize: '1.15rem', color: '#0f2a4a', fontWeight: '800' },
-  subtituloHeader: { margin: 0, fontSize: '0.75rem', color: '#64748b' },
+  tituloHeader: { margin: 0, fontSize: '1.1rem', color: '#0f2a4a', fontWeight: '800' },
+  subtituloHeader: { margin: 0, fontSize: '0.72rem', color: '#64748b' },
   badgeTasaBCV: {
     backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px',
-    padding: '4px 10px', textAlign: 'right'
+    padding: '4px 10px', textAlign: 'right', flexShrink: 0
   },
-  badgeTasaLabel: { display: 'block', fontSize: '0.62rem', color: '#64748b', fontWeight: '800' },
-  badgeTasaValor: { fontSize: '0.86rem', fontWeight: '800', color: '#0f2a4a' },
+  badgeTasaLabel: { display: 'block', fontSize: '0.6rem', color: '#64748b', fontWeight: '800' },
+  badgeTasaValor: { fontSize: '0.84rem', fontWeight: '800', color: '#0f2a4a' },
   bannerCartera: {
-    backgroundColor: '#0f2a4a', color: '#ffffff', padding: '16px 20px',
+    backgroundColor: '#0f2a4a', color: '#ffffff', padding: '14px 16px',
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     boxShadow: '0 4px 12px rgba(15,42,74,0.1)'
   },
-  carteraEtiqueta: { fontSize: '0.72rem', color: '#93c5fd', fontWeight: '800', letterSpacing: '0.5px' },
-  carteraMontoUSD: { fontSize: '1.9rem', fontWeight: '900', lineHeight: 1.1, marginTop: '2px' },
-  carteraMontoBS: { fontSize: '0.82rem', color: '#cbd5e1', marginTop: '3px' },
+  carteraEtiqueta: { fontSize: '0.68rem', color: '#93c5fd', fontWeight: '800', letterSpacing: '0.5px' },
+  carteraMontoUSD: { fontSize: '1.75rem', fontWeight: '900', lineHeight: 1.1, marginTop: '2px' },
+  carteraMontoBS: { fontSize: '0.78rem', color: '#cbd5e1', marginTop: '3px' },
   deudoresPill: {
     backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
     padding: '6px 12px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '6px',
-    fontSize: '0.82rem', fontWeight: '700', color: '#fff'
+    fontSize: '0.8rem', fontWeight: '700', color: '#fff'
   },
-  areaBuscador: { padding: '12px 16px', backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' },
+  areaBuscador: { padding: '10px 16px', backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0' },
   cajaSearch: {
-    display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#f1f5f9',
-    padding: '10px 14px', borderRadius: '12px', border: '1px solid #e2e8f0'
+    display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#f1f5f9',
+    padding: '8px 12px', borderRadius: '10px', border: '1px solid #e2e8f0'
   },
-  inputSearch: { border: 'none', backgroundColor: 'transparent', width: '100%', outline: 'none', fontSize: '0.9rem', color: '#0f2a4a' },
+  inputSearch: { border: 'none', backgroundColor: 'transparent', width: '100%', outline: 'none', fontSize: '0.88rem', color: '#0f2a4a' },
   btnLimpiar: { background: 'none', border: 'none', cursor: 'pointer', display: 'flex' },
-  cuerpoScroll: { flex: 1, overflowY: 'auto', padding: '14px 16px' },
+  cuerpoScroll: { flex: 1, overflowY: 'auto', padding: '12px 14px' },
   vacioBox: {
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     height: '65%', textAlign: 'center'
   },
   circuloCheck: {
-    width: '68px', height: '68px', borderRadius: '50%', backgroundColor: '#ecfdf5',
+    width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#ecfdf5',
     display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px'
   },
-  vacioTitulo: { margin: '0 0 4px', color: '#0f2a4a', fontSize: '1.15rem', fontWeight: '800' },
-  vacioSub: { margin: 0, color: '#64748b', fontSize: '0.86rem' },
+  vacioTitulo: { margin: '0 0 4px', color: '#0f2a4a', fontSize: '1.1rem', fontWeight: '800' },
+  vacioSub: { margin: 0, color: '#64748b', fontSize: '0.84rem' },
   tarjetasGrid: { display: 'flex', flexDirection: 'column', gap: '10px' },
-  tarjetaDeudor: {
-    backgroundColor: '#ffffff', borderRadius: '16px', padding: '14px 16px',
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+
+  // Tarjeta Ticket POS
+  tarjetaTicketPOS: {
+    backgroundColor: '#ffffff', borderRadius: '14px',
+    border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+    display: 'flex', overflow: 'hidden'
   },
-  tarjetaInfoClick: { flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' },
+  bordeVerdeLateral: {
+    width: '5px', backgroundColor: '#dc2626', flexShrink: 0
+  },
   avatarIniciales: {
-    width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#e0e7ff',
-    color: '#3730a3', fontWeight: '900', fontSize: '0.95rem', display: 'flex',
+    width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#fee2e2',
+    color: '#b91c1c', fontWeight: '900', fontSize: '0.9rem', display: 'flex',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0
   },
-  nombreCliente: { fontSize: '0.96rem', fontWeight: '800', color: '#0f2a4a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  metaCliente: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' },
-  cedulaTag: {
-    backgroundColor: '#f1f5f9', color: '#475569', fontSize: '0.74rem',
-    fontWeight: '700', padding: '2px 6px', borderRadius: '6px'
+  nombreCliente: { fontSize: '0.95rem', fontWeight: '800', color: '#0f2a4a', lineHeight: 1.2 },
+  cedulaTexto: { fontSize: '0.76rem', color: '#64748b', marginTop: '2px', fontWeight: '600' },
+  montoPrincipalDolar: { fontSize: '1.35rem', fontWeight: '900', color: '#dc2626', lineHeight: 1.1 },
+  montoBolivaresText: { fontSize: '0.74rem', fontWeight: '700', color: '#64748b', marginTop: '2px' },
+  filaTelefonoBadge: {
+    display: 'inline-flex', alignItems: 'center', gap: '4px',
+    marginTop: '6px', fontSize: '0.74rem', color: '#64748b',
+    backgroundColor: '#f8fafc', padding: '2px 8px', borderRadius: '6px', border: '1px solid #e2e8f0'
   },
-  telefonoTag: { display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.74rem', color: '#64748b' },
-  tarjetaAcciones: { display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 },
-  cajaMontoDeuda: { textAlign: 'right' },
-  tagSaldoLabel: { fontSize: '0.62rem', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.5px' },
-  valorDeudaUSD: { display: 'block', fontSize: '1.25rem', fontWeight: '900', color: '#dc2626', lineHeight: 1.1 },
-  valorDeudaBS: { display: 'block', fontSize: '0.74rem', fontWeight: '700', color: '#64748b', marginTop: '2px' },
-  grupoBotonesCard: { display: 'flex', alignItems: 'center', gap: '6px' },
-  btnWS: {
-    backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px',
-    width: '36px', height: '36px', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', cursor: 'pointer'
+  divisorTicket: { height: '1px', backgroundColor: '#f1f5f9', margin: '10px 0 8px' },
+  filaBotonesAccion: { display: 'flex', gap: '8px' },
+  btnWhatsAppElegante: {
+    flex: 1, backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0',
+    color: '#15803d', borderRadius: '10px', height: '36px',
+    fontSize: '0.78rem', fontWeight: '700', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer'
   },
-  btnAbonarPill: {
-    backgroundColor: '#0052cc', color: '#ffffff', border: 'none',
-    padding: '0 14px', height: '36px', borderRadius: '10px',
-    fontWeight: '800', fontSize: '0.84rem', cursor: 'pointer',
-    boxShadow: '0 2px 6px rgba(0,82,204,0.2)'
+  btnAbonarPrincipal: {
+    flex: 1, backgroundColor: '#0052cc', color: '#ffffff', border: 'none',
+    borderRadius: '10px', height: '36px', fontSize: '0.82rem', fontWeight: '800',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+    cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,82,204,0.2)'
   },
+
+  // Modales
   overlay: {
     position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.7)',
     backdropFilter: 'blur(3px)', zIndex: 100000, display: 'flex',
