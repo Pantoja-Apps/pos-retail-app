@@ -229,7 +229,7 @@ export const CreditosModal = ({
                   <FileText size={15} /> Ver Movimientos
                 </button>
                 <button 
-                  onClick={() => abrirModalAbonar(c)} 
+                  onClick={() => abrirModalAbono(c)} 
                   style={styles.btnAbonar}
                 >
                   <CreditCard size={15} /> Abonar
