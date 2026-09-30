@@ -475,7 +475,7 @@ export const dbService = {
           cliente_doc: clienteDoc,
           cliente_nombre: clienteNombre || '',
           cajero_id: cajeroId || 'usr_admin',
-          cajeroNombre: cajeroNombre || 'Administrador',
+          cajero_nombre: cajeroNombre || 'Administrador',
           monto_usd: montoUSD,
           monto_bs: montoBS,
           tasa_bcv: tasaBCV,
