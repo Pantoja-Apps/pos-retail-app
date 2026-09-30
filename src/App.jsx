@@ -697,8 +697,36 @@ export default function App() {
       const prods = await dbService.getProductos(res.negocio.id);
       if (prods?.length) setProductos(prods);
 
-      const clis = await dbService.getClientes(res.negocio.id);
-      if (clis?.length) setClientes(clis);
+      const clis = await dbService.getClientes(res.negocio.id) || [];
+      const vtasTodas = await dbService.getVentas(res.negocio.id) || [];
+
+      // Reconstruir saldos pendientes a partir de ventas a crédito reales de Supabase
+      const mapaDeudas = new Map();
+      vtasTodas.forEach(v => {
+        if (v.esCredito || v.es_credito) {
+          const doc = (v.cliente?.doc || '').replace(/[^0-9]/g, '');
+          if (doc) {
+            const monto = parseFloat(v.totalUSD ?? v.total_usd ?? 0) || 0;
+            mapaDeudas.set(doc, (mapaDeudas.get(doc) || 0) + monto);
+          }
+        }
+      });
+
+      const clientesConsolidados = (clis.length > 0 ? clis : []).map(c => {
+        const docLimpio = (c.doc || '').replace(/[^0-9]/g, '');
+        const saldoVentas = mapaDeudas.get(docLimpio) || 0;
+        const saldoDirecto = parseFloat(c.saldoPendienteUSD ?? c.saldoDeudor ?? c.saldo_deudor_usd ?? 0) || 0;
+        const saldoFinal = Math.max(saldoVentas, saldoDirecto);
+        return {
+          ...c,
+          saldoPendienteUSD: saldoFinal,
+          saldoDeudor: saldoFinal
+        };
+      });
+
+      if (clientesConsolidados.length > 0) {
+        setClientes(clientesConsolidados);
+      }
 
       const vtas = await dbService.getVentas(res.negocio.id);
       if (Array.isArray(vtas) && vtas.length > 0) {

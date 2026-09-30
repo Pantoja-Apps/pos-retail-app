@@ -236,7 +236,7 @@ export const dbService = {
   },
 
   // VENTAS
-  async registrarVenta(venta, negocioId) {
+    async registrarVenta(venta, negocioId) {
     try {
       const itemBD = {
         id: String(venta.id),
@@ -244,7 +244,6 @@ export const dbService = {
         fecha: venta.fecha || new Date().toISOString(),
         cajero_id: String(venta.cajeroId || venta.cajero_id || venta.cajero?.id || 'usr_master'),
         cajero_nombre: venta.cajero || venta.cajeroNombre || venta.cajero_nombre || 'Cajero',
-        correlativo: venta.correlativo || null,
         terminal_id: venta.terminalId || venta.terminal_id || 'caja_01',
         terminal_nombre: venta.caja || venta.terminalNombre || venta.terminal_nombre || 'Caja 01',
         cliente: venta.cliente || null,
@@ -261,19 +260,57 @@ export const dbService = {
         sincronizado: true
       };
 
-      const { data, error } = await supabase
-        .from('ventas')
-        .upsert(itemBD)
-        .select()
-        .single();
+      // Si se definió correlativo, lo agregamos
+      if (venta.correlativo) {
+        itemBD.correlativo = String(venta.correlativo);
+      }
 
-      if (error) {
-        console.error('Error al registrar venta en Supabase:', error);
+      let res = await supabase.from('ventas').upsert(itemBD).select().single();
+
+      // Si falló por no existir la columna correlativo en la tabla, reintentamos de inmediato sin ese campo
+      if (res.error && res.error.message && res.error.message.includes('correlativo')) {
+        console.warn('Columna correlativo no existe en Supabase; guardando sin ella para garantizar persistencia.');
+        delete itemBD.correlativo;
+        res = await supabase.from('ventas').upsert(itemBD).select().single();
+      }
+
+      if (res.error) {
+        console.error('Error persistente al registrar venta en Supabase:', res.error);
         return normalizarVenta(venta);
       }
-      return normalizarVenta(data);
+
+      // Si la venta es a crédito, sincronizar o actualizar cliente en Supabase
+      if (itemBD.es_credito && venta.cliente?.doc) {
+        try {
+          const cliDoc = String(venta.cliente.doc).trim();
+          const { data: clienteExistente } = await supabase
+            .from('clientes')
+            .select('*')
+            .eq('doc', cliDoc)
+            .maybeSingle();
+
+          const saldoAnterior = parseFloat(clienteExistente?.saldo_deudor_usd ?? 0) || 0;
+          const nuevoSaldoUSD = parseFloat((saldoAnterior + itemBD.total_usd).toFixed(2));
+
+          const clienteParaGuardar = {
+            id: clienteExistente?.id || ('cli_' + Date.now()),
+            negocio_id: itemBD.negocio_id,
+            doc: cliDoc,
+            nombre: venta.cliente.nombre || 'Cliente',
+            telefono: venta.cliente.telefono || '',
+            saldo_deudor_usd: nuevoSaldoUSD,
+            saldo_pendiente_usd: nuevoSaldoUSD
+          };
+
+          await supabase.from('clientes').upsert(clienteParaGuardar);
+        } catch (errCli) {
+          console.error('Error al actualizar saldo deudor en tabla clientes:', errCli);
+        }
+      }
+
+      return normalizarVenta(res.data || venta);
     } catch (err) {
-      console.error('Fallo en registrarVenta:', err);
+      console.error('Fallo general en registrarVenta:', err);
       return normalizarVenta(venta);
     }
   },
