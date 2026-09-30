@@ -987,9 +987,10 @@ export default function App() {
             const nuevoSaldo = Math.max(0, parseFloat((cliente.totalDeudaUSD - montoUSD).toFixed(2)));
 
             // Actualización inmediata en memoria
+            const targetClean = String(cliente.doc || '').replace(/[^0-9]/g, '');
             setClientes(prev => prev.map(c => {
               const cClean = String(c.doc || '').replace(/[^0-9]/g, '');
-              if (cClean === cliente.docClean) {
+              if (c.id === cliente.id || (cClean && targetClean && cClean === targetClean)) {
                 return { ...c, saldo_deudor_usd: nuevoSaldo, saldoPendienteUSD: nuevoSaldo, saldoDeudor: nuevoSaldo };
               }
               return c;
