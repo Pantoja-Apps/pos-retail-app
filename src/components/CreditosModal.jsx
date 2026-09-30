@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  ArrowLeft, Search, UserCheck, CreditCard, 
-  AlertCircle, Phone, X 
+  ArrowLeft, Search, CheckCircle, CreditCard, 
+  DollarSign, Phone, MessageCircle, X, AlertCircle 
 } from 'lucide-react';
 
 export default function CreditosModal({
@@ -13,631 +13,290 @@ export default function CreditosModal({
 }) {
   const tasa = parseFloat(tasaCambio) || 1;
   const [busqueda, setBusqueda] = useState('');
-  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
-  const [mostrarModalAbono, setMostrarModalAbono] = useState(false);
+  const [clienteAbonando, setClienteAbonando] = useState(null);
+  const [montosAbono, setMontosAbono] = useState({ usd: '', pm: '', punto: '', bs: '' });
+  const [procesando, setProcesando] = useState(false);
 
-  const [montoUSD, setMontoUSD] = useState('');
-  const [montoBS, setMontoBS] = useState('');
-  const [procesandoAbono, setProcesandoAbono] = useState(false);
-
-  // Lista unificada de clientes sin duplicados
-  const listaClientes = useMemo(() => {
+  // Unificar clientes por número de documento limpio
+  const clientesConsolidados = useMemo(() => {
     const mapa = new Map();
+
     (clientes || []).forEach(c => {
       const docClean = String(c.doc || c.cedula || c.id || '').replace(/[^0-9]/g, '');
-      if (docClean && !mapa.has(docClean)) {
-        const saldo = parseFloat(c.saldoPendienteUSD ?? c.saldoDeudor ?? c.saldo_deudor_usd ?? 0) || 0;
+      if (!docClean) return;
+
+      if (!mapa.has(docClean)) {
         mapa.set(docClean, {
           ...c,
-          saldoActualUSD: Math.max(0, saldo)
+          docClean,
+          totalDeudaUSD: 0
         });
       }
     });
-    return Array.from(mapa.values());
-  }, [clientes]);
 
-  // Filtro por buscador (si no busca nada, muestra a TODOS los clientes)
+    // Calcular deuda activa real desde las ventas fiadas en Supabase (es_credito = true y no anuladas/cerradas)
+    (transacciones || []).forEach(t => {
+      const esFiado = t.es_credito === true || t.esCredito === true || t.tipoPago === 'credito';
+      const noPagada = t.estado === 'activa' || t.estado === 'pendiente' || !t.estado;
+      if (esFiado && noPagada && !t.anulada) {
+        const tDoc = String(t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
+        if (mapa.has(tDoc)) {
+          const cli = mapa.get(tDoc);
+          cli.totalDeudaUSD += parseFloat(t.total_usd ?? t.totalUSD ?? 0);
+        }
+      }
+    });
+
+    return Array.from(mapa.values());
+  }, [clientes, transacciones]);
+
+  // Filtrar clientes
   const clientesFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return listaClientes;
-    return listaClientes.filter(c => {
+    return clientesConsolidados.filter(c => {
       const doc = String(c.doc || '').toLowerCase();
       const nom = String(c.nombre || '').toLowerCase();
-      return doc.includes(q) || nom.includes(q);
+      const coincide = !q || doc.includes(q) || nom.includes(q);
+      return coincide;
     });
-  }, [listaClientes, busqueda]);
+  }, [clientesConsolidados, busqueda]);
 
-  const deudaTotalUSD = useMemo(() => {
-    return listaClientes.reduce((acc, c) => acc + c.saldoActualUSD, 0);
-  }, [listaClientes]);
+  const totalDeudaGlobalUSD = useMemo(() => {
+    return clientesConsolidados.reduce((sum, c) => sum + c.totalDeudaUSD, 0);
+  }, [clientesConsolidados]);
 
-  const comprasCliente = useMemo(() => {
-    if (!clienteSeleccionado) return [];
-    const docCli = String(clienteSeleccionado.doc || '').replace(/[^0-9]/g, '');
-    return (transacciones || []).filter(t => {
-      const tDoc = String(t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
-      return tDoc && tDoc === docCli;
-    });
-  }, [clienteSeleccionado, transacciones]);
+  const totalDeudaGlobalBS = totalDeudaGlobalUSD * tasa;
 
-  const abrirAbono = (cliente) => {
-    setClienteSeleccionado(cliente);
-    setMontoUSD('');
-    setMontoBS('');
-    setMostrarModalAbono(true);
-  };
+  // Manejo de abonos
+  const totalAbonadoUSD = (parseFloat(montosAbono.usd) || 0) + 
+    (((parseFloat(montosAbono.pm) || 0) + (parseFloat(montosAbono.punto) || 0) + (parseFloat(montosAbono.bs) || 0)) / tasa);
 
-  const ejecutarAbono = async () => {
-    const abonoFinal = parseFloat(montoUSD) || 0;
-    if (abonoFinal <= 0 || !clienteSeleccionado) return;
+  const restanteUSD = Math.max(0, (clienteAbonando?.totalDeudaUSD || 0) - totalAbonadoUSD);
 
-    setProcesandoAbono(true);
+  const confirmarAbono = async () => {
+    if (totalAbonadoUSD <= 0 || !clienteAbonando) return;
+    setProcesando(true);
     try {
       if (onAbonar) {
-        await onAbonar(clienteSeleccionado.doc || clienteSeleccionado.id, abonoFinal);
+        await onAbonar(clienteAbonando.doc || clienteAbonando.id, totalAbonadoUSD);
       }
-      setMostrarModalAbono(false);
-      setClienteSeleccionado(null);
-      setMontoUSD('');
-      setMontoBS('');
-    } catch (err) {
-      console.error('Error al aplicar abono:', err);
+      setClienteAbonando(null);
+      setMontosAbono({ usd: '', pm: '', punto: '', bs: '' });
+    } catch (e) {
+      console.error(e);
     } finally {
-      setProcesandoAbono(false);
+      setProcesando(false);
     }
   };
 
   return (
-    <div style={estilos.contenedorPrincipal}>
-      {/* HEADER CORREGIDO: Créditos y Clientes */}
-      <div style={estilos.header}>
-        <button onClick={alVolver} style={estilos.btnVolver}>
-          <ArrowLeft size={20} color="#0f172a" />
-        </button>
-        <div>
-          <h2 style={estilos.titulo}>Créditos y Clientes</h2>
-          <p style={estilos.subtitulo}>Cartera de clientes y cuentas</p>
-        </div>
-        <div style={estilos.badgeTasa}>
-          <span style={{ fontSize: '10px', color: '#64748b' }}>BCV</span>
-          <span style={{ fontWeight: 'bold', fontSize: '13px' }}>Bs. {tasa.toFixed(2)}</span>
-        </div>
-      </div>
-
-      {/* TARJETA TOTALIZADORA */}
-      <div style={estilos.cardResumen}>
-        <div>
-          <span style={estilos.lblResumen}>TOTAL PENDIENTE POR COBRAR</span>
-          <h1 style={estilos.montoGrandeUSD}>${deudaTotalUSD.toFixed(2)}</h1>
-          <span style={estilos.montoGrandeBS}>Bs. {(deudaTotalUSD * tasa).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
-        </div>
-        <div style={estilos.contadorClientes}>
-          <UserCheck size={20} color="#0284c7" />
-          <span style={{ fontWeight: 'bold', color: '#0369a1' }}>{listaClientes.length} Clientes</span>
-        </div>
-      </div>
-
-      {/* BUSCADOR */}
-      <div style={estilos.buscadorWrapper}>
-        <Search size={18} color="#94a3b8" />
-        <input 
-          type="text"
-          placeholder="Buscar por cédula o nombre..."
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          style={estilos.inputBuscador}
-        />
-        {busqueda && (
-          <button onClick={() => setBusqueda('')} style={estilos.btnLimpiarBusqueda}>
-            <X size={16} color="#94a3b8" />
-          </button>
-        )}
-      </div>
-
-      {/* LISTA DE CLIENTES - SIEMPRE VISIBLE */}
-      <div style={estilos.listaContainer}>
-        {clientesFiltrados.length === 0 ? (
-          <div style={estilos.vacioContainer}>
-            <AlertCircle size={40} color="#cbd5e1" />
-            <p style={{ color: '#64748b', marginTop: '8px' }}>No hay clientes registrados en el sistema</p>
+    <div style={styles.modalOverlay}>
+      <div style={styles.modalContenedor}>
+        
+        {/* CABECERA ORIGINAL */}
+        <div style={styles.header}>
+          <div style={styles.headerIzq}>
+            <button onClick={alVolver} style={styles.btnVolver}>
+              <ArrowLeft size={18} color="#0f172a" />
+            </button>
+            <div>
+              <h2 style={styles.headerTitulo}>Créditos y Clientes</h2>
+              <span style={styles.headerSub}>Cartera de clientes con saldo pendiente</span>
+            </div>
           </div>
-        ) : (
-          clientesFiltrados.map((cli) => {
-            const tieneDeuda = cli.saldoActualUSD > 0.01;
-            return (
-              <div key={cli.id || cli.doc} style={estilos.cardCliente}>
-                <div style={estilos.infoFila}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={estilos.nombreCliente}>{cli.nombre || 'Cliente General'}</span>
-                      {tieneDeuda ? (
-                        <span style={estilos.badgeDeudor}>Debe ${cli.saldoActualUSD.toFixed(2)}</span>
-                      ) : (
-                        <span style={estilos.badgeSolvente}>Al Día</span>
+          <div style={styles.bcvBadge}>
+            <span style={styles.bcvLabel}>TASA BCV</span>
+            <span style={styles.bcvValor}>Bs. {tasa.toFixed(2)}</span>
+          </div>
+        </div>
+
+        {/* RESUMEN GLOBAL ORIGINAL */}
+        <div style={styles.resumenCard}>
+          <div>
+            <span style={styles.resumenLabel}>TOTAL POR COBRAR</span>
+            <div style={styles.resumenMontoUSD}>
+              ${totalDeudaGlobalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div style={styles.resumenMontoBS}>
+              Bs. {totalDeudaGlobalBS.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+          </div>
+          <div style={styles.resumenContador}>
+            <span>{clientesConsolidados.filter(c => c.totalDeudaUSD > 0.01).length} Clientes</span>
+          </div>
+        </div>
+
+        {/* BUSCADOR */}
+        <div style={styles.buscadorBox}>
+          <Search size={18} color="#94a3b8" />
+          <input
+            type="text"
+            placeholder="Buscar por cédula o nombre..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            style={styles.buscadorInput}
+          />
+        </div>
+
+        {/* LISTA DE CLIENTES */}
+        <div style={styles.tarjetasGrid}>
+          {clientesFiltrados.length === 0 ? (
+            <div style={styles.vacioBox}>
+              <CheckCircle size={38} color="#10b981" />
+              <h3 style={styles.vacioTitulo}>Sin clientes encontrados</h3>
+            </div>
+          ) : (
+            clientesFiltrados.map((cli) => {
+              const tieneDeuda = cli.totalDeudaUSD > 0.01;
+              return (
+                <div key={cli.docClean} style={styles.tarjetaCliente}>
+                  <div style={styles.tarjetaFilaSup}>
+                    <div style={styles.tarjetaAvatar}>
+                      {(cli.nombre || 'C').charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={styles.tarjetaNombre}>{cli.nombre}</div>
+                      <div style={styles.tarjetaDoc}>{cli.doc}</div>
+                      {cli.telefono && (
+                        <div style={styles.tarjetaTel}>
+                          <Phone size={11} color="#64748b" />
+                          <span>{cli.telefono}</span>
+                        </div>
                       )}
                     </div>
-                    <span style={estilos.docCliente}>{cli.doc}</span>
-                    {cli.telefono && (
-                      <div style={estilos.telCliente}>
-                        <Phone size={12} color="#64748b" />
-                        <span>{cli.telefono}</span>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '18px', fontWeight: '800', color: tieneDeuda ? '#ef4444' : '#10b981' }}>
+                        ${cli.totalDeudaUSD.toFixed(2)}
                       </div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>
+                        Bs. {(cli.totalDeudaUSD * tasa).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={styles.tarjetaAcciones}>
+                    {cli.telefono && (
+                      <a
+                        href={`https://wa.me/${cli.telefono.replace(/[^0-9]/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={styles.btnWhatsapp}
+                      >
+                        <MessageCircle size={14} color="#16a34a" /> Cobrar por WhatsApp
+                      </a>
+                    )}
+                    {tieneDeuda && (
+                      <button
+                        onClick={() => {
+                          setClienteAbonando(cli);
+                          setMontosAbono({ usd: cli.totalDeudaUSD.toString(), pm: '', punto: '', bs: '' });
+                        }}
+                        style={styles.btnAbonarPrincipal}
+                      >
+                        <CreditCard size={14} /> Abonar
+                      </button>
                     )}
                   </div>
-
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '18px', fontWeight: 'bold', color: tieneDeuda ? '#dc2626' : '#16a34a' }}>
-                      ${cli.saldoActualUSD.toFixed(2)}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>
-                      Bs. {(cli.saldoActualUSD * tasa).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
                 </div>
-
-                <div style={estilos.accionesFila}>
-                  <button 
-                    onClick={() => setClienteSeleccionado(cli)}
-                    style={estilos.btnDetalle}
-                  >
-                    Movimientos
-                  </button>
-                  <button 
-                    onClick={() => abrirAbono(cli)}
-                    style={tieneDeuda ? estilos.btnAbonar : estilos.btnAbonarDesactivado}
-                  >
-                    <CreditCard size={15} /> Abonar
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* MODAL DE ABONO */}
-      {mostrarModalAbono && clienteSeleccionado && (
-        <div style={estilos.overlayModal}>
-          <div style={estilos.modalCaja}>
-            <div style={estilos.modalHeader}>
-              <h3 style={{ margin: 0, fontSize: '16px' }}>Registrar Abono</h3>
-              <button onClick={() => setMostrarModalAbono(false)} style={estilos.btnCerrarX}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={{ padding: '16px' }}>
-              <div style={estilos.boxClienteAbonando}>
-                <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{clienteSeleccionado.nombre}</span>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>Doc: {clienteSeleccionado.doc}</span>
-                <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>Deuda Total:</span>
-                  <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#dc2626' }}>${clienteSeleccionado.saldoActualUSD.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div style={{ marginTop: '16px' }}>
-                <label style={estilos.labelInput}>Monto a Abonar (USD)</label>
-                <input 
-                  type="number" 
-                  step="0.01"
-                  placeholder="0.00"
-                  value={montoUSD}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setMontoUSD(val);
-                    setMontoBS(val ? (parseFloat(val) * tasa).toFixed(2) : '');
-                  }}
-                  style={estilos.inputMonto}
-                />
-              </div>
-
-              <div style={{ marginTop: '12px' }}>
-                <label style={estilos.labelInput}>Equivalente en Bolívares</label>
-                <input 
-                  type="number" 
-                  step="0.01"
-                  placeholder="0.00"
-                  value={montoBS}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setMontoBS(val);
-                    setMontoUSD(val ? (parseFloat(val) / tasa).toFixed(2) : '');
-                  }}
-                  style={estilos.inputMonto}
-                />
-              </div>
-
-              {clienteSeleccionado.saldoActualUSD > 0 && (
-                <div style={{ marginTop: '12px' }}>
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      setMontoUSD(clienteSeleccionado.saldoActualUSD.toString());
-                      setMontoBS((clienteSeleccionado.saldoActualUSD * tasa).toFixed(2));
-                    }}
-                    style={estilos.btnPagarTodo}
-                  >
-                    Pagar Deuda Total (${clienteSeleccionado.saldoActualUSD.toFixed(2)})
-                  </button>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-                <button onClick={() => setMostrarModalAbono(false)} style={estilos.btnCancelar}>
-                  Cancelar
-                </button>
-                <button 
-                  disabled={procesandoAbono || !parseFloat(montoUSD)} 
-                  onClick={ejecutarAbono} 
-                  style={estilos.btnConfirmarAbono}
-                >
-                  {procesandoAbono ? 'Guardando...' : 'Confirmar Abono'}
-                </button>
-              </div>
-            </div>
-          </div>
+              );
+            })
+          )}
         </div>
-      )}
 
-      {/* MODAL MOVIMIENTOS */}
-      {clienteSeleccionado && !mostrarModalAbono && (
-        <div style={estilos.overlayModal}>
-          <div style={estilos.modalCajaGrande}>
-            <div style={estilos.modalHeader}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '16px' }}>{clienteSeleccionado.nombre}</h3>
-                <span style={{ fontSize: '12px', color: '#64748b' }}>{clienteSeleccionado.doc}</span>
+        {/* MODAL DE ABONO ORIGINAL */}
+        {clienteAbonando && (
+          <div style={styles.abonoOverlay}>
+            <div style={styles.abonoCard}>
+              <div style={styles.abonoHeader}>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800' }}>Registrar Abono</h3>
+                <button onClick={() => setClienteAbonando(null)} style={styles.btnCerrar}>
+                  <X size={18} />
+                </button>
               </div>
-              <button onClick={() => setClienteSeleccionado(null)} style={estilos.btnCerrarX}>
-                <X size={18} />
-              </button>
-            </div>
 
-            <div style={{ padding: '16px', maxHeight: '70vh', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: '#f8fafc', borderRadius: '8px', marginBottom: '16px' }}>
-                <div>
-                  <span style={{ fontSize: '11px', color: '#64748b' }}>SALDO ACTUAL</span>
-                  <div style={{ fontWeight: 'bold', fontSize: '18px', color: clienteSeleccionado.saldoActualUSD > 0 ? '#dc2626' : '#16a34a' }}>
-                    ${clienteSeleccionado.saldoActualUSD.toFixed(2)}
+              <div style={{ padding: '16px' }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '15px' }}>{clienteAbonando.nombre}</div>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>Cédula: {clienteAbonando.doc}</div>
+                  <div style={{ marginTop: '6px', fontSize: '14px', fontWeight: '700', color: '#ef4444' }}>
+                    Deuda Actual: ${clienteAbonando.totalDeudaUSD.toFixed(2)}
                   </div>
                 </div>
-                {clienteSeleccionado.saldoActualUSD > 0 && (
-                  <button onClick={() => abrirAbono(clienteSeleccionado)} style={estilos.btnAbonarModal}>
-                    Abonar a Cuenta
-                  </button>
-                )}
-              </div>
 
-              <h4 style={{ margin: '0 0 10px 0', fontSize: '13px' }}>Movimientos Registrados</h4>
-              {comprasCliente.length === 0 ? (
-                <p style={{ fontSize: '13px', color: '#94a3b8', textAlign: 'center', padding: '20px 0' }}>
-                  No hay ventas registradas a nombre de este cliente.
-                </p>
-              ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {comprasCliente.map((trx, idx) => (
-                    <div key={idx} style={{ padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                        <span>Venta #{trx.correlativo || trx.id?.slice(0, 6)}</span>
-                        <span>${Number(trx.totalUSD || 0).toFixed(2)}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', marginTop: '4px' }}>
-                        <span>{new Date(trx.fecha || Date.now()).toLocaleDateString()}</span>
-                        <span style={{ textTransform: 'capitalize' }}>{trx.tipoPago || (trx.esCredito ? 'Crédito' : 'Contado')}</span>
-                      </div>
-                    </div>
-                  ))}
+                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Monto en Dólares (USD):</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={montosAbono.usd}
+                    onChange={(e) => setMontosAbono({ ...montosAbono, usd: e.target.value })}
+                    style={styles.inputAbono}
+                  />
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginTop: '6px' }}>
+                    <span>Total a Abonar: <b>${totalAbonadoUSD.toFixed(2)}</b></span>
+                    <span>Resta: <b style={{ color: restanteUSD > 0 ? '#ef4444' : '#10b981' }}>${restanteUSD.toFixed(2)}</b></span>
+                  </div>
                 </div>
-              )}
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                  <button onClick={() => setClienteAbonando(null)} style={styles.btnCancelarAbono}>
+                    Cancelar
+                  </button>
+                  <button 
+                    disabled={procesando || totalAbonadoUSD <= 0} 
+                    onClick={confirmarAbono} 
+                    style={styles.btnConfirmarAbono}
+                  >
+                    {procesando ? 'Guardando...' : 'Confirmar Abono'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+      </div>
     </div>
   );
 }
 
-const estilos = {
-  contenedorPrincipal: {
-    padding: '16px',
-    maxWidth: '600px',
-    margin: '0 auto',
-    minHeight: '100vh',
-    background: '#f8fafc',
-    fontFamily: 'system-ui, -apple-system, sans-serif'
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: '16px'
-  },
-  btnVolver: {
-    background: '#ffffff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    padding: '8px',
-    cursor: 'pointer'
-  },
-  titulo: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: '#0f172a',
-    margin: 0
-  },
-  subtitulo: {
-    fontSize: '12px',
-    color: '#64748b',
-    margin: 0
-  },
-  badgeTasa: {
-    background: '#ffffff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '8px',
-    padding: '4px 8px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-end'
-  },
-  cardResumen: {
-    background: '#0f172a',
-    borderRadius: '14px',
-    padding: '18px',
-    color: '#ffffff',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '16px'
-  },
-  lblResumen: {
-    fontSize: '10px',
-    fontWeight: 'bold',
-    color: '#94a3b8',
-    letterSpacing: '0.5px'
-  },
-  montoGrandeUSD: {
-    fontSize: '28px',
-    fontWeight: 'bold',
-    margin: '4px 0 0 0',
-    color: '#ffffff'
-  },
-  montoGrandeBS: {
-    fontSize: '13px',
-    color: '#38bdf8'
-  },
-  contadorClientes: {
-    background: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: '10px',
-    padding: '8px 12px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px'
-  },
-  buscadorWrapper: {
-    display: 'flex',
-    alignItems: 'center',
-    background: '#ffffff',
-    border: '1px solid #cbd5e1',
-    borderRadius: '10px',
-    padding: '0 12px',
-    marginBottom: '14px'
-  },
-  inputBuscador: {
-    width: '100%',
-    padding: '10px 8px',
-    border: 'none',
-    outline: 'none',
-    fontSize: '14px'
-  },
-  btnLimpiarBusqueda: {
-    background: 'transparent',
-    border: 'none',
-    cursor: 'pointer'
-  },
-  listaContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px'
-  },
-  vacioContainer: {
-    textAlign: 'center',
-    padding: '40px 0'
-  },
-  cardCliente: {
-    background: '#ffffff',
-    borderRadius: '12px',
-    padding: '14px',
-    border: '1px solid #e2e8f0',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px'
-  },
-  infoFila: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start'
-  },
-  nombreCliente: {
-    fontWeight: 'bold',
-    fontSize: '14px',
-    color: '#0f172a'
-  },
-  badgeDeudor: {
-    background: '#fee2e2',
-    color: '#b91c1c',
-    fontSize: '10px',
-    fontWeight: 'bold',
-    padding: '2px 6px',
-    borderRadius: '4px'
-  },
-  badgeSolvente: {
-    background: '#dcfce7',
-    color: '#15803d',
-    fontSize: '10px',
-    fontWeight: 'bold',
-    padding: '2px 6px',
-    borderRadius: '4px'
-  },
-  docCliente: {
-    fontSize: '12px',
-    color: '#64748b'
-  },
-  telCliente: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    fontSize: '11px',
-    color: '#64748b',
-    marginTop: '2px'
-  },
-  accionesFila: {
-    display: 'flex',
-    gap: '8px',
-    borderTop: '1px solid #f1f5f9',
-    paddingTop: '10px'
-  },
-  btnDetalle: {
-    flex: 1,
-    padding: '7px',
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    borderRadius: '6px',
-    fontSize: '12px',
-    color: '#475569',
-    cursor: 'pointer',
-    fontWeight: '500'
-  },
-  btnAbonar: {
-    flex: 1,
-    padding: '7px',
-    background: '#0284c7',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '12px',
-    color: '#ffffff',
-    cursor: 'pointer',
-    fontWeight: 'bold',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '4px'
-  },
-  btnAbonarDesactivado: {
-    flex: 1,
-    padding: '7px',
-    background: '#f1f5f9',
-    border: '1px solid #e2e8f0',
-    borderRadius: '6px',
-    fontSize: '12px',
-    color: '#94a3b8',
-    cursor: 'not-allowed',
-    fontWeight: 'bold',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '4px'
-  },
-  overlayModal: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'rgba(0,0,0,0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 999,
-    padding: '16px'
-  },
-  modalCaja: {
-    background: '#ffffff',
-    borderRadius: '14px',
-    width: '100%',
-    maxWidth: '380px',
-    overflow: 'hidden'
-  },
-  modalCajaGrande: {
-    background: '#ffffff',
-    borderRadius: '14px',
-    width: '100%',
-    maxWidth: '440px',
-    overflow: 'hidden'
-  },
-  modalHeader: {
-    padding: '14px 16px',
-    borderBottom: '1px solid #e2e8f0',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  btnCerrarX: {
-    background: 'transparent',
-    border: 'none',
-    cursor: 'pointer',
-    color: '#64748b'
-  },
-  boxClienteAbonando: {
-    background: '#f8fafc',
-    padding: '10px',
-    borderRadius: '8px',
-    border: '1px solid #e2e8f0'
-  },
-  labelInput: {
-    display: 'block',
-    fontSize: '12px',
-    fontWeight: '600',
-    color: '#334155',
-    marginBottom: '4px'
-  },
-  inputMonto: {
-    width: '100%',
-    padding: '9px',
-    borderRadius: '8px',
-    border: '1px solid #cbd5e1',
-    fontSize: '15px',
-    outline: 'none',
-    boxSizing: 'border-box'
-  },
-  btnPagarTodo: {
-    background: '#f1f5f9',
-    border: '1px dashed #94a3b8',
-    borderRadius: '6px',
-    padding: '6px 10px',
-    fontSize: '11px',
-    fontWeight: 'bold',
-    color: '#475569',
-    cursor: 'pointer'
-  },
-  btnCancelar: {
-    flex: 1,
-    padding: '9px',
-    background: '#f1f5f9',
-    border: 'none',
-    borderRadius: '8px',
-    color: '#64748b',
-    fontWeight: '600',
-    cursor: 'pointer'
-  },
-  btnConfirmarAbono: {
-    flex: 1,
-    padding: '9px',
-    background: '#16a34a',
-    border: 'none',
-    borderRadius: '8px',
-    color: '#ffffff',
-    fontWeight: 'bold',
-    cursor: 'pointer'
-  },
-  btnAbonarModal: {
-    background: '#0284c7',
-    border: 'none',
-    color: '#ffffff',
-    padding: '6px 12px',
-    borderRadius: '6px',
-    fontSize: '12px',
-    fontWeight: 'bold',
-    cursor: 'pointer'
-  }
+const styles = {
+  modalOverlay: { position: 'fixed', inset: 0, background: '#f8fafc', zIndex: 1000, overflowY: 'auto' },
+  modalContenedor: { maxWidth: '650px', margin: '0 auto', padding: '16px', minHeight: '100vh', boxSizing: 'border-box' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' },
+  headerIzq: { display: 'flex', alignItems: 'center', gap: '10px' },
+  btnVolver: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '8px', cursor: 'pointer' },
+  headerTitulo: { margin: 0, fontSize: '17px', fontWeight: '800', color: '#0f172a' },
+  headerSub: { fontSize: '11px', color: '#64748b' },
+  bcvBadge: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '4px 8px', textAlign: 'right' },
+  bcvLabel: { display: 'block', fontSize: '9px', color: '#64748b', fontWeight: '700' },
+  bcvValor: { fontSize: '12px', fontWeight: '800', color: '#0f172a' },
+  resumenCard: { background: '#0f172a', borderRadius: '14px', padding: '16px', color: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' },
+  resumenLabel: { fontSize: '10px', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.5px' },
+  resumenMontoUSD: { fontSize: '26px', fontWeight: '800', margin: '2px 0' },
+  resumenMontoBS: { fontSize: '12px', color: '#38bdf8' },
+  resumenContador: { background: 'rgba(255, 255, 255, 0.1)', padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '700' },
+  buscadorBox: { display: 'flex', alignItems: 'center', gap: '8px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0 12px', marginBottom: '14px' },
+  buscadorInput: { width: '100%', padding: '10px 0', border: 'none', outline: 'none', fontSize: '13px' },
+  tarjetasGrid: { display: 'flex', flexDirection: 'column', gap: '10px' },
+  tarjetaCliente: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' },
+  tarjetaFilaSup: { display: 'flex', alignItems: 'center', gap: '10px' },
+  tarjetaAvatar: { width: '38px', height: '38px', borderRadius: '19px', background: '#fee2e2', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '15px' },
+  tarjetaNombre: { fontSize: '14px', fontWeight: '800', color: '#0f172a' },
+  tarjetaDoc: { fontSize: '12px', color: '#64748b' },
+  tarjetaTel: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b', marginTop: '2px' },
+  tarjetaAcciones: { display: 'flex', gap: '8px', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' },
+  btnWhatsapp: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#16a34a', fontSize: '12px', fontWeight: '600', textDecoration: 'none' },
+  btnAbonarPrincipal: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', borderRadius: '8px', border: 'none', background: '#0284c7', color: '#ffffff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' },
+  vacioBox: { textAlign: 'center', padding: '40px 16px' },
+  vacioTitulo: { margin: '8px 0 0 0', fontSize: '15px', color: '#0f172a' },
+  abonoOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '16px' },
+  abonoCard: { background: '#ffffff', borderRadius: '14px', width: '100%', maxWidth: '380px', overflow: 'hidden' },
+  abonoHeader: { padding: '14px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  btnCerrar: { background: 'transparent', border: 'none', cursor: 'pointer' },
+  inputAbono: { width: '100%', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', outline: 'none', boxSizing: 'border-box' },
+  btnCancelarAbono: { flex: 1, padding: '10px', border: 'none', borderRadius: '8px', background: '#f1f5f9', color: '#64748b', fontWeight: '700', cursor: 'pointer' },
+  btnConfirmarAbono: { flex: 1, padding: '10px', border: 'none', borderRadius: '8px', background: '#10b981', color: '#ffffff', fontWeight: '700', cursor: 'pointer' }
 };

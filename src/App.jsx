@@ -321,10 +321,10 @@ export default function App() {
     const encontrado = (clientes || []).find(c => String(c.doc || '').replace(/[^0-9]/g, '') === docLimpio);
     if (encontrado) {
       setClienteActivo(encontrado);
-      setDocBusqueda(encontrado.doc || docValor);
+      setDocBusqueda(encontrado.doc);
       setMostrarSugerencias(false);
     } else {
-      const nuevo = { id: 'cli_' + Date.now(), nombre: 'Cliente ' + docValor, doc: docValor, saldoDeudor: 0, saldoPendienteUSD: 0 };
+      const nuevo = { id: 'cli_' + Date.now(), nombre: 'Cliente ' + docValor, doc: docValor };
       setClienteActivo(nuevo);
       setMostrarSugerencias(false);
     }
@@ -995,40 +995,32 @@ export default function App() {
           })()}
           tasaCambio={tasaCambio}
           alCerrar={() => setVistaActual('pos')}
-          onAbonar={async (clienteId, montoAbonoUSD) => {
-            const montoNum = parseFloat(montoAbonoUSD) || 0;
+          onAbonar={async (clienteDoc, montoUSD) => {
+            const montoNum = parseFloat(montoUSD) || 0;
             if (montoNum <= 0) return;
+            const docClean = String(clienteDoc).replace(/[^0-9]/g, '');
 
-            const docTarget = String(clienteId || '').replace(/[^0-9]/g, '');
-            let saldoFinal = 0;
-            let docClienteReal = '';
+            // Actualizar transacciones fiadas en memoria para que la deuda baje de inmediato
+            setTransacciones(prev => prev.map(t => {
+              const tDoc = String(t.cliente?.doc || t.clienteDoc || '').replace(/[^0-9]/g, '');
+              const esFiado = t.es_credito === true || t.esCredito === true || t.tipoPago === 'credito';
+              if (tDoc === docClean && esFiado && (t.estado === 'activa' || !t.estado)) {
+                return { ...t, estado: 'completada', es_credito: false, esCredito: false };
+              }
+              return t;
+            }));
 
-            setClientes(prev => {
-              const actualizados = prev.map(cli => {
-                const cDoc = String(cli.doc || '').replace(/[^0-9]/g, '');
-                if (cDoc === docTarget || String(cli.id) === String(clienteId)) {
-                  docClienteReal = cli.doc;
-                  const saldoActual = parseFloat(cli.saldoPendienteUSD ?? cli.saldoDeudor ?? cli.saldo_deudor_usd ?? 0);
-                  const nuevoSaldo = Math.max(0, parseFloat((saldoActual - montoNum).toFixed(2)));
-                  saldoFinal = nuevoSaldo;
-                  return {
-                    ...cli,
-                    saldoPendienteUSD: nuevoSaldo,
-                    saldoDeudor: nuevoSaldo,
-                    saldo_deudor_usd: nuevoSaldo
-                  };
-                }
-                return cli;
-              });
-              localStorage.setItem('pos_clientes', JSON.stringify(actualizados));
-              return actualizados;
-            });
-
+            // Persistir en Supabase cerrando las ventas a credito de este cliente
             try {
               const negId = negocioActual?.id || localStorage.getItem('pos_negocio_id');
-              await dbService.registrarAbono(docClienteReal || ('V-' + docTarget), saldoFinal, negId);
+              const { error } = await supabase
+                .from('ventas')
+                .update({ estado: 'completada', es_credito: false })
+                .eq('negocio_id', negId)
+                .contains('cliente', { doc: 'V-' + docClean });
+              if (error) console.error('Error al actualizar venta fiada en supabase:', error);
             } catch (err) {
-              console.error('Error al persistir abono en Supabase:', err);
+              console.error(err);
             }
           }}
           alVolver={() => setVistaActual('pos')}
