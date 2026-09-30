@@ -21,30 +21,37 @@ export const CreditosModal = ({
   const [clienteAbonando, setClienteAbonando] = useState(null);
   const [clienteHistorial, setClienteHistorial] = useState(null);
   const [tabHistorial, setTabHistorial] = useState('compras');
-  const [abonosSupabase, setAbonosSupabase] = useState([]);
-  const [procesandoAbono, setProcesandoAbono] = useState(false);
+  const [abonosLocales, setAbonosLocales] = useState([]);
+  const [guardandoAbono, setGuardandoAbono] = useState(false);
 
-  const recargarAbonosDirectos = async () => {
-    try {
-      const negId = usuarioActivo?.negocio_id ||
-                  usuarioActivo?.negocioId ||
-                  (clientes && clientes.length > 0 ? (clientes[0]?.negocio_id || clientes[0]?.negocioId) : null) ||
-                  localStorage.getItem('pos_negocio_id');
-                  
-      if (negId) {
-        const data = await dbService.getAbonos(negId);
-        if (Array.isArray(data)) {
-          setAbonosSupabase(data);
-        }
-      }
-    } catch (e) {
-      console.error('Error cargando abonos directos:', e);
-    }
-  };
+  // Obtener negocio ID resolviendo todas las fuentes posibles
+  const negocioIdResuelto = useMemo(() => {
+    return usuarioActivo?.negocio_id ||
+           usuarioActivo?.negocioId ||
+           localStorage.getItem('pos_negocio_id') ||
+           localStorage.getItem('pos_negocioActivo') ||
+           (clientes && clientes.length > 0 ? (clientes[0]?.negocio_id || clientes[0]?.negocioId) : null) ||
+           'neg_mujkrui8';
+  }, [usuarioActivo, clientes]);
 
+  // Carga directa de abonos desde Supabase al montar
   useEffect(() => {
-    recargarAbonosDirectos();
-  }, []);
+    let montado = true;
+    const cargar = async () => {
+      try {
+        if (negocioIdResuelto) {
+          const data = await dbService.getAbonos(negocioIdResuelto);
+          if (montado && Array.isArray(data)) {
+            setAbonosLocales(data);
+          }
+        }
+      } catch (e) {
+        console.error("Error cargando abonos:", e);
+      }
+    };
+    cargar();
+    return () => { montado = false; };
+  }, [negocioIdResuelto]);
 
   const [metodoAbono, setMetodoAbono] = useState('dolares');
   const [montosAbono, setMontosAbono] = useState({
@@ -57,70 +64,94 @@ export const CreditosModal = ({
   const tasa = parseFloat(tasaCambio) || 1;
   const cerrarVista = alVolver || onVolver;
 
-  // Unificación de abonos desduplicada por ID o clave única
-  const listaAbonosUnificados = useMemo(() => {
-    const mapaAbonos = new Map();
-    [...(abonos || []), ...(abonosSupabase || [])].forEach(a => {
-      const docA = String(a.cliente_doc || a.doc || a.cedula || '').replace(/[^0-9]/g, '');
+  // Unificación de abonos desduplicada
+  const todosLosAbonos = useMemo(() => {
+    const mapa = new Map();
+    [...(abonos || []), ...(abonosLocales || [])].forEach(a => {
+      const docA = String(a.cliente_doc || a.doc || a.cedula || '').replace(/\D/g, '');
       const key = a.id || `${docA}_${a.fecha}_${a.monto_usd || a.montoUSD}`;
-      if (!mapaAbonos.has(key)) {
-        mapaAbonos.set(key, a);
+      if (!mapa.has(key)) {
+        mapa.set(key, a);
       }
     });
-    return Array.from(mapaAbonos.values());
-  }, [abonos, abonosSupabase]);
+    return Array.from(mapa.values());
+  }, [abonos, abonosLocales]);
 
-  // Consolidar deudas
+  // Lista consolidada de clientes con saldo calculado
   const clientesConsolidados = useMemo(() => {
-    const mapaUnico = new Map();
+    const mapa = new Map();
 
+    // 1. Agregar clientes registrados
     (clientes || []).forEach(c => {
-      const docClean = String(c.doc || c.cedula || c.rif || '').replace(/[^0-9]/g, '');
-      if (!docClean) return;
-
-      if (!mapaUnico.has(docClean)) {
-        const comprasFiadas = (transacciones || []).filter(v => {
-          if (v.anulada) return false;
-          const docVenta = String(v.cliente?.doc || v.cliente_doc || '').replace(/[^0-9]/g, '');
-          const esFiado = Boolean(
-            v.es_credito || 
-            v.esCredito || 
-            v.tipoVenta === 'credito' ||
-            (v.metodoPago || '').toLowerCase().includes('crédit') ||
-            (v.metodoPago || '').toLowerCase().includes('credit') ||
-            (v.metodo_pago || '').toLowerCase().includes('credit')
-          );
-          return esFiado && docVenta === docClean;
-        });
-
-        const abonosCliente = listaAbonosUnificados.filter(a => {
-          const docAbono = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || '').replace(/[^0-9]/g, '');
-          return docAbono === docClean;
-        });
-
-        const totalFiadoUSD = comprasFiadas.reduce((acc, v) => acc + (parseFloat(v.totalUSD ?? v.total_usd ?? 0) || 0), 0);
-        const totalAbonadoUSD = abonosCliente.reduce((acc, a) => acc + (parseFloat(a.montoUSD ?? a.monto_usd ?? 0) || 0), 0);
-        
-        let deudaCalculada = 0;
-        if (totalFiadoUSD > 0 || totalAbonadoUSD > 0) {
-          deudaCalculada = Math.max(0, parseFloat((totalFiadoUSD - totalAbonadoUSD).toFixed(2)));
-        } else {
-          deudaCalculada = Math.max(0, parseFloat(c.saldo_deudor_usd ?? c.saldoPendienteUSD ?? c.saldoDeudor ?? 0) || 0);
-        }
-
-        mapaUnico.set(docClean, {
+      const docClean = String(c.doc || c.cedula || c.rif || '').replace(/\D/g, '');
+      if (docClean && !mapa.has(docClean)) {
+        mapa.set(docClean, {
           ...c,
           docClean,
-          totalDeudaUSD: deudaCalculada,
-          comprasFiadas,
-          abonosCliente
+          totalDeudaUSD: 0,
+          comprasFiadas: [],
+          abonosCliente: []
         });
       }
     });
 
-    return Array.from(mapaUnico.values());
-  }, [clientes, transacciones, listaAbonosUnificados]);
+    // 2. Extraer clientes que figuren en transacciones de crédito
+    (transacciones || []).forEach(v => {
+      const docVenta = String(v.cliente?.doc || v.cliente_doc || '').replace(/\D/g, '');
+      if (docVenta && !mapa.has(docVenta)) {
+        mapa.set(docVenta, {
+          id: v.cliente?.id || ('cli_' + docVenta),
+          nombre: v.cliente?.nombre || 'Cliente General',
+          doc: v.cliente?.doc || ('V-' + docVenta),
+          telefono: v.cliente?.telefono || '',
+          docClean: docVenta,
+          totalDeudaUSD: 0,
+          comprasFiadas: [],
+          abonosCliente: []
+        });
+      }
+    });
 
+    // 3. Calcular deuda neta para cada cliente: fiados menos abonos
+    mapa.forEach((cliente, docClean) => {
+      const comprasFiadas = (transacciones || []).filter(v => {
+        if (v.anulada) return false;
+        const docV = String(v.cliente?.doc || v.cliente_doc || '').replace(/\D/g, '');
+        const esFiado = Boolean(
+          v.es_credito || 
+          v.esCredito || 
+          v.tipoVenta === 'credito' ||
+          (v.metodoPago || '').toLowerCase().includes('crédit') ||
+          (v.metodoPago || '').toLowerCase().includes('credit') ||
+          (v.metodo_pago || '').toLowerCase().includes('credit')
+        );
+        return esFiado && docV === docClean;
+      });
+
+      const abonosCliente = todosLosAbonos.filter(a => {
+        const docA = String(a.cliente_doc || a.doc || a.cedula || a.cliente_cedula || a.doc_cliente || '').replace(/\D/g, '');
+        return docA === docClean;
+      });
+
+      const totalFiadoUSD = comprasFiadas.reduce((acc, v) => acc + (parseFloat(v.totalUSD ?? v.total_usd ?? 0) || 0), 0);
+      const totalAbonadoUSD = abonosCliente.reduce((acc, a) => acc + (parseFloat(a.montoUSD ?? a.monto_usd ?? 0) || 0), 0);
+
+      let deudaCalculada = 0;
+      if (totalFiadoUSD > 0 || totalAbonadoUSD > 0) {
+        deudaCalculada = Math.max(0, parseFloat((totalFiadoUSD - totalAbonadoUSD).toFixed(2)));
+      } else {
+        deudaCalculada = Math.max(0, parseFloat(cliente.saldo_deudor_usd ?? cliente.saldoPendienteUSD ?? cliente.saldoDeudor ?? 0) || 0);
+      }
+
+      cliente.totalDeudaUSD = deudaCalculada;
+      cliente.comprasFiadas = comprasFiadas;
+      cliente.abonosCliente = abonosCliente;
+    });
+
+    return Array.from(mapa.values());
+  }, [clientes, transacciones, todosLosAbonos]);
+
+  // Filtrado por buscador
   const clientesFiltrados = useMemo(() => {
     return clientesConsolidados.filter(c => {
       const matchBusqueda = (c.nombre || '').toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -178,9 +209,9 @@ export const CreditosModal = ({
 
   const confirmarAbono = async () => {
     if (totalAbonadoUSD <= 0) return alert('Por favor ingresa un monto válido a abonar.');
-    if (procesandoAbono) return;
+    if (guardandoAbono) return;
 
-    setProcesandoAbono(true);
+    setGuardandoAbono(true);
 
     let nombreMetodo = 'Efectivo ($)';
     if (metodoAbono === 'pagomovil') nombreMetodo = 'Pago Móvil (Bs)';
@@ -190,6 +221,24 @@ export const CreditosModal = ({
     const montoBsReal = metodoAbono === 'dolares'
       ? parseFloat((totalAbonadoUSD * tasa).toFixed(2))
       : (parseFloat(montoBSInput) || 0);
+
+    const docClean = String(clienteAbonando.doc || clienteAbonando.cedula || clienteAbonando.docClean || '').replace(/\D/g, '');
+
+    const nuevoAbonoObj = {
+      id: 'abn_' + Date.now(),
+      negocio_id: negocioIdResuelto,
+      cliente_doc: clienteAbonando.doc || ('V-' + docClean),
+      cliente_nombre: clienteAbonando.nombre || '',
+      cajero_nombre: usuarioActivo?.nombre || 'Administrador',
+      monto_usd: totalAbonadoUSD,
+      monto_bs: montoBsReal,
+      tasa_bcv: tasa,
+      metodo_pago: nombreMetodo,
+      fecha: new Date().toISOString()
+    };
+
+    // Actualizar estado local inmediatamente sin vaciar la lista
+    setAbonosLocales(prev => [nuevoAbonoObj, ...prev]);
 
     try {
       const fn = onAbonar || alRegistrarAbono;
@@ -202,25 +251,23 @@ export const CreditosModal = ({
           tasa: tasa
         });
       }
-
-      await recargarAbonosDirectos();
+    } catch (e) {
+      console.error("Error registrando abono:", e);
+    } finally {
+      setGuardandoAbono(false);
       setClienteAbonando(null);
       setMontosAbono({ dolares: '', pagomovil: '', punto: '', efectivo_bs: '' });
-    } catch (e) {
-      alert("Error procesando abono: " + (e?.message || JSON.stringify(e)));
-    } finally {
-      setProcesandoAbono(false);
     }
   };
 
   const abonosClienteActivo = useMemo(() => {
     if (!clienteHistorial) return [];
-    const docTarget = String(clienteHistorial.doc || clienteHistorial.cedula || clienteHistorial.docClean || '').replace(/[^0-9]/g, '');
-    return listaAbonosUnificados.filter(a => {
-      const docA = String(a.cliente_doc || a.doc || a.cedula || '').replace(/[^0-9]/g, '');
+    const docTarget = String(clienteHistorial.doc || clienteHistorial.cedula || clienteHistorial.docClean || '').replace(/\D/g, '');
+    return todosLosAbonos.filter(a => {
+      const docA = String(a.cliente_doc || a.doc || a.cedula || '').replace(/\D/g, '');
       return docTarget && docA && docTarget === docA;
     });
-  }, [clienteHistorial, listaAbonosUnificados]);
+  }, [clienteHistorial, todosLosAbonos]);
 
   return (
     <div style={styles.contenedorPrincipal} translate="no">
@@ -275,7 +322,7 @@ export const CreditosModal = ({
           </div>
         ) : (
           clientesFiltrados.map((c) => (
-            <div key={c.id || c.doc} style={styles.tarjetaCliente}>
+            <div key={c.id || c.docClean || c.doc} style={styles.tarjetaCliente}>
               <div style={styles.filaClienteTop}>
                 <div style={styles.avatarMini}>
                   {(c.nombre || 'C').charAt(0).toUpperCase()}
@@ -393,8 +440,8 @@ export const CreditosModal = ({
               </button>
             </div>
 
-            <button onClick={confirmarAbono} disabled={procesandoAbono} style={styles.btnConfirmarFinal}>
-              <CheckCircle size={20} /> {procesandoAbono ? 'Registrando...' : `Confirmar Abono de $${totalAbonadoUSD.toFixed(2)}`}
+            <button onClick={confirmarAbono} disabled={guardandoAbono} style={styles.btnConfirmarFinal}>
+              <CheckCircle size={20} /> {guardandoAbono ? 'Registrando...' : `Confirmar Abono de $${totalAbonadoUSD.toFixed(2)}`}
             </button>
           </div>
         </div>
