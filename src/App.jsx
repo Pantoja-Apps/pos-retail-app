@@ -316,55 +316,17 @@ export default function App() {
   };
 
   const manejarDocMostrador = (docValor) => {
-    const docLimpio = (docValor || '').replace(/[^0-9]/g, '');
-    const textoBusqueda = (docValor || '').trim().toLowerCase();
-
-    if (!docValor || docValor.trim() === '') {
-      setSugClientesMostrador([]);
-      setClienteActual({ id: 'cli_cf', doc: 'V-00000000', nombre: 'Consumidor Final', telefono: '', saldoPendienteUSD: 0 });
-      return;
-    }
-
-    // Filtrar y deduplicar por cedula
-    const mapaUnicos = new Map();
-    clientes.forEach(c => {
-      const cNum = (c.doc || '').replace(/[^0-9]/g, '');
-      const cNom = (c.nombre || '').toLowerCase();
-      if ((docLimpio && cNum.includes(docLimpio)) || cNom.includes(textoBusqueda)) {
-        const clave = cNum || cNom;
-        if (!mapaUnicos.has(clave)) {
-          mapaUnicos.set(clave, c);
-        } else {
-          // Si ya existe pero el nuevo tiene saldo deudor mayor, conservar el que tiene deuda
-          const actual = mapaUnicos.get(clave);
-          const deudaActual = parseFloat(actual.saldoPendienteUSD || actual.saldoDeudor || actual.saldoDeudorUSD || 0);
-          const deudaNuevo = parseFloat(c.saldoPendienteUSD || c.saldoDeudor || c.saldoDeudorUSD || 0);
-          if (deudaNuevo > deudaActual) mapaUnicos.set(clave, c);
-        }
-      }
-    });
-
-    const sugeridos = Array.from(mapaUnicos.values()).map(c => ({ ...c, saldoPendienteUSD: obtenerDeudaCliente(c) }));
-    setSugClientesMostrador(sugeridos.slice(0, 4));
-
-    // Buscar si coincide exacto
-    const encontrados = clientes.filter(c => (c.doc || '').replace(/[^0-9]/g, '') === docLimpio);
-    if (encontrados.length > 0) {
-      // Elegir el registro que contenga la deuda mayor o datos completos
-      const mejorMatch = encontrados.reduce((prev, curr) => {
-        const dPrev = parseFloat(prev.saldoPendienteUSD || prev.saldoDeudor || prev.saldoDeudorUSD || 0);
-        const dCurr = parseFloat(curr.saldoPendienteUSD || curr.saldoDeudor || curr.saldoDeudorUSD || 0);
-        return dCurr > dPrev ? curr : prev;
-      }, encontrados[0]);
-      setClienteActual(mejorMatch);
+    if (!docValor) return;
+    const docLimpio = String(docValor).replace(/[^0-9]/g, '');
+    const encontrado = (clientes || []).find(c => (c.doc || '').replace(/[^0-9]/g, '') === docLimpio);
+    if (encontrado) {
+      setClienteActivo(encontrado);
+      setDocBusqueda(encontrado.doc || docValor);
+      setMostrarSugerencias(false);
     } else {
-      setClienteActual({
-        id: 'cli_temp',
-        doc: docValor,
-        nombre: docLimpio.length > 5 ? 'Cliente No Registrado' : 'Consumidor Final',
-        telefono: '',
-        saldoPendienteUSD: 0
-      });
+      const nuevo = { id: 'cli_' + Date.now(), nombre: 'Cliente ' + docValor, doc: docValor, saldoDeudor: 0, saldoPendienteUSD: 0 };
+      setClienteActivo(nuevo);
+      setMostrarSugerencias(false);
     }
   };
 
@@ -789,27 +751,14 @@ export default function App() {
       const clis = await dbService.getClientes(res.negocio.id) || [];
       const vtasTodas = await dbService.getVentas(res.negocio.id) || [];
 
-      // Reconstruir saldos pendientes a partir de ventas a crédito reales de Supabase
-      const mapaDeudas = new Map();
-      vtasTodas.forEach(v => {
-        if (v.esCredito || v.es_credito) {
-          const doc = (v.cliente?.doc || '').replace(/[^0-9]/g, '');
-          if (doc) {
-            const monto = parseFloat(v.totalUSD ?? v.total_usd ?? 0) || 0;
-            mapaDeudas.set(doc, (mapaDeudas.get(doc) || 0) + monto);
-          }
-        }
-      });
-
-      const clientesConsolidados = (clis.length > 0 ? clis : []).map(c => {
-        const docLimpio = (c.doc || '').replace(/[^0-9]/g, '');
-        const saldoVentas = mapaDeudas.get(docLimpio) || 0;
-        const saldoDirecto = parseFloat(c.saldoPendienteUSD ?? c.saldoDeudor ?? c.saldo_deudor_usd ?? 0) || 0;
-        const saldoFinal = Math.max(saldoVentas, saldoDirecto);
+      // Respetar fielmente el saldo deudor registrado en la base de datos Supabase
+      const clientesConsolidados = (clis || []).map(c => {
+        const saldoReal = parseFloat(c.saldo_deudor_usd ?? c.saldoPendienteUSD ?? c.saldoDeudor ?? 0) || 0;
         return {
           ...c,
-          saldoPendienteUSD: saldoFinal,
-          saldoDeudor: saldoFinal
+          saldoPendienteUSD: saldoReal,
+          saldoDeudor: saldoReal,
+          saldo_deudor_usd: saldoReal
         };
       });
 
