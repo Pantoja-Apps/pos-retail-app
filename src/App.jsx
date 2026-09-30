@@ -341,15 +341,44 @@ export default function App() {
     const docStr = String(docValor || '');
     const docLimpio = docStr.replace(/[^0-9]/g, '');
 
+    if (!docLimpio) {
+      setClienteActual(CLIENTES_INICIALES[0]);
+      if (typeof setSugClientesMostrador === 'function') setSugClientesMostrador([]);
+      return;
+    }
+
+    // Coincidencia exacta
     const encontrado = (clientes || []).find(c => {
       const cLimpio = String(c.doc || c.cedula || '').replace(/[^0-9]/g, '');
-      return cLimpio && docLimpio && cLimpio === docLimpio;
+      return cLimpio && cLimpio === docLimpio;
     });
+
+    // Coincidencias predictivas mientras se escribe
+    const sugerencias = (clientes || []).filter(c => {
+      const cLimpio = String(c.doc || c.cedula || '').replace(/[^0-9]/g, '');
+      return cLimpio && cLimpio.startsWith(docLimpio);
+    });
+
+    if (typeof setSugClientesMostrador === 'function') {
+      setSugClientesMostrador(sugerencias.length > 0 ? sugerencias : []);
+    }
 
     if (encontrado) {
       setClienteActual({ ...encontrado, doc: docStr });
+    } else if (sugerencias.length === 1 && docLimpio.length >= 4) {
+      // Predicción inteligente si sólo hay 1 cliente coincidente
+      setClienteActual(prev => ({
+        ...sugerencias[0],
+        doc: docStr
+      }));
     } else {
-      setClienteActual(prev => ({ ...(prev || {}), doc: docStr, nombre: prev?.nombre || 'Consumidor Final' }));
+      setClienteActual(prev => ({
+        ...(prev || {}),
+        doc: docStr,
+        nombre: 'Consumidor Final',
+        saldoPendienteUSD: 0,
+        saldoDeudor: 0
+      }));
     }
   };
 
@@ -778,27 +807,39 @@ export default function App() {
       const clis = await dbService.getClientes(res.negocio.id) || [];
       const vtasTodas = await dbService.getVentas(res.negocio.id) || [];
 
-      // Reconstruir saldos pendientes a partir de ventas a crédito reales de Supabase
-      const mapaDeudas = new Map();
+      // Reconstruir saldos pendientes exactos restando abonos reales de Supabase
+      const mapaFiados = new Map();
+      const mapaAbonosRealizados = new Map();
+
       vtasTodas.forEach(v => {
-        if (v.esCredito || v.es_credito) {
-          const doc = (v.cliente?.doc || '').replace(/[^0-9]/g, '');
+        const esFiado = Boolean(v.esCredito || v.es_credito || (v.metodoPago === 'Crédito') || (v.metodo_pago === 'credito'));
+        if (esFiado) {
+          const doc = (v.cliente?.doc || v.cliente_doc || '').replace(/[^0-9]/g, '');
           if (doc) {
             const monto = parseFloat(v.totalUSD ?? v.total_usd ?? 0) || 0;
-            mapaDeudas.set(doc, (mapaDeudas.get(doc) || 0) + monto);
+            mapFiados = mapaFiados.set(doc, (mapaFiados.get(doc) || 0) + monto);
           }
         }
       });
 
+      (Array.isArray(abonosCloud) ? abonosCloud : []).forEach(a => {
+        const doc = String(a.cliente_doc || a.doc || a.cedula || '').replace(/[^0-9]/g, '');
+        if (doc) {
+          const monto = parseFloat(a.monto_usd ?? a.montoUSD ?? 0) || 0;
+          mapaAbonosRealizados.set(doc, (mapaAbonosRealizados.get(doc) || 0) + monto);
+        }
+      });
+
       const clientesConsolidados = (clis.length > 0 ? clis : []).map(c => {
-        const docLimpio = (c.doc || '').replace(/[^0-9]/g, '');
-        const saldoVentas = mapaDeudas.get(docLimpio) || 0;
-        const saldoDirecto = parseFloat(c.saldoPendienteUSD ?? c.saldoDeudor ?? c.saldo_deudor_usd ?? 0) || 0;
-        const saldoFinal = saldoDirecto > 0 ? saldoDirecto : Math.max(0, saldoVentas);
+        const docLimpio = (c.doc || c.cedula || '').replace(/[^0-9]/g, '');
+        const totalFiado = mapaFiados.get(docLimpio) || 0;
+        const totalAbonado = mapaAbonosRealizados.get(docLimpio) || 0;
+        const saldoCalculado = totalFiado > 0 ? Math.max(0, parseFloat((totalFiado - totalAbonado).toFixed(2))) : (parseFloat(c.saldoPendienteUSD ?? c.saldoDeudor ?? 0) || 0);
+
         return {
           ...c,
-          saldoPendienteUSD: saldoFinal,
-          saldoDeudor: saldoFinal
+          saldoPendienteUSD: saldoCalculado,
+          saldoDeudor: saldoCalculado
         };
       });
 
